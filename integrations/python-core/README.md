@@ -5,7 +5,7 @@ A pre-payment check for x402 agents. Before your agent pays a seller, it asks
 `GET /v1/preflight` route. Paid lookups are opt-in and capped by a budget you set.
 
 BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken from the CDP Bazaar,
-Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 5.4 h, and every
+Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed.
 
 **Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.0.**

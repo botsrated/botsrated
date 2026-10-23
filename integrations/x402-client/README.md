@@ -5,7 +5,7 @@ A pre-payment check for x402 clients. Before your agent signs a payment, the gua
 `GET /v1/preflight` route and blocks the payment if the payTo being paid was never seen for that host.
 
 BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken from the CDP Bazaar,
-Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 5.4 h, and every
+Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed. Hosts outside that set are allowed by default.
 
 **Status: prepared, not yet published to npm.**
