@@ -1,0 +1,33 @@
+{
+  "error": null,
+  "host": "api.exa.ai",
+  "id": "ac16e0eeff1e0d9ffcfc",
+  "kind": "unpaid_probe",
+  "latency_ms": 299,
+  "listed_amount": "7000",
+  "listed_payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+  "live_amount": "7000",
+  "live_asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "live_network": "eip155:8453",
+  "live_payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+  "method": "POST",
+  "network": "eip155:8453",
+  "payment_required_header_bytes": 8432,
+  "probe_version": "0.2",
+  "prober": "botsrated-prober (Cloudflare cron)",
+  "prober_ua": "BotsRated-probe/0.2 (unpaid check; no payment sent; +https://botsrated.com/disputes)",
+  "req_sha256": "da570e7b66046375effd11810818180924411b2acd9cd3ca027f462f5e658c4c",
+  "resp_sha256": "9c9398877df99a64518cfbf81c093d2d1a51a7636fc264577209f3398c866dc0",
+  "sig": {
+    "alg": "ed25519",
+    "key_id": "botsrated-prober-1",
+    "signed": "canonical JSON of this receipt without the sig field (keys sorted, no whitespace)",
+    "sig_b64": "v9QzE4RhJh5aWUcHyk9IeGuA50bRDqndCnzdc+Rs+V1eeN/1Jb/soplZ0OV4r0hompmF5mrwv0mHZuOxh0/ADg=="
+  },
+  "status": 402,
+  "total_header_bytes": 9979,
+  "ts": "2026-10-23T13:06:35Z",
+  "url": "https://api.exa.ai/search",
+  "valid_402": true,
+  "x402_version": 2
+}

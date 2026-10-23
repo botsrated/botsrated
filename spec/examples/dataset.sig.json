@@ -1,0 +1,11 @@
+{
+  "signer": "BotsRated",
+  "key_id": "botsrated-staging-1",
+  "environment": "beta-mainnet",
+  "key_url": "https://botsrated.com/.well-known/botsrated-key",
+  "alg": "ed25519",
+  "public_key_b64": "OfGrLtyJYCC1K9jjhvq0Zduwgqq68DvzR1StOo5ZpO0=",
+  "sha256": "9401389cb54d0ba17f822d6de3a0c679907714cbd9d66d2b84c6f1b2816350d1",
+  "signature_b64": "cGxodEm3Hg7/RZcT60q/ePjFSfbuLAWhCiN1lVB01V/n99fmtiOWwGr3Mxld1wssZRSIiTKNwBIOWW4j7QIdDg==",
+  "generated_at": "2026-10-23T12:55:56Z"
+}

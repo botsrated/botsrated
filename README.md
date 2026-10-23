@@ -53,6 +53,17 @@ VS Code (`.vscode/mcp.json`):
 ## Methodology, disputes
 - Methodology: https://botsrated.com/methodology
 - Sellers can reply or dispute for free: https://botsrated.com/disputes (`POST /v1/dispute`)
-- Dataset signature: https://botsrated.com/dataset.sig.json. Signing key: https://botsrated.com/.well-known/botsrated-key
+- Dataset signature: https://botsrated.com/dataset.sig.json. Key set: https://botsrated.com/.well-known/botsrated-key
+- Receipt format and verifier: [`spec/SPEC.md`](spec/SPEC.md), `node spec/verify.mjs <receipt.json|url>`
+
+## Signing keys (Ed25519)
+Raw 32-byte public keys, base64. Fingerprint = sha256 of the raw key bytes. A signature is valid for an object whose own timestamp
+(`ts`, or `generated_at` for snapshots) lies in `[valid from, valid until)`. The live key set at `/.well-known/botsrated-key` is authoritative; this table is an out-of-band copy to compare against.
+
+| key_id | Status | Valid from (UTC) | Valid until (UTC) | Signs | Public key | sha256 fingerprint |
+|---|---|---|---|---|---|---|
+| `botsrated-prod-1` | active | 2026-10-23T15:00:00Z | 2027-10-23T00:00:00Z | dataset snapshots, paid test-buy receipts | `oTK25Dq3wU2+apPYddiv4T+8is2s3hL1k6ozjMAbEWQ=` | `ac58fa77b9f6a26805efb65d331d6d77da3dfbdbbe981cc7510692852a50e74a` |
+| `botsrated-prober-1` | active | 2026-10-23T12:00:00Z | (none) | cron probe receipts, daily aggregates, archive manifests | `G5aD8mz2rkbpLPQuEC2t50AaJpMjGcflTXuRmeJETsE=` | `805e75f8795ff38c4805653962ba75991fc8bdcaef3f80441e0775e405a3a628` |
+| `botsrated-staging-1` | retired (verify only) | 2026-10-22T00:00:00Z | 2026-10-23T15:00:00Z | dataset snapshots generated before 2026-10-23T15:00:00Z | `OfGrLtyJYCC1K9jjhvq0Zduwgqq68DvzR1StOo5ZpO0=` | `71db9690ef765ce6b923d63fc71e1a65474e87ee1073532eafb9099b1e6f0288` |
 
 Beta. Payments are USDC on Base mainnet.

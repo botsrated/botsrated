@@ -1,0 +1,50 @@
+{
+    "signer": "BotsRated",
+    "issuer": "https://botsrated.com",
+    "key_id": "botsrated-prod-1",
+    "alg": "ed25519",
+    "public_key_b64": "oTK25Dq3wU2+apPYddiv4T+8is2s3hL1k6ozjMAbEWQ=",
+    "environment": "beta-mainnet",
+    "current": {
+        "dataset_snapshot": "botsrated-prod-1",
+        "paid_receipts": "botsrated-prod-1",
+        "probe_receipts": "botsrated-prober-1"
+    },
+    "rotated_at": "2026-10-23T15:00:00Z",
+    "validity": "A signature by a key is valid for an object whose timestamp (snapshot generated_at, receipt ts) lies in [valid_from, valid_until). Retired keys stay listed so old snapshots and receipts keep verifying; they sign nothing new. sha256_fingerprint = sha256 of the raw 32-byte public key.",
+    "keys": [
+        {
+            "key_id": "botsrated-prod-1",
+            "alg": "ed25519",
+            "public_key_b64": "oTK25Dq3wU2+apPYddiv4T+8is2s3hL1k6ozjMAbEWQ=",
+            "sha256_fingerprint": "ac58fa77b9f6a26805efb65d331d6d77da3dfbdbbe981cc7510692852a50e74a",
+            "status": "active",
+            "valid_from": "2026-10-23T15:00:00Z",
+            "valid_until": "2027-10-23T00:00:00Z",
+            "signs": "dataset snapshots (/dataset.json bytes, see /dataset.sig.json) and paid test-buy receipts (canonical JSON of the receipt without its sig field)",
+            "note": "Production key. It will be rotated before valid_until; a new key_id is added first."
+        },
+        {
+            "key_id": "botsrated-prober-1",
+            "alg": "ed25519",
+            "public_key_b64": "G5aD8mz2rkbpLPQuEC2t50AaJpMjGcflTXuRmeJETsE=",
+            "sha256_fingerprint": "805e75f8795ff38c4805653962ba75991fc8bdcaef3f80441e0775e405a3a628",
+            "status": "active",
+            "valid_from": "2026-10-23T12:00:00Z",
+            "valid_until": null,
+            "signs": "each cron-probe receipt, daily_aggregate and archive manifest: canonical JSON of the object without its sig field (keys sorted, no whitespace)"
+        },
+        {
+            "key_id": "botsrated-staging-1",
+            "alg": "ed25519",
+            "public_key_b64": "OfGrLtyJYCC1K9jjhvq0Zduwgqq68DvzR1StOo5ZpO0=",
+            "sha256_fingerprint": "71db9690ef765ce6b923d63fc71e1a65474e87ee1073532eafb9099b1e6f0288",
+            "status": "retired",
+            "valid_from": "2026-10-22T00:00:00Z",
+            "valid_until": "2026-10-23T15:00:00Z",
+            "retired_at": "2026-10-23T15:00:00Z",
+            "signs": "dataset snapshots generated before retired_at (/dataset.json bytes, /dataset.sig.json); verify only",
+            "note": "Retired but valid: verifies snapshots generated before retired_at (for example the dated copies under /archive/dataset/). It signs nothing new."
+        }
+    ]
+}

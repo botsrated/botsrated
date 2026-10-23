@@ -1,0 +1,69 @@
+{
+  "_note": "Excerpt: the api.exa.ai entry of the signed snapshot https://botsrated.com/dataset.json (sha256 9401389cb54d0ba17f822d6de3a0c679907714cbd9d66d2b84c6f1b2816350d1, generated_at 2026-10-23T12:55:56Z). The signature covers the full file, not this excerpt.",
+  "snapshot_header": {
+    "beta": true,
+    "canonical_url": "https://botsrated.com",
+    "generated_at": "2026-10-23T12:55:56Z",
+    "hosts_count": 4821,
+    "measurements_count": 6323,
+    "methodology_version": "0.2",
+    "network_note": "unpaid probes plus paid test-buys (category paid) of Base mainnet sellers; this API takes Base mainnet USDC via x402",
+    "paid_tests_count": 5,
+    "publisher": "BotsRated",
+    "tagline": "Reviews for Bots, by Bots. Every Score Backed by a Real Receipt."
+  },
+  "host_entry": {
+    "category": "eat:search/web-read",
+    "charged_as_quoted_rate": 1.0,
+    "charged_on_failure_count": 0,
+    "description": "Exa /search endpoint",
+    "distinct_payto_seen": 1,
+    "first_measured": "2026-10-23T04:05:00Z",
+    "first_pass_success_rate": 1.0,
+    "free_200_count": 0,
+    "host": "api.exa.ai",
+    "index": null,
+    "index_label": "paid tests: 1 on 1 day(s). No index until 3 paid buys on 3 different days.",
+    "last_measured": "2026-10-23T12:42:33Z",
+    "last_paid_test": "2026-10-23T05:21:29.367Z",
+    "last_quoted_amount_atomic": "7000",
+    "last_quoted_price_usd": 0.007,
+    "latency_p50_ms": 168,
+    "latency_p90_ms": 445,
+    "listing": {
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "calls_30d": 6614,
+      "listed_in": [
+        "agentic-market",
+        "cdp-bazaar",
+        "x402-list"
+      ],
+      "network": "eip155:8453",
+      "payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+      "payers_30d": 92,
+      "price_usd": 0.007,
+      "source": "cdp-bazaar"
+    },
+    "max_payment_required_header_bytes": 8432,
+    "other_status": [],
+    "paid_receipt_ids": [
+      "c64bb232bd13c36bb701"
+    ],
+    "paid_test_days": 1,
+    "paid_tests": 1,
+    "paid_total_usd": 0.007,
+    "payto_differs_from_listing_count": 0,
+    "price_differs_from_listing_count": 0,
+    "probes": 3,
+    "reachable_count": 3,
+    "receipt_ids": [
+      "a12e559cd801ad345242",
+      "4604401e593df3108b38",
+      "ca675b3c959b983079eb"
+    ],
+    "route": "https://api.exa.ai/search",
+    "schema_valid_rate": 1.0,
+    "valid_402_count": 3,
+    "x402_version": 2
+  }
+}

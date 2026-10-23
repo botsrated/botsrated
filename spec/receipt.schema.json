@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://botsrated.com/spec/v0.1/receipt.schema.json",
+  "title": "BotsRated Receipt v0.1 (Draft)",
+  "description": "One measurement of a paid x402 resource: an unpaid probe or a paid test purchase. Unknown properties are allowed and are covered by the id/signature like any other property. Presentation fields added by APIs (receipt_url, tx_url, payment, signature) are not part of a receipt and MUST be removed before verification.",
+  "oneOf": [{ "$ref": "#/$defs/unpaid_probe" }, { "$ref": "#/$defs/paid_test_buy" }],
+  "$defs": {
+    "hex64": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "receipt_id": { "type": "string", "pattern": "^[0-9a-f]{20}$" },
+    "utc_ts": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$" },
+    "atomic": { "type": "string", "pattern": "^\\d*$", "description": "Integer amount in the asset's smallest unit, as a decimal string. Empty string = not known." },
+    "evm_address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+    "caip2": { "type": "string", "description": "CAIP-2 network id, e.g. eip155:8453. Legacy x402 v1 names (e.g. base) may appear in fields copied from a seller or listing." },
+    "sig": {
+      "type": "object",
+      "required": ["alg", "key_id", "sig_b64"],
+      "properties": {
+        "alg": { "const": "ed25519" },
+        "key_id": { "type": "string", "description": "Resolved through the issuer's key set (BotsRated: https://botsrated.com/.well-known/botsrated-key)." },
+        "signed": { "type": "string", "description": "Human-readable statement of what was signed. Informative only." },
+        "sig_b64": { "type": "string", "description": "Base64 (standard alphabet, padded) Ed25519 signature, 64 bytes." }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "description": "402 challenge checks (reference implementation probe_version 0.3). Neutral facts, not judgements.",
+      "properties": {
+        "terms_consistent": { "type": "boolean" },
+        "terms_issues": { "type": "array", "items": { "type": "string" } },
+        "options": { "type": "integer", "minimum": 0 },
+        "base_usdc": { "type": "boolean" },
+        "payto_stable": { "type": ["boolean", "null"] },
+        "price_matches_listing": { "type": ["boolean", "null"] },
+        "payto_matches_listing": { "type": ["boolean", "null"] }
+      }
+    },
+    "unpaid_probe": {
+      "type": "object",
+      "required": ["kind", "id", "ts", "host", "url", "method", "status", "latency_ms", "error", "req_sha256", "resp_sha256", "valid_402"],
+      "properties": {
+        "kind": { "const": "unpaid_probe" },
+        "id": { "$ref": "#/$defs/receipt_id" },
+        "ts": { "$ref": "#/$defs/utc_ts", "description": "UTC time the request was sent." },
+        "host": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "method": { "enum": ["GET", "POST"] },
+        "status": { "type": ["integer", "null"], "description": "HTTP status; null when no response (see error)." },
+        "latency_ms": { "type": ["integer", "null"], "description": "Request start to end of the (capped) body read." },
+        "error": { "type": ["string", "null"], "description": "Transport error class, e.g. Timeout, URLError." },
+        "req_sha256": { "$ref": "#/$defs/hex64", "description": "sha256 of '<METHOD> <url>' plus ' {}' for POST." },
+        "resp_sha256": { "oneOf": [{ "$ref": "#/$defs/hex64" }, { "type": "null" }], "description": "sha256 of the first 65536 response body bytes; null if empty." },
+        "total_header_bytes": { "type": "integer", "minimum": 0 },
+        "prober_ua": { "type": "string" },
+        "prober": { "type": "string" },
+        "probe_version": { "type": "string", "description": "Producer implementation version. Absent on legacy (box prober) receipts." },
+        "scope": { "enum": ["primary", "extra_route"] },
+        "listed_amount": { "$ref": "#/$defs/atomic" },
+        "listed_payTo": { "type": ["string", "null"] },
+        "network": { "type": ["string", "null"], "description": "Network from the directory listing." },
+        "valid_402": { "type": "boolean", "description": "Status 402 and a parsable x402 PaymentRequired with a non-empty accepts list." },
+        "x402_version": { "type": ["integer", "null"] },
+        "payment_required_header_bytes": { "type": "integer", "minimum": 0 },
+        "live_amount": { "type": "string" },
+        "live_payTo": { "type": ["string", "null"] },
+        "live_asset": { "type": ["string", "null"] },
+        "live_network": { "type": ["string", "null"] },
+        "checks": { "$ref": "#/$defs/checks" },
+        "issuer": { "type": "string", "format": "uri", "description": "OPTIONAL (v0.1). HTTPS origin of the producer. Third-party producers SHOULD set it." },
+        "spec": { "type": "string", "description": "OPTIONAL (v0.1), e.g. botsrated-receipt/0.1." },
+        "sig": { "$ref": "#/$defs/sig" }
+      }
+    },
+    "paid_test_buy": {
+      "type": "object",
+      "required": ["kind", "id", "ts", "host", "url", "method", "network", "asset", "payTo", "quoted_amount_atomic", "paid_amount_atomic", "charged_as_quoted", "tx_hash", "delivered", "non_empty", "schema_valid", "looks_correct"],
+      "properties": {
+        "kind": { "const": "paid_test_buy" },
+        "category": { "const": "paid" },
+        "id": { "$ref": "#/$defs/receipt_id", "description": "First 20 hex of sha256('paid|' + tx_hash)." },
+        "round": { "type": "string" },
+        "ts": { "$ref": "#/$defs/utc_ts", "description": "UTC time the purchase started." },
+        "host": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "method": { "enum": ["GET", "POST"] },
+        "request": { "description": "Input sent to the seller (object, or null)." },
+        "req_sha256": { "$ref": "#/$defs/hex64", "description": "sha256 of canonical JSON of request." },
+        "network": { "$ref": "#/$defs/caip2" },
+        "asset": { "$ref": "#/$defs/evm_address" },
+        "payTo": { "$ref": "#/$defs/evm_address" },
+        "x402_version": { "type": ["integer", "null"] },
+        "catalog_advisory_amount_atomic": { "oneOf": [{ "$ref": "#/$defs/atomic" }, { "type": "null" }] },
+        "quoted_amount_atomic": { "$ref": "#/$defs/atomic" },
+        "quoted_source": { "type": "string" },
+        "paid_amount_atomic": { "$ref": "#/$defs/atomic" },
+        "paid_usd": { "type": "number" },
+        "charged_as_quoted": { "type": "boolean" },
+        "tx_hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+        "block": { "type": ["integer", "null"] },
+        "settled_at": { "oneOf": [{ "$ref": "#/$defs/utc_ts" }, { "type": "null" }] },
+        "settlement_id": { "type": ["string", "null"] },
+        "payer": { "type": "string" },
+        "http_status": { "type": ["integer", "null"] },
+        "http_status_note": { "type": "string" },
+        "latency_ms": { "type": ["integer", "null"] },
+        "client_bracket_ms": { "type": ["integer", "null"] },
+        "latency_note": { "type": "string" },
+        "resp_sha256": { "oneOf": [{ "$ref": "#/$defs/hex64" }, { "type": "null" }] },
+        "resp_bytes": { "type": ["integer", "null"] },
+        "resp_hash_basis": { "type": "string" },
+        "delivered": { "type": "boolean" },
+        "non_empty": { "type": "boolean" },
+        "schema_valid": { "type": ["boolean", "null"] },
+        "looks_correct": { "type": ["boolean", "null"], "description": "Result of an independent correctness check described in `check`. null = not yet checked." },
+        "check": { "type": ["string", "null"] },
+        "error": { "type": ["string", "null"] },
+        "evidence": { "type": "object", "description": "OPTIONAL (v0.1). Seller-signed x402 offer-and-receipt artifacts captured verbatim: {offer, receipt}." },
+        "issuer": { "type": "string", "format": "uri" },
+        "spec": { "type": "string" },
+        "sig": { "$ref": "#/$defs/sig" }
+      }
+    },
+    "key_set": {
+      "type": "object",
+      "required": ["keys"],
+      "properties": {
+        "signer": { "type": "string" },
+        "keys": { "type": "array", "items": { "type": "object", "required": ["key_id", "alg", "public_key_b64"], "properties": {
+          "key_id": { "type": "string" }, "alg": { "const": "ed25519" }, "public_key_b64": { "type": "string", "description": "Raw 32-byte Ed25519 public key, base64." }, "signs": { "type": "string" },
+          "sha256_fingerprint": { "$ref": "#/$defs/hex64", "description": "sha256 of the raw 32-byte public key." },
+          "status": { "enum": ["active", "retired"], "description": "retired = signs nothing new, but still verifies objects dated inside its window." },
+          "valid_from": { "$ref": "#/$defs/utc_ts" }, "valid_until": { "anyOf": [{ "$ref": "#/$defs/utc_ts" }, { "type": "null" }], "description": "Exclusive. A signature is valid for an object whose ts / generated_at lies in [valid_from, valid_until)." },
+          "retired_at": { "$ref": "#/$defs/utc_ts" }, "note": { "type": "string" } } } }
+      }
+    },
+    "snapshot_signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "public_key_b64", "sha256", "signature_b64", "generated_at"],
+      "properties": {
+        "signer": { "type": "string" }, "key_id": { "type": "string" }, "environment": { "type": "string" }, "key_url": { "type": "string", "format": "uri" },
+        "alg": { "const": "ed25519" }, "public_key_b64": { "type": "string" }, "sha256": { "$ref": "#/$defs/hex64" },
+        "signature_b64": { "type": "string", "description": "Ed25519 over the exact bytes of dataset.json." }, "generated_at": { "$ref": "#/$defs/utc_ts" }
+      }
+    }
+  }
+}

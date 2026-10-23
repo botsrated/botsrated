@@ -1,0 +1,103 @@
+{
+  "beta": true,
+  "service": "BotsRated",
+  "environment": "beta-mainnet",
+  "version": "0.2.0-beta",
+  "served_at": "2026-10-23T13:48:12.719Z",
+  "data": {
+    "store": "live (Cloudflare D1), updated by the cron prober",
+    "last_probe_run_at": "2026-10-23T13:46:24.692Z",
+    "signed_snapshot_generated_at": "2026-10-23T12:55:56Z",
+    "hosts_covered": 4821,
+    "discovery_pulled_at": "2026-10-23T12:35:00Z"
+  },
+  "methodology": "/methodology",
+  "disputes": "/disputes",
+  "note": "Facts only: measurements with timestamps and receipt ids. Not an endorsement or accusation.",
+  "found": true,
+  "host": "api.exa.ai",
+  "latest_probe": {
+    "kind": "unpaid_probe",
+    "ts": "2026-10-23T13:06:35Z",
+    "host": "api.exa.ai",
+    "url": "https://api.exa.ai/search",
+    "method": "POST",
+    "status": 402,
+    "latency_ms": 299,
+    "error": null,
+    "req_sha256": "da570e7b66046375effd11810818180924411b2acd9cd3ca027f462f5e658c4c",
+    "resp_sha256": "9c9398877df99a64518cfbf81c093d2d1a51a7636fc264577209f3398c866dc0",
+    "total_header_bytes": 9979,
+    "prober_ua": "BotsRated-probe/0.2 (unpaid check; no payment sent; +https://botsrated.com/disputes)",
+    "prober": "botsrated-prober (Cloudflare cron)",
+    "probe_version": "0.2",
+    "listed_amount": "7000",
+    "listed_payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+    "network": "eip155:8453",
+    "x402_version": 2,
+    "payment_required_header_bytes": 8432,
+    "valid_402": true,
+    "live_amount": "7000",
+    "live_payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+    "live_asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "live_network": "eip155:8453",
+    "id": "ac16e0eeff1e0d9ffcfc",
+    "sig": {
+      "alg": "ed25519",
+      "key_id": "botsrated-prober-1",
+      "signed": "canonical JSON of this receipt without the sig field (keys sorted, no whitespace)",
+      "sig_b64": "v9QzE4RhJh5aWUcHyk9IeGuA50bRDqndCnzdc+Rs+V1eeN/1Jb/soplZ0OV4r0hompmF5mrwv0mHZuOxh0/ADg=="
+    },
+    "receipt_url": "https://botsrated.com/receipt/ac16e0eeff1e0d9ffcfc",
+    "tx_url": null,
+    "payment": "none (unpaid probe; no payment header was sent)",
+    "signature": "ed25519 per-receipt signature (key botsrated-prober-1; see /.well-known/botsrated-key)"
+  },
+  "freshness": {
+    "last_probe_at": "2026-10-23T13:06:35Z",
+    "age_seconds": 2498,
+    "stale": false,
+    "stale_after_seconds": 86400,
+    "probe_schedule": "automatic unpaid probe about every 5.4 h (cron, one shard every 2 min)",
+    "served_at": "2026-10-23T13:48:12.719Z"
+  },
+  "listing": {
+    "price_usd": 0.007,
+    "amount_atomic": "7000",
+    "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "network": "eip155:8453",
+    "payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
+    "calls_30d": 6614,
+    "payers_30d": 92,
+    "source": "cdp-bazaar",
+    "listed_in": [
+      "agentic-market",
+      "cdp-bazaar",
+      "x402-list"
+    ],
+    "other_routes_listed": 1
+  },
+  "recent_window": {
+    "probes": 4,
+    "valid_402": 4,
+    "valid_402_rate": 1,
+    "wilson_lower_bound_95": 0.51,
+    "latency_p50_ms": 299,
+    "latency_p90_ms": 445
+  },
+  "price_differs_from_listing_count": 0,
+  "payto_differs_from_listing_count": 0,
+  "paid_tests_count": 1,
+  "upgrade": {
+    "check": {
+      "url": "https://botsrated.com/v1/check?host=api.exa.ai",
+      "price": "$0.002",
+      "sample": "https://botsrated.com/v1/sample/check"
+    },
+    "report": {
+      "url": "https://botsrated.com/v1/report/api.exa.ai",
+      "price": "$0.005",
+      "sample": "https://botsrated.com/v1/sample/report"
+    }
+  }
+}
