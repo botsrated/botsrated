@@ -284,10 +284,8 @@ class BotsRatedClient:
                 resp.status_code,
             )
         out = resp.json()
-        if is_free_quota_answer(out):
-            # Answered from the free quota on the paid attempt: no payment happened.
-            self.budget.release(amount)
-            self.last_free_quota = out["free_quota"]
-            return out
+        # The payer may have signed before this answer, so even a free-quota body keeps the amount counted.
         self.budget.commit(amount)
+        if is_free_quota_answer(out):
+            self.last_free_quota = out["free_quota"]
         return out

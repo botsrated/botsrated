@@ -282,13 +282,9 @@ export class BotsRatedClient {
       throw new BotsRatedError(`paid ${route} returned ${res.status}; the amount stays counted against the budget in case it settled`, "paid_call_failed", res.status);
     }
     const out = (await res.json()) as Record<string, any>;
-    // A free-quota answer on the paid attempt means no payment was made: give the reservation back.
-    if (isFreeQuotaAnswer(out)) {
-      this.budget.release(amount);
-      this.lastFreeQuota = out.free_quota as FreeQuotaInfo;
-      return out;
-    }
+    // The payer may have signed before this answer, so even a free-quota body keeps the amount counted.
     this.budget.commit(amount);
+    if (isFreeQuotaAnswer(out)) this.lastFreeQuota = out.free_quota as FreeQuotaInfo;
     return out;
   }
 

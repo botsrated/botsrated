@@ -256,11 +256,11 @@ describe("paid routes (opt-in, budgeted)", () => {
     expect((await free.check("www.ax1.vc")).charged).toBe(false);
   });
 
-  it("releases the reservation when the paid attempt is answered from the free quota", async () => {
+  it("keeps the amount counted when the paid attempt returns a free-quota body (the payer may have signed)", async () => {
     const pay = vi.fn(async () => json(FREE_CHECK));
     const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.005, fetchWithPayment: pay } });
     expect((await c.check("blockrun.ai")).charged).toBe(false);
-    expect(c.budget!.spentAtomic).toBe(0n);
+    expect(c.budget!.spentAtomic).toBe(1000n);
     expect(c.budget!.pendingAtomic).toBe(0n);
   });
 

@@ -86,7 +86,7 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
 - Otherwise the client reads the 402 quote unpaid first. It accepts it only if **every** option is `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying. If the paid call fails or throws it stays counted
-  (the payment may already have settled), so the budget is a hard ceiling. Only a free-quota answer releases it.
+  (the payment may already have settled), so the budget is a hard ceiling.
 - When the guard is registered, it refuses any payment to botsrated.com that the client has not
   reserved.
 - `paidCheckAtOrAboveUsd` runs a check only for seller payments at or above that amount: free within

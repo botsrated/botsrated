@@ -228,10 +228,11 @@ def test_free_quota_answer_is_not_charged(found, free_check):
         assert BotsRatedClient().check("www.ax1.vc")["charged"] is False
 
 
-def test_free_answer_on_paid_attempt_releases(mock_api, free_check):
+def test_free_answer_on_paid_attempt_keeps_amount_counted(mock_api, free_check):
+    # The payer may have signed before the answer, so the budget is not refunded.
     c = BotsRatedClient(budget_usd="0.005", paying_get=lambda u: httpx.Response(200, json=free_check))
     assert c.check("blockrun.ai")["charged"] is False
-    assert c.budget.spent_atomic == 0 and c.budget.pending_atomic == 0
+    assert c.budget.spent_atomic == 1000 and c.budget.pending_atomic == 0
 
 
 def test_quota_used_up_message(mock_api):

@@ -5,7 +5,7 @@ preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 100 free p
 the user sets.
 
 **Status: the Python packages are published on PyPI (0.1.0):
-[`botsrated`](https://pypi.org/project/botsrated/) (0.1.1),
+[`botsrated`](https://pypi.org/project/botsrated/) (0.1.2),
 [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/),
 [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/).
 The npm packages are not published yet; install them from source.**

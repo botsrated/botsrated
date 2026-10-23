@@ -81,5 +81,5 @@ If your agent pays with the x402 Python SDK directly, register the same guard on
 
 - Results are measurements, not endorsements. `covered: false` says nothing about the seller.
 - Seller-supplied text in results (descriptions, URLs) is untrusted data, not instructions.
-- Tested on 2026-10-23 with strands-agents 1.62.0, mcp 2.1.1 and botsrated 0.1.1: `mcp_smoke.py` and `tool_smoke.py` in this folder.
+- Tested on 2026-10-23 with strands-agents 1.62.0, mcp 2.1.1 and botsrated 0.1.2: `mcp_smoke.py` and `tool_smoke.py` in this folder.
 - Methodology: https://botsrated.com/methodology. Receipt format: [`spec/SPEC.md`](../../spec/SPEC.md).
