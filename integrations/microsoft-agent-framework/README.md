@@ -11,9 +11,9 @@ Maintained by BotsRated, not by Microsoft. Issues: https://github.com/botsrated/
 ## Install
 
 ```bash
-pip install "agent-framework-botsrated @ git+https://github.com/botsrated/botsrated#subdirectory=integrations/microsoft-agent-framework"
+pip install agent-framework-botsrated
 # with the hosted MCP server example:
-pip install "agent-framework-botsrated[mcp] @ git+https://github.com/botsrated/botsrated#subdirectory=integrations/microsoft-agent-framework"
+pip install "agent-framework-botsrated[mcp]"
 ```
 
 Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.2+.
