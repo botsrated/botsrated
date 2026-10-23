@@ -32,6 +32,21 @@ The paid tools return the x402 URL to call. Any x402 client can pay them, for ex
 
 Free daily quota: the first 100 checks and 10 reports per client (IP address; IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
+## Plans (seller alerts and data plans)
+
+One x402 USDC payment on Base buys one 30-day period. There is no balance, no auto-renewal and no refund held; cancelling stops delivery. The dataset stays free.
+
+| Plan | Price per 30 days | What you get |
+|---|---|---|
+| `alerts-free` | free | 1 host; one signed webhook digest per UTC day when its facts change |
+| `alerts-10` | $9 | Up to 10 hosts; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
+| `alerts-50` | $29 | Up to 50 hosts; same events |
+| `data-starter` | $49 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (60 requests/min) |
+| `data-pro` | $199 | Same, 600 requests/min |
+| custom | from $499/month | Volume, SLA or bulk delivery: botsrated@gmail.com |
+
+Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Alerts are webhooks only, never email, signed with Ed25519 (`botsrated-prober-1`, see below) over `{"m":"<timestamp>.<raw body>"}`. Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
+
 ## Install
 
 Claude Code:
