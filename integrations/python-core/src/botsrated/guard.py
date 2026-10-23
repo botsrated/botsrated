@@ -152,7 +152,8 @@ class PrePaymentGuard:
         client: A ``BotsRatedClient``; a free-only client is created if omitted.
         policy: What to block or warn on.
         fail_open: Allow the payment when BotsRated is unreachable. Default True.
-        paid_check_at_or_above_usd: With a paid-enabled client, buy a $0.002 check for payments at or above this.
+        paid_check_at_or_above_usd: Run a check for payments at or above this: free within the daily quota
+            (100/day), then a $0.001 paid check with a paid-enabled client (skipped otherwise).
         on_decision: Called with every decision.
     """
 
@@ -187,7 +188,6 @@ class PrePaymentGuard:
             extra: list[Reason] = []
             if (
                 pre.found
-                and self.client.paid_enabled
                 and self.paid_threshold is not None
                 and str(req.get("amount", "")).isdigit()
                 and int(req["amount"]) >= usd_to_atomic(self.paid_threshold)

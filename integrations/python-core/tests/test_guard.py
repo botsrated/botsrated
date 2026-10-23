@@ -130,11 +130,11 @@ def test_paid_check_charges_budget(mock_api, sample_check):
     c = BotsRatedClient(budget_usd="0.005", paying_get=paying_get)
     assert c.check("https://blockrun.ai/x")["host"] == "blockrun.ai"
     assert calls == ["https://botsrated.com/v1/check?host=blockrun.ai"]
-    assert c.budget.spent_atomic == 2000 and c.budget.remaining_atomic == 3000
+    assert c.budget.spent_atomic == 1000 and c.budget.remaining_atomic == 4000
 
 
 def test_paid_refuses_over_budget_before_paying(mock_api):
-    c = BotsRatedClient(budget_usd="0.001", paying_get=lambda u: pytest.fail("must not pay"))
+    c = BotsRatedClient(budget_usd="0.0005", paying_get=lambda u: pytest.fail("must not pay"))
     with pytest.raises(BotsRatedError) as e:
         c.check("blockrun.ai")
     assert e.value.code == "budget_exceeded"
@@ -159,13 +159,59 @@ def test_guard_paid_check_threshold(mock_api, sample_check, found):
 
     def paying_get(url):
         # the guard sees this payment to BotsRated and must allow it because it is reserved
-        r = {"scheme": "exact", "network": BASE_MAINNET, "asset": BASE_USDC, "payTo": BOTSRATED_PAY_TO, "amount": "2000"}
+        r = {"scheme": "exact", "network": BASE_MAINNET, "asset": BASE_USDC, "payTo": BOTSRATED_PAY_TO, "amount": "1000"}
         assert holder["g"].decide(url, r).action == "allow"
         return httpx.Response(200, json=sample_check)
 
     c = BotsRatedClient(budget_usd="0.01", paying_get=paying_get)
     holder["g"] = g = PrePaymentGuard(c, paid_check_at_or_above_usd=0.5)
     d = g.decide(found["latest_probe"]["url"], req(found, amount="1000000"))
-    assert d.facts.source == "check" and c.budget.spent_atomic == 2000
+    assert d.facts.source == "check" and c.budget.spent_atomic == 1000
     # below threshold: preflight only
     assert g.decide(found["latest_probe"]["url"], req(found)).facts.source == "preflight"
+
+
+def test_free_quota_answer_is_not_charged(found, free_check):
+    with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        m.get("/v1/check").respond(200, json=free_check)
+        c = BotsRatedClient(budget_usd="0.005", paying_get=lambda u: pytest.fail("must not pay"))
+        out = c.check("www.ax1.vc")
+        assert out["charged"] is False and out["free_quota"]["limit"] == 100
+        assert c.budget.spent_atomic == 0 and c.budget.remaining_atomic == 5000
+        assert c.last_free_quota["remaining"] == out["free_quota"]["remaining"]
+        # works without a paid config while the quota lasts
+        assert BotsRatedClient().check("www.ax1.vc")["charged"] is False
+
+
+def test_free_answer_on_paid_attempt_releases(mock_api, free_check):
+    c = BotsRatedClient(budget_usd="0.005", paying_get=lambda u: httpx.Response(200, json=free_check))
+    assert c.check("blockrun.ai")["charged"] is False
+    assert c.budget.spent_atomic == 0 and c.budget.pending_atomic == 0
+
+
+def test_quota_used_up_message(mock_api):
+    with pytest.raises(BotsRatedError, match="free daily quota used up"):
+        BotsRatedClient().check("blockrun.ai")
+
+
+def test_refuses_old_check_price(check_402_b64):
+    import base64, json as _json
+
+    terms = _json.loads(base64.b64decode(check_402_b64))
+    for a in terms["accepts"]:
+        a["amount"] = "2000"
+    hdr = base64.b64encode(_json.dumps(terms).encode()).decode()
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": hdr})
+        c = BotsRatedClient(budget_usd=1, paying_get=lambda u: pytest.fail("must not pay"))
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+        assert e.value.code == "terms_rejected"
+
+
+def test_guard_check_uses_free_quota_without_paid(found, not_covered, free_check):
+    with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        m.get("/v1/preflight").respond(200, json=found)
+        m.get("/v1/check").respond(200, json=free_check)
+        g = PrePaymentGuard(BotsRatedClient(), paid_check_at_or_above_usd=0.5)
+        assert g.decide(found["latest_probe"]["url"], req(found, amount="1000000")).facts.source == "check"

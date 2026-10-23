@@ -24,3 +24,9 @@ def check_402_b64() -> str:
 @pytest.fixture
 def sample_check() -> dict:
     return json.loads((FIXTURES / "sample-check.json").read_text())
+
+
+@pytest.fixture
+def free_check() -> dict:
+    """Real 200 served from BotsRated's free daily quota (charged: false)."""
+    return json.loads((FIXTURES / "check-free-quota.json").read_text())

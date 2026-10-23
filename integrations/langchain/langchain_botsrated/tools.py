@@ -65,11 +65,11 @@ class BotsRatedPreflightTool(BaseTool):
 
 
 class BotsRatedCheckTool(BaseTool):
-    """Paid ($0.002) BotsRated check. Only works with a client configured with budget_usd and paying_get."""
+    """Paid ($0.001; first 100/day free) BotsRated check. Only works with a client configured with budget_usd and paying_get."""
 
     name: str = "botsrated_paid_check"
     description: str = (
-        "Paid: $0.002 USDC on Base, within a budget the user set. Full BotsRated facts for one x402 seller host: "
+        "Paid: $0.001 USDC on Base (first 100 per day free, nothing charged), within a budget the user set. Full BotsRated facts for one x402 seller host: "
         "probe counts, valid-402 rate, latency, price/payTo vs listing, paid test-buys with tx links, recent receipts. "
         "Use botsrated_preflight (free) first."
     )
@@ -83,7 +83,8 @@ class BotsRatedCheckTool(BaseTool):
         except BotsRatedError as e:
             return json.dumps({"error": e.code, "message": str(e)})
         budget = self.client.budget
-        return json.dumps({"remaining_usd": budget.remaining_atomic / 1e6 if budget else None, "data": data})
+        charged = data.get("charged") is not False
+        return json.dumps({"remaining_usd": budget.remaining_atomic / 1e6 if budget else None, "charged": charged, "data": data})
 
 
 def botsrated_tools(client: BotsRatedClient | None = None) -> list[BaseTool]:

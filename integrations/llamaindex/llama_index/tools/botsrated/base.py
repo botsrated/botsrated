@@ -11,7 +11,7 @@ from llama_index.core.tools.tool_spec.base import BaseToolSpec
 class BotsRatedToolSpec(BaseToolSpec):
     """Look up BotsRated measurements of an x402 seller before paying it.
 
-    ``preflight`` is free. ``paid_check`` ($0.002 USDC on Base) is only exposed when the client
+    ``preflight`` is free. ``paid_check`` ($0.001 USDC on Base; first 100 per day free) is only exposed when the client
     was created with ``budget_usd`` and ``paying_get``.
     """
 
@@ -57,7 +57,7 @@ class BotsRatedToolSpec(BaseToolSpec):
         return out
 
     def paid_check(self, host: str) -> dict[str, Any]:
-        """Paid: $0.002 USDC on Base, within the user's budget. Full BotsRated facts for one seller host.
+        """Paid: $0.001 USDC on Base (first 100 per day free, nothing charged), within the user's budget. Full BotsRated facts for one seller host.
 
         Args:
             host: The seller host or URL.
@@ -67,4 +67,4 @@ class BotsRatedToolSpec(BaseToolSpec):
         except BotsRatedError as e:
             return {"error": e.code, "message": str(e)}
         budget = self.client.budget
-        return {"remaining_usd": budget.remaining_atomic / 1e6 if budget else None, "data": data}
+        return {"remaining_usd": budget.remaining_atomic / 1e6 if budget else None, "charged": data.get("charged") is not False, "data": data}

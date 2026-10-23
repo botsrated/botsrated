@@ -14,7 +14,7 @@ tools = BotsRatedToolSpec().to_tool_list()      # ["preflight"] (free)
 
 from botsrated import BotsRatedClient
 tools = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.02", paying_get=session.get)).to_tool_list()
-# ["preflight", "paid_check"]: paid_check costs $0.002 and stops at the budget
+# ["preflight", "paid_check"]: paid_check costs $0.001 (first 100/day free, charged: false) and stops at the budget
 ```
 
 `preflight(url, pay_to=None, network=None, amount=None)` returns the latest probe. When `pay_to` is given,

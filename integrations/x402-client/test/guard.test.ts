@@ -19,6 +19,7 @@ const FOUND = JSON.parse(fx("preflight-found.json"));
 const NOT_COVERED = fx("preflight-not-covered.json");
 const CHECK_402_B64 = fx("check-402-payment-required.b64").trim();
 const SAMPLE_CHECK = fx("sample-check.json");
+const FREE_CHECK = fx("check-free-quota.json"); // real 200 served from the free daily quota (charged: false)
 
 const SELLER_URL = FOUND.latest_probe.url as string; // https://blockrun.ai/api/v1/chat/completions
 const SELLER_PAYTO = FOUND.latest_probe.live_payTo as string;
@@ -173,13 +174,13 @@ describe("paid routes (opt-in, budgeted)", () => {
     const out = await c.check("https://blockrun.ai/api/v1/chat/completions");
     expect(out.host).toBe("blockrun.ai");
     expect(pay).toHaveBeenCalledOnce();
-    expect(c.budget!.spentAtomic).toBe(2000n);
-    expect(c.budget!.remainingAtomic).toBe(3000n);
+    expect(c.budget!.spentAtomic).toBe(1000n);
+    expect(c.budget!.remainingAtomic).toBe(4000n);
   });
 
   it("refuses before paying when the budget is too small", async () => {
     const pay = vi.fn();
-    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.001, fetchWithPayment: pay } });
+    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.0005, fetchWithPayment: pay } });
     await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "budget_exceeded" });
     expect(pay).not.toHaveBeenCalled();
   });
@@ -200,7 +201,7 @@ describe("paid routes (opt-in, budgeted)", () => {
 
   it("the guard lets the client's own reserved payment through", async () => {
     let client!: BotsRatedClient;
-    const r = { scheme: "exact", network: BASE_MAINNET, asset: BASE_USDC, payTo: BOTSRATED_PAY_TO, amount: "2000" };
+    const r = { scheme: "exact", network: BASE_MAINNET, asset: BASE_USDC, payTo: BOTSRATED_PAY_TO, amount: "1000" };
     const pay = vi.fn(async () => {
       const verdict = await guard.beforePaymentCreation({ paymentRequired: { x402Version: 2, resource: { url: "https://botsrated.com/v1/check?host=blockrun.ai" }, accepts: [r] }, selectedRequirements: r });
       return verdict ? json({}, 402) : json(SAMPLE_CHECK);
@@ -210,7 +211,52 @@ describe("paid routes (opt-in, budgeted)", () => {
     // Seller payment of $1 triggers the paid check, which passes the guard's BotsRated branch.
     const d = await guard.decide(SELLER_URL, req({ amount: "1000000" }));
     expect(d.facts?.source).toBe("check");
-    expect(client.budget!.spentAtomic).toBe(2000n);
+    expect(client.budget!.spentAtomic).toBe(1000n);
+  });
+
+  it("uses a free-quota answer without paying or touching the budget (also without `paid`)", async () => {
+    const f = vi.fn(async (url: string) => (new URL(url).pathname === "/v1/check" ? json(FREE_CHECK) : botsratedFetch()(url)));
+    const pay = vi.fn();
+    const c = new BotsRatedClient({ fetch: f, paid: { budgetUsd: 0.005, fetchWithPayment: pay } });
+    const out = await c.check("www.ax1.vc");
+    expect(out.charged).toBe(false);
+    expect(out.free_quota.limit).toBe(100);
+    expect(pay).not.toHaveBeenCalled();
+    expect(c.budget!.spentAtomic).toBe(0n);
+    expect(c.budget!.remainingAtomic).toBe(5000n);
+    expect(c.lastFreeQuota?.remaining).toBe(out.free_quota.remaining);
+    const free = new BotsRatedClient({ fetch: f });
+    expect((await free.check("www.ax1.vc")).charged).toBe(false);
+  });
+
+  it("releases the reservation when the paid attempt is answered from the free quota", async () => {
+    const pay = vi.fn(async () => json(FREE_CHECK));
+    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.005, fetchWithPayment: pay } });
+    expect((await c.check("blockrun.ai")).charged).toBe(false);
+    expect(c.budget!.spentAtomic).toBe(0n);
+    expect(c.budget!.pendingAtomic).toBe(0n);
+  });
+
+  it("says the free quota is used up when unpaid and the route returns 402", async () => {
+    const c = new BotsRatedClient({ fetch: botsratedFetch() });
+    await expect(c.check("blockrun.ai")).rejects.toThrow(/free daily quota used up/);
+  });
+
+  it("refuses a check quote above the new published price (1000 atomic)", async () => {
+    const terms = JSON.parse(atob(CHECK_402_B64));
+    terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "2000" }));
+    const f = vi.fn(async () => json({}, 402, { "payment-required": btoa(JSON.stringify(terms)) }));
+    const pay = vi.fn();
+    const c = new BotsRatedClient({ fetch: f, paid: { budgetUsd: 1, fetchWithPayment: pay } });
+    await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "terms_rejected" });
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("the guard's check uses the free quota even without a paid-enabled client", async () => {
+    const f = vi.fn(async (url: string) => (new URL(url).pathname === "/v1/check" ? json(FREE_CHECK) : botsratedFetch()(url)));
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: f }), paidCheckAtOrAboveUsd: 0.5 });
+    const d = await guard.decide(SELLER_URL, req({ amount: "1000000" }));
+    expect(d.facts?.source).toBe("check");
   });
 
   it("Budget rejects non-positive limits and usdToAtomic rounds to 6 decimals", () => {

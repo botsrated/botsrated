@@ -42,8 +42,17 @@ def test_preflight_decisions(api):
 
 
 def test_paid_check_budget(api):
-    spec = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.002", paying_get=lambda u: httpx.Response(200, json=SAMPLE)))
+    spec = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.001", paying_get=lambda u: httpx.Response(200, json=SAMPLE)))
     names = [t.metadata.name for t in spec.to_tool_list()]
     assert names == ["preflight", "paid_check"]
     assert spec.paid_check("blockrun.ai")["remaining_usd"] == 0.0
     assert spec.paid_check("blockrun.ai")["error"] == "budget_exceeded"
+
+
+def test_paid_check_free_quota_answer():
+    free = json.loads((FX / "check-free-quota.json").read_text())
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(200, json=free)
+        spec = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.001", paying_get=lambda u: pytest.fail("must not pay")))
+        out = spec.paid_check("www.ax1.vc")
+        assert out["charged"] is False and out["remaining_usd"] == 0.001

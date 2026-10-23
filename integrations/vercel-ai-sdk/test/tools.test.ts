@@ -32,11 +32,19 @@ describe("botsratedTools", () => {
   });
 
   it("paid check respects the budget", async () => {
-    const client = new BotsRatedClient({ fetch: api, paid: { budgetUsd: 0.002, fetchWithPayment: async () => json(SAMPLE) } });
+    const client = new BotsRatedClient({ fetch: api, paid: { budgetUsd: 0.001, fetchWithPayment: async () => json(SAMPLE) } });
     const tools = botsratedTools(client) as any;
     expect(Object.keys(tools)).toEqual(["botsratedPreflight", "botsratedCheck"]);
     expect((await tools.botsratedCheck.execute({ host: "blockrun.ai" }, ctx)).remainingUsd).toBe(0);
     expect((await tools.botsratedCheck.execute({ host: "blockrun.ai" }, ctx)).error).toBe("budget_exceeded");
+  });
+
+  it("paid check passes through a free-quota answer without charging", async () => {
+    const free = vi.fn(async (url: string) => (new URL(url).pathname === "/v1/check" ? json(fx("check-free-quota.json")) : api(url)));
+    const client = new BotsRatedClient({ fetch: free, paid: { budgetUsd: 0.001, fetchWithPayment: async () => { throw new Error("must not pay"); } } });
+    const out: any = await (botsratedTools(client) as any).botsratedCheck.execute({ host: "www.ax1.vc" }, ctx);
+    expect(out.charged).toBe(false);
+    expect(out.remainingUsd).toBe(0.001);
   });
 
   it("works inside generateText with a mock model", async () => {

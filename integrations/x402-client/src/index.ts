@@ -12,9 +12,26 @@ export const BOTSRATED_BASE_URL = "https://botsrated.com";
 export const BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349";
 export const BASE_MAINNET = "eip155:8453";
 export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-/** Published prices of the paid routes, in atomic USDC (6 decimals). Quotes above these are refused. */
-export const PAID_ROUTE_MAX_ATOMIC = { check: 2000n, report: 5000n, best: 10000n } as const;
+/** Published prices of the paid routes (since 2026-10-23), in atomic USDC (6 decimals). Quotes above these are refused. */
+export const PAID_ROUTE_MAX_ATOMIC = { check: 1000n, report: 2000n, best: 10000n } as const;
+/** Free daily quota per client (IP) per UTC day. Within it BotsRated answers 200 with `charged: false` and no 402. */
+export const FREE_DAILY_QUOTA = { check: 100, report: 10, best: 0 } as const;
 export type PaidRoute = keyof typeof PAID_ROUTE_MAX_ATOMIC;
+
+/** `free_quota` block of a free-quota answer. */
+export interface FreeQuotaInfo {
+  route: string;
+  used: number;
+  limit: number;
+  remaining: number;
+  resets_at: string;
+}
+
+/** True when a 2xx BotsRated body was served from the free daily quota (nothing was charged). */
+export function isFreeQuotaAnswer(body: unknown): boolean {
+  const b = body as Record<string, any> | null;
+  return !!b && typeof b === "object" && b.charged === false && !!b.free_quota && typeof b.free_quota === "object";
+}
 
 /** Structural subset of x402 v2 `PaymentRequirements`. */
 export interface PaymentRequirementsLike {
@@ -177,12 +194,12 @@ export class BotsRatedClient {
     return value;
   }
 
-  /** Paid ($0.001; first 100/day free). Facts, paid test-buys and recent receipts for one host. Requires `paid`. */
+  /** Paid ($0.001; first 100/day free). Facts, paid test-buys and recent receipts for one host. Free within the daily quota; after that requires `paid`. */
   check(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/check?host=${encodeURIComponent(hostOf(urlOrHost))}`, "check");
   }
 
-  /** Paid ($0.002; first 10/day free). Full receipt history for one host. Requires `paid`. */
+  /** Paid ($0.002; first 10/day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
   report(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/report/${encodeURIComponent(hostOf(urlOrHost))}`, "report");
   }
@@ -215,13 +232,31 @@ export class BotsRatedClient {
     );
   }
 
+  /** Last `free_quota` block seen (from a free-quota answer), or undefined. */
+  lastFreeQuota?: FreeQuotaInfo;
+
   private async paidGet(path: string, route: PaidRoute): Promise<Record<string, any>> {
     const paid = this.options.paid;
-    if (!paid || !this.budget) {
-      throw new BotsRatedError("paid BotsRated routes are disabled; pass `paid: { budgetUsd, fetchWithPayment }`", "paid_disabled");
-    }
-    // Read the quote unpaid first. Unknown hosts and bad input get a free 4xx here, before any payment.
+    // Ask unpaid first. Within BotsRated's free daily quota this already returns the data (200, charged: false) and
+    // nothing is paid or taken from the budget. Unknown hosts and bad input get a free 4xx here, before any payment.
     const quote = await this.get(path);
+    if (quote.ok) {
+      const body = (await quote.json().catch(() => null)) as Record<string, any> | null;
+      if (isFreeQuotaAnswer(body)) {
+        this.lastFreeQuota = body!.free_quota as FreeQuotaInfo;
+        return body!;
+      }
+      throw new BotsRatedError(`expected 402 or a free-quota answer, got ${quote.status}`, "unexpected_status", quote.status);
+    }
+    if (!paid || !this.budget) {
+      throw new BotsRatedError(
+        quote.status === 402
+          ? "free daily quota used up and paid BotsRated routes are disabled; pass `paid: { budgetUsd, fetchWithPayment }`"
+          : "paid BotsRated routes are disabled; pass `paid: { budgetUsd, fetchWithPayment }`",
+        "paid_disabled",
+        quote.status,
+      );
+    }
     if (quote.status !== 402) {
       const body = (await quote.json().catch(() => ({}))) as Record<string, any>;
       throw new BotsRatedError(body?.error?.message ?? `expected 402, got ${quote.status}`, body?.error?.code ?? "unexpected_status", quote.status);
@@ -243,8 +278,15 @@ export class BotsRatedClient {
       this.budget.release(amount);
       throw new BotsRatedError(`paid ${route} returned ${res.status}`, "paid_call_failed", res.status);
     }
+    const out = (await res.json()) as Record<string, any>;
+    // A free-quota answer on the paid attempt means no payment was made: give the reservation back.
+    if (isFreeQuotaAnswer(out)) {
+      this.budget.release(amount);
+      this.lastFreeQuota = out.free_quota as FreeQuotaInfo;
+      return out;
+    }
     this.budget.commit(amount);
-    return (await res.json()) as Record<string, any>;
+    return out;
   }
 
   private async get(path: string): Promise<Response> {
@@ -383,7 +425,7 @@ export interface GuardOptions {
   policy?: GuardPolicy;
   /** Allow the payment when BotsRated cannot be reached. Default true. */
   failOpen?: boolean;
-  /** With a paid-enabled client: buy a $0.001 check for payments at or above this USD amount. */
+  /** Run a check for payments at or above this USD amount: free within the daily quota (100/day), then a $0.001 paid check if the client is paid-enabled (otherwise skipped). */
   paidCheckAtOrAboveUsd?: number;
   onDecision?: (decision: Decision, req: PaymentRequirementsLike) => void;
 }
@@ -432,7 +474,8 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
       let facts = factsFrom(pre.body, host, "preflight");
       const extra: Reason[] = [];
       const threshold = options.paidCheckAtOrAboveUsd;
-      if (pre.found && client.paidEnabled && threshold !== undefined && BigInt(req.amount) >= usdToAtomic(threshold)) {
+      // Uses BotsRated's free daily quota first; pays (within budget) only with a paid-enabled client.
+      if (pre.found && threshold !== undefined && BigInt(req.amount) >= usdToAtomic(threshold)) {
         try {
           facts = factsFrom(await client.check(host), host, "check");
         } catch (e) {

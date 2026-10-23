@@ -9,7 +9,7 @@ which lives in `../python-core`.
 | Tool | Cost | Notes |
 |---|---|---|
 | `botsrated_preflight` | free | Latest unpaid probe of the seller. With `pay_to` (+ `network`, `amount`) it returns `decision.action` `allow` or `block` and the reasons. By default, a payTo that BotsRated never saw for the host is blocked. |
-| `botsrated_paid_check` | $0.002 USDC on Base | Only added when the client has a budget. |
+| `botsrated_paid_check` | $0.001 USDC on Base (first 100/day free) | Only added when the client has a budget. Free-quota answers report `charged: false` and do not touch the budget. |
 
 ```python
 from botsrated import BotsRatedClient

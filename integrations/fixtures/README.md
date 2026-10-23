@@ -1,1 +1,1 @@
-Captured from https://botsrated.com on 2026-10-23 10:32 CDT. Real responses, used as test fixtures.
+Captured from https://botsrated.com on 2026-10-23 (10:32 CDT; check-402*, preflight-found, sample-check and check-free-quota refreshed 11:03 CDT after the price change: check 1000 atomic, free daily quota). Real responses, used as test fixtures.

@@ -45,11 +45,11 @@ def test_tools_factory_free_by_default(api):
 
 
 def test_paid_tool_budget(api):
-    client = BotsRatedClient(budget_usd="0.003", paying_get=lambda u: httpx.Response(200, json=SAMPLE))
+    client = BotsRatedClient(budget_usd="0.001", paying_get=lambda u: httpx.Response(200, json=SAMPLE))
     tools = botsrated_tools(client)
     assert [t.name for t in tools] == ["botsrated_preflight", "botsrated_paid_check"]
     first = json.loads(tools[1].invoke({"host": "blockrun.ai"}))
-    assert first["remaining_usd"] == 0.001
+    assert first["remaining_usd"] == 0.0 and first["charged"] is True
     second = json.loads(tools[1].invoke({"host": "blockrun.ai"}))
     assert second["error"] == "budget_exceeded"
 
@@ -57,3 +57,12 @@ def test_paid_tool_budget(api):
 def test_paid_tool_disabled_client(api):
     out = json.loads(BotsRatedCheckTool(client=BotsRatedClient()).invoke({"host": "blockrun.ai"}))
     assert out["error"] == "paid_disabled"
+
+
+def test_paid_tool_free_quota_answer():
+    free = json.loads((FX / "check-free-quota.json").read_text())
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(200, json=free)
+        client = BotsRatedClient(budget_usd="0.001", paying_get=lambda u: pytest.fail("must not pay"))
+        out = json.loads(botsrated_tools(client)[1].invoke({"host": "www.ax1.vc"}))
+        assert out["charged"] is False and out["remaining_usd"] == 0.001

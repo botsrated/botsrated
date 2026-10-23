@@ -78,13 +78,19 @@ await botsrated.report("seller.example");           // $0.002 (first 10/day free
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 
-- The client reads the 402 quote unpaid first. It accepts only `exact` USDC on Base (`eip155:8453`)
+- Free daily quota: BotsRated serves the first 100 `/v1/check` and 10 `/v1/report` calls per client
+  per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
+  first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
+  even without `paid` until the quota is used up (then they throw `paid_disabled`).
+  `client.lastFreeQuota` shows the remaining quota.
+- Otherwise the client reads the 402 quote unpaid first. It accepts only `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying and released if the call fails. BotsRated
   settles only on a 2xx response.
 - When the guard is registered, it refuses any payment to botsrated.com that the client has not
   reserved.
-- `paidCheckAtOrAboveUsd` buys a $0.001 check only for seller payments at or above that amount.
+- `paidCheckAtOrAboveUsd` runs a check only for seller payments at or above that amount: free within
+  the daily quota, then a $0.001 paid check if the client is paid-enabled (skipped otherwise).
   If the budget is used up, the guard falls back to the free preflight.
 
 ## Test

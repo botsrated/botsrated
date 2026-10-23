@@ -18,7 +18,15 @@ BOTSRATED_BASE_URL = "https://botsrated.com"
 BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349"
 BASE_MAINNET = "eip155:8453"
 BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 2000, "report": 5000, "best": 10000}
+# Published prices (since 2026-10-23) in atomic USDC. Quotes above these are refused.
+PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 1000, "report": 2000, "best": 10000}
+# Free calls per client (IP) per UTC day. Inside the quota BotsRated answers 200 with charged: false, no 402.
+FREE_DAILY_QUOTA: dict[str, int] = {"check": 100, "report": 10, "best": 0}
+
+
+def is_free_quota_answer(body: Any) -> bool:
+    """True when a 2xx BotsRated body was served from the free daily quota (nothing was charged)."""
+    return isinstance(body, dict) and body.get("charged") is False and isinstance(body.get("free_quota"), dict)
 
 PaidRoute = Literal["check", "report", "best"]
 
@@ -141,6 +149,7 @@ class BotsRatedClient:
         self._paying_get = paying_get
         self._expected_pay_to = expected_pay_to
         self.budget: Budget | None = None
+        self.last_free_quota: dict[str, Any] | None = None
         if (budget_usd is None) != (paying_get is None):
             raise BotsRatedError("paid routes need both budget_usd and paying_get", "invalid_config")
         if budget_usd is not None:
@@ -182,11 +191,11 @@ class BotsRatedClient:
         return result
 
     def check(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.002). Facts, paid test-buys and recent receipts for one host."""
+        """Paid ($0.001; first 100/day free). Facts, paid test-buys and recent receipts for one host."""
         return self._paid(f"/v1/check?host={quote(host_of(url_or_host), safe='')}", "check")
 
     def report(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.005). Full receipt history for one host."""
+        """Paid ($0.002; first 10/day free). Full receipt history for one host."""
         return self._paid(f"/v1/report/{quote(host_of(url_or_host), safe='')}", "report")
 
     def best(self, task: str, sort: str | None = None, max_price_usd: float | None = None) -> dict[str, Any]:
@@ -218,9 +227,25 @@ class BotsRatedClient:
         )
 
     def _paid(self, path: str, route: PaidRoute) -> dict[str, Any]:
-        if self.budget is None or self._paying_get is None:
-            raise BotsRatedError("paid BotsRated routes are disabled; pass budget_usd and paying_get", "paid_disabled")
+        # Ask unpaid first. Inside the free daily quota this already returns the data (200, charged: false):
+        # nothing is paid and the budget is untouched. Bad input gets a free 4xx here, before any payment.
         quote_resp = self._get(path)
+        if 200 <= quote_resp.status_code < 300:
+            try:
+                body = quote_resp.json()
+            except ValueError:
+                body = None
+            if is_free_quota_answer(body):
+                self.last_free_quota = body["free_quota"]
+                return body
+            raise BotsRatedError(
+                f"expected 402 or a free-quota answer, got {quote_resp.status_code}", "unexpected_status", quote_resp.status_code
+            )
+        if self.budget is None or self._paying_get is None:
+            msg = "paid BotsRated routes are disabled; pass budget_usd and paying_get"
+            if quote_resp.status_code == 402:
+                msg = "free daily quota used up and " + msg
+            raise BotsRatedError(msg, "paid_disabled", quote_resp.status_code)
         if quote_resp.status_code != 402:
             try:
                 err = quote_resp.json().get("error") or {}
@@ -247,5 +272,11 @@ class BotsRatedClient:
         if not 200 <= resp.status_code < 300:
             self.budget.release(amount)
             raise BotsRatedError(f"paid {route} returned {resp.status_code}", "paid_call_failed", resp.status_code)
+        out = resp.json()
+        if is_free_quota_answer(out):
+            # Answered from the free quota on the paid attempt: no payment happened.
+            self.budget.release(amount)
+            self.last_free_quota = out["free_quota"]
+            return out
         self.budget.commit(amount)
-        return resp.json()
+        return out

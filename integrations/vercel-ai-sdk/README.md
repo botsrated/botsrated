@@ -25,7 +25,7 @@ import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { BotsRatedClient, botsratedTools } from "@botsrated/ai-sdk";
 
 const client = new BotsRatedClient({ paid: { budgetUsd: 0.02, fetchWithPayment: wrapFetchWithPayment(fetch, x402) } });
-const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.002 each, stops at $0.02) }
+const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.001 each after 100 free/day, stops at $0.02) }
 ```
 
 To guard every x402 payment, not only those the model calls a tool for, register

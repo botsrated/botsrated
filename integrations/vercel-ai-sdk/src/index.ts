@@ -43,16 +43,16 @@ export function botsratedPreflight(client: BotsRatedClient = new BotsRatedClient
   });
 }
 
-/** Paid ($0.002) BotsRated check. Needs a client created with `paid: { budgetUsd, fetchWithPayment }`. */
+/** Paid ($0.001; first 100/day free) BotsRated check. Needs a client created with `paid: { budgetUsd, fetchWithPayment }`. */
 export function botsratedCheck(client: BotsRatedClient) {
   return tool({
     description:
-      "Paid: $0.002 USDC on Base, within a budget the user set. Full BotsRated facts for one x402 seller host (probe counts, valid-402 rate, latency, price/payTo vs listing, paid test-buys with tx links). Use botsratedPreflight (free) first.",
+      "Paid: $0.001 USDC on Base (first 100 per day free, nothing charged), within a budget the user set. Full BotsRated facts for one x402 seller host (probe counts, valid-402 rate, latency, price/payTo vs listing, paid test-buys with tx links). Use botsratedPreflight (free) first.",
     inputSchema: z.object({ host: z.string().describe("The x402 seller host or URL") }),
     execute: async ({ host }) => {
       try {
         const data = await client.check(host);
-        return { remainingUsd: client.budget ? Number(client.budget.remainingAtomic) / 1e6 : null, data };
+        return { remainingUsd: client.budget ? Number(client.budget.remainingAtomic) / 1e6 : null, charged: data?.charged !== false, data };
       } catch (e) {
         return err(e);
       }
