@@ -3,8 +3,12 @@
 [AI SDK](https://ai-sdk.dev) tools for [BotsRated](https://botsrated.com) (beta). Use them as a
 pre-payment check before an agent pays an x402 seller.
 
-**Status: prepared, not yet published to npm.** It depends on `@botsrated/x402-preflight` (`../x402-client`),
-which is also unpublished.
+**Status: published on npm as [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.0).** It depends on
+[`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.1.0`. Docs: https://botsrated.com/docs/ai-sdk
+
+```bash
+npm install @botsrated/ai-sdk ai zod
+```
 
 ```ts
 import { generateText, isStepCount } from "ai";

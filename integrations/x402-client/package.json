@@ -38,7 +38,7 @@
   "homepage": "https://botsrated.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/botsrated/botsrated.git",
+    "url": "git+https://github.com/botsrated/botsrated.git",
     "directory": "integrations/x402-client"
   },
   "devDependencies": {
@@ -48,5 +48,11 @@
     "typescript": "^5.6.0",
     "viem": "^2.57.10",
     "vitest": "^3.2.0"
+  },
+  "bugs": {
+    "url": "https://github.com/botsrated/botsrated/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

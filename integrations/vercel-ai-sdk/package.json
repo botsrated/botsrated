@@ -6,12 +6,45 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md", "LICENSE"],
-  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
   "homepage": "https://botsrated.com",
-  "repository": { "type": "git", "url": "https://github.com/botsrated/botsrated.git", "directory": "integrations/vercel-ai-sdk" },
-  "dependencies": { "@botsrated/x402-preflight": "file:../x402-client" },
-  "peerDependencies": { "ai": ">=5", "zod": "^3.25.76 || ^4.1.8" },
-  "devDependencies": { "ai": "^7.0.0", "zod": "^4.1.8", "typescript": "^5.6.0", "vitest": "^3.2.0", "@types/node": "^22.0.0" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/botsrated/botsrated.git",
+    "directory": "integrations/vercel-ai-sdk"
+  },
+  "dependencies": {
+    "@botsrated/x402-preflight": "^0.1.0"
+  },
+  "peerDependencies": {
+    "ai": ">=5",
+    "zod": "^3.25.76 || ^4.1.8"
+  },
+  "devDependencies": {
+    "ai": "^7.0.0",
+    "zod": "^4.1.8",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.0",
+    "@types/node": "^22.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/botsrated/botsrated/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

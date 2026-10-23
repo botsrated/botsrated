@@ -8,9 +8,11 @@ the user sets.
 [`botsrated`](https://pypi.org/project/botsrated/) (0.1.2),
 [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/),
 [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/).
-The npm packages are not published yet; install them from source.**
+The npm packages are published on npm (0.1.0):
+[`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight),
+[`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk).**
 
-| Directory | Package (planned name) | For |
+| Directory | Package | For |
 |---|---|---|
 | `x402-client/` | `@botsrated/x402-preflight` (npm) | `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
 | `vercel-ai-sdk/` | `@botsrated/ai-sdk` (npm) | Vercel AI SDK `tool()`s |

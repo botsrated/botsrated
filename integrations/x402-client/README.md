@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed. Hosts outside that set are allowed by default.
 
-**Status: prepared, not yet published to npm.**
+**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.0).**
 
 ## Install
 
