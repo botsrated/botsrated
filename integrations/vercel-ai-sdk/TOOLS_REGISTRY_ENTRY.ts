@@ -1,5 +1,5 @@
 // Prepared entry for vercel/ai content/tools-registry/registry.ts (PR title: "feat(tools-registry): add botsrated").
-// NOT submitted: the registry requires a published npm package and an AI SDK docs page on botsrated.com.
+// Submitted as a PR to vercel/ai (see listings). npm: @botsrated/ai-sdk; docs: https://botsrated.com/docs/ai-sdk
   {
     slug: 'botsrated',
     name: 'BotsRated',
@@ -13,7 +13,7 @@
       yarn: 'yarn add @botsrated/ai-sdk',
       bun: 'bun add @botsrated/ai-sdk',
     },
-    codeExample: `import { generateText, isStepCount } from 'ai';
+    codeExample: `import { generateText, stepCountIs } from 'ai';
 import { botsratedTools } from '@botsrated/ai-sdk';
 
 const { text } = await generateText({
@@ -21,7 +21,7 @@ const { text } = await generateText({
   prompt:
     'Before paying https://blockrun.ai/api/v1/chat/completions, check the seller with BotsRated.',
   tools: botsratedTools(),
-  stopWhen: isStepCount(3),
+  stopWhen: stepCountIs(3),
 });
 
 console.log(text);`,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { generateText, isStepCount } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { BotsRatedClient, botsratedTools } from "../src/index";
 
@@ -58,7 +58,7 @@ describe("botsratedTools", () => {
         return { content: [{ type: "text", text: "checked" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] };
       },
     } as any);
-    const res = await generateText({ model, prompt: "check blockrun", tools: botsratedTools(new BotsRatedClient({ fetch: api })), stopWhen: isStepCount(3) });
+    const res = await generateText({ model, prompt: "check blockrun", tools: botsratedTools(new BotsRatedClient({ fetch: api })), stopWhen: stepCountIs(3) });
     const toolResult: any = res.steps[0].toolResults[0];
     expect(toolResult.output.covered).toBe(true);
     expect(res.text).toBe("checked");

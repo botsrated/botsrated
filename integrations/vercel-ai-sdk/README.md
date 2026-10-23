@@ -11,16 +11,18 @@ npm install @botsrated/ai-sdk ai zod
 ```
 
 ```ts
-import { generateText, isStepCount } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { botsratedTools } from "@botsrated/ai-sdk";
 
 const { text } = await generateText({
   model: "openai/gpt-5-mini",
   prompt: "Before paying https://blockrun.ai/api/v1/chat/completions (payTo 0xe903...1aBf), check it.",
   tools: botsratedTools(),            // { botsratedPreflight } – free
-  stopWhen: isStepCount(3),
+  stopWhen: stepCountIs(3),          // AI SDK 7 also exports isStepCount(3)
 });
 ```
+
+`stepCountIs` works on AI SDK 5, 6 and 7. `isStepCount` is the AI SDK 7 name (AI SDK 7 needs Node 22+).
 
 Opt-in paid check, capped by a budget:
 
