@@ -1,8 +1,8 @@
-# BotsRated Receipt & Rating Format v0.2 (Draft)
+# BotsRated Receipt & Rating Format v0.2.1 (Draft)
 
 | | |
 |---|---|
-| Status | Draft for comment (v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4). Not stable: fields may still change before 1.0 (see §11). |
+| Status | Draft for comment (v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4; v0.2.1: reference schedules, MCP retention and receipt URLs, §3.4 and §5; no format change). Not stable: fields may still change before 1.0 (see §11). |
 | Date | 2026-10-23 |
 | Editors | BotsRated (https://botsrated.com) |
 | Reference implementation | https://botsrated.com (beta). Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
@@ -113,7 +113,7 @@ A producer MUST NOT send any other method (in particular never `tools/call`, `re
 | `calls`, `redirects`, `req_sha256`, `resp_sha256`, `dns_public` | | What was sent; redirects followed; hashes of the initialize request body and response body; public-address check result (null = cached) |
 | `state` | string | Derived and factual: `ok` (initialize and tools/list answered), `auth_required`, `handshake_failed` (HTTP answer without a valid MCP result), `unreachable` (no HTTP answer), `blocked` (URL guard) |
 
-Real example: [`examples/mcp-probe.signed.json`](examples/mcp-probe.signed.json) (cron prober, 2026-10-23, verifies with `verify.mjs`). The live API serves these at `/receipt/<id>?mcp=<shard>&day=<YYYY-MM-DD>` and may add `receipt_url`/`signature` hints that are not part of the signed body.
+Real example: [`examples/mcp-probe.signed.json`](examples/mcp-probe.signed.json) (cron prober, 2026-10-23, verifies with `verify.mjs`). The live API serves these at `/receipt/<id>?mcp=<shard>&day=<YYYY-MM-DD>&s=<server_id>` and may add `receipt_url`/`signature` hints that are not part of the signed body. `s` (v0.2.1) selects the per-server storage row. Older links without `s` keep resolving, and the receipt they return verifies the same way: `s` is part of the URL only, never of the receipt.
 
 States are observations from one vantage point, not judgements: `auth_required` is the expected answer of many production servers, and an endpoint can be reachable for authenticated clients while `unreachable` from the producer.
 
@@ -187,8 +187,10 @@ Real example: [`examples/dataset-host-entry.json`](examples/dataset-host-entry.j
 - `stale` is `true` when there is no probe or `age_seconds > 86400`. Consumers SHOULD NOT treat stale facts as current, and SHOULD re-probe or re-query instead.
 - Responses also state `served_at`, `data.last_probe_run_at` and `data.signed_snapshot_generated_at`, so a consumer can tell the live store from the snapshot.
 - Selection features (such as BotsRated `/v1/best`) MUST only consider hosts with a valid 402 within the last 48 h.
-- Reference schedule: every host is probed about every 5.4 h (161 shards, one every 2 min). A host with no valid 402 in 7 days, over at least 6 probes, is marked `probe: inactive` and probed about daily. A host missing from every source list for 3 days in a row is marked `listing: delisted`. That is a fact about the lists, not about the seller.
-- Reference MCP schedule (v0.2): each remote MCP endpoint is probed about once a day (one of 480 daily shards every 3 minutes). An endpoint with no MCP answer (`ok` or `auth_required`) for 7 days, over at least 3 probes, is probed about every 4 days. `mcp_probe` receipts stay in the live store for 30 days (no daily archive yet).
+- Reference schedule (v0.2.1): every host is probed about every 1.8 h (161 shards, 3 every 2 min; was about 5.4 h). A host with no valid 402 in 7 days, over at least 6 probes, is marked `probe: inactive` and probed about daily. A host missing from every source list for 3 days in a row is marked `listing: delisted`. That is a fact about the lists, not about the seller.
+- Reference MCP schedule (v0.2): each remote MCP endpoint is probed about once a day (one of 480 daily shards every 3 minutes). An endpoint with no MCP answer (`ok` or `auth_required`) for 7 days, over at least 3 probes, is probed about every 4 days.
+- Priority tier (v0.2.1): an endpoint whose host was looked up through the producer's API (preflight, check or report) in the last 7 days, or is also a covered x402 seller, is probed about every 6 hours, oldest first, under a per-run cap. Facts show it as `priority_tier = {reason, since, probe_every_hours}`. The tier changes only how often an endpoint is probed, never how its facts are computed.
+- MCP retention (v0.2.1): `mcp_probe` receipts stay in the live store for 30 days, or 14 days while the store is above 3.5 GB (`receipts_kept_days` in coverage). No daily archive yet.
 - Retention: raw signed receipts stay live for 7 days. After that, each UTC day is archived byte for byte (gzip NDJSON, with a sha256 per part and a signed manifest), and a signed `daily_aggregate` is kept per host. Receipt URLs keep resolving from the archive. Receipts are never edited (§9).
 
 Real example: [`examples/preflight-response.json`](examples/preflight-response.json).
@@ -276,10 +278,10 @@ The producer MUST NOT post a composite score that §5 does not define.
 - Sybil producers are possible. Weight facts by producer (as ERC-8004's security notes also advise for reviewers).
 
 ## 11. Versioning
-- Spec versions are `MAJOR.MINOR`. 0.x drafts may break. From 1.0, adding optional fields is a MINOR change. Renaming or removing a field, changing its meaning, or changing §4 is a MAJOR change.
+- Spec versions are `MAJOR.MINOR`, plus an optional `.PATCH` for editorial or reference-schedule changes that change no receipt field, id rule or signature rule. 0.x drafts may break. From 1.0, adding optional fields is a MINOR change. Renaming or removing a field, changing its meaning, or changing §4 is a MAJOR change.
 - Receipts are immutable. Verifiers MUST verify a receipt under the rules in force when it was issued, using `probe_version` and the legacy rule in §4.2. Producers MAY set `spec`.
 - Producer implementation (`probe_version`) and methodology (`methodology_version` in snapshots) are versioned separately from this spec.
-- Changes: 0.2 (2026-10-23, draft) adds the `mcp_probe` receipt (§3.4), its id rule (§4.2), the prober key covering it (§4.3) and MCP server facts (§5). Nothing in 0.1 changed. 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
+- Changes: 0.2.1 (2026-10-23, draft): reference x402 schedule about 1.8 h, MCP priority tier about every 6 h, MCP retention 30 days (14 above 3.5 GB), `&s=<server_id>` in MCP receipt URLs (older links still resolve and verify). No format change: receipts keep `spec: botsrated-receipt/0.2`. 0.2 (2026-10-23, draft) adds the `mcp_probe` receipt (§3.4), its id rule (§4.2), the prober key covering it (§4.3) and MCP server facts (§5). Nothing in 0.1 changed. 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
 
 ## 12. License
 This specification text is licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). `receipt.schema.json`, `verify.mjs` and the files in `examples/` are licensed under MIT, like the rest of this repository. The examples are real BotsRated receipts and public on-chain data from 2026-10-23.

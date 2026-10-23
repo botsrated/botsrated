@@ -71,7 +71,7 @@ VS Code (`.vscode/mcp.json`):
 - Methodology: https://botsrated.com/methodology
 - Sellers can reply or dispute for free: https://botsrated.com/disputes (`POST /v1/dispute`)
 - Dataset signature: https://botsrated.com/dataset.sig.json. Key set: https://botsrated.com/.well-known/botsrated-key
-- Receipt format v0.2 (draft; adds `mcp_probe` receipts for remote MCP servers) and verifier: [`spec/SPEC.md`](spec/SPEC.md), `node spec/verify.mjs <receipt.json|url>`
+- Receipt format v0.2.1 (draft; `mcp_probe` receipts for remote MCP servers; v0.2.1 updates reference schedules and MCP retention) and verifier: [`spec/SPEC.md`](spec/SPEC.md), `node spec/verify.mjs <receipt.json|url>`
 
 ## Signing keys (Ed25519)
 Raw 32-byte public keys, base64. Fingerprint = sha256 of the raw key bytes. A signature is valid for an object whose own timestamp
