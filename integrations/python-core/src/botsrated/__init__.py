@@ -15,7 +15,15 @@ from botsrated.client import (
     is_free_quota_answer,
     usd_to_atomic,
 )
-from botsrated.guard import Decision, GuardPolicy, PrePaymentGuard, Reason, SellerFacts, evaluate_payment, facts_from
+from botsrated.guard import (
+    Decision,
+    GuardPolicy,
+    PrePaymentGuard,
+    Reason,
+    SellerFacts,
+    evaluate_payment,
+    facts_from,
+)
 
 __all__ = [
     "BASE_MAINNET",

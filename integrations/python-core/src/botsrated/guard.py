@@ -7,7 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from botsrated.client import BotsRatedClient, BotsRatedError, extensions_ok, host_of, usd_to_atomic
+from botsrated.client import (
+    BotsRatedClient,
+    BotsRatedError,
+    extensions_ok,
+    host_of,
+    usd_to_atomic,
+)
 
 Effect = Literal["block", "warn", "info"]
 
@@ -68,12 +74,13 @@ def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "ch
     # Only BotsRated's own observations confirm a payTo; the listing is seller-controlled.
     pay_tos = [probe.get("live_payTo"), measured.get("last_quoted_payTo")]
     freshness = body.get("freshness") or {}
+    listing_pay_to = listing.get("payTo")
     return SellerFacts(
         covered=body.get("found") is not False,
         host=host,
         source=source,
         known_pay_tos=sorted({p.lower() for p in pay_tos if isinstance(p, str) and p}),
-        listing_pay_to=listing.get("payTo").lower() if isinstance(listing.get("payTo"), str) and listing.get("payTo") else None,
+        listing_pay_to=listing_pay_to.lower() if isinstance(listing_pay_to, str) and listing_pay_to else None,
         observed_network=probe.get("live_network") or listing.get("network"),
         probed_url=probe.get("url") or (body.get("route_probed") or {}).get("url"),
         observed_amount=probe.get("live_amount") or measured.get("last_quoted_amount_atomic"),

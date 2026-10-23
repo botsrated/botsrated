@@ -241,7 +241,8 @@ def test_quota_used_up_message(mock_api):
 
 
 def test_refuses_old_check_price(check_402_b64):
-    import base64, json as _json
+    import base64
+    import json as _json
 
     terms = _json.loads(base64.b64decode(check_402_b64))
     for a in terms["accepts"]:
@@ -264,7 +265,8 @@ def test_guard_check_uses_free_quota_without_paid(found, not_covered, free_check
 
 
 def _hdr(terms):
-    import base64, json as _json
+    import base64
+    import json as _json
 
     return base64.b64encode(_json.dumps(terms).encode()).decode()
 
@@ -282,7 +284,8 @@ def _hdr(terms):
     ],
 )
 def test_paid_rejects_permit2_extra_extensions_and_long_timeout(check_402_b64, mutate):
-    import base64, json as _json
+    import base64
+    import json as _json
 
     terms = _json.loads(base64.b64decode(check_402_b64))
     mutate(terms)
@@ -296,7 +299,8 @@ def test_paid_rejects_permit2_extra_extensions_and_long_timeout(check_402_b64, m
 
 
 def test_real_402_with_bazaar_extension_is_accepted(check_402_b64):
-    import base64, json as _json
+    import base64
+    import json as _json
 
     terms = _json.loads(base64.b64decode(check_402_b64))
     assert terms["accepts"][0]["extra"] and set(terms.get("extensions") or {}) <= {"bazaar"}
@@ -334,7 +338,8 @@ class _RecordingX402:
     ],
 )
 def test_x402_client_mode_rejects_permit2_before_signing(check_402_b64, mutate):
-    import base64, json as _json
+    import base64
+    import json as _json
 
     terms = _json.loads(base64.b64decode(check_402_b64))
     mutate(terms)
