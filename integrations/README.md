@@ -17,6 +17,7 @@ The npm packages are not published yet; install them from source.**
 | `python-core/` | `botsrated` (PyPI) | client + guard + Python `x402` `on_before_payment_creation` hook |
 | `langchain/` | `langchain-botsrated` (PyPI) | LangChain tools |
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
+| `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `fixtures/` | | real BotsRated responses used by the tests |
 
 Upstream proposals:
