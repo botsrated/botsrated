@@ -23,12 +23,14 @@ This repository documents the **remote** MCP server. There is nothing to install
 ## Tools
 | Tool | Price | What it returns |
 |---|---|---|
-| `preflight` | free | Latest stored unpaid probe for an x402 seller (host or URL): status, valid 402, quoted vs listed price, payTo vs listing, timestamp |
-| `check` | $0.002 (x402, USDC on Base) | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
-| `report` | $0.005 (x402) | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
+| `preflight` | free, unlimited | Latest stored unpaid probe for an x402 seller (host or URL): status, valid 402, quoted vs listed price, payTo vs listing, timestamp |
+| `check` | $0.001 (x402, USDC on Base); first 100/day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `report` | $0.002 (x402); first 10/day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
 
 The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
+
+Free daily quota: the first 100 checks and 10 reports per client (IP address; IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
 ## Install
 

@@ -91,12 +91,12 @@
   "upgrade": {
     "check": {
       "url": "https://botsrated.com/v1/check?host=api.exa.ai",
-      "price": "$0.002",
+      "price": "$0.001",
       "sample": "https://botsrated.com/v1/sample/check"
     },
     "report": {
       "url": "https://botsrated.com/v1/report/api.exa.ai",
-      "price": "$0.005",
+      "price": "$0.002",
       "sample": "https://botsrated.com/v1/sample/report"
     }
   }
