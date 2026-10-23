@@ -20,6 +20,7 @@ The npm packages are published on npm (0.1.0):
 | `langchain/` | `langchain-botsrated` (PyPI) | LangChain tools |
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
+| `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
 | `fixtures/` | | real BotsRated responses used by the tests |
 
 Upstream proposals:
