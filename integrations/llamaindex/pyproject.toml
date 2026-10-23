@@ -1,0 +1,29 @@
+[project]
+name = "llama-index-tools-botsrated"
+version = "0.1.0"
+description = "LlamaIndex tool spec for BotsRated: free pre-payment preflight of x402 sellers, opt-in budgeted paid checks."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["llama-index-core>=0.12", "botsrated>=0.1.0"]
+
+[project.urls]
+Homepage = "https://botsrated.com"
+Repository = "https://github.com/botsrated/botsrated"
+
+[tool.llamahub]
+contains_example = false
+import_path = "llama_index.tools.botsrated"
+
+[tool.llamahub.class_authors]
+BotsRatedToolSpec = "botsrated"
+
+[dependency-groups]
+dev = ["pytest>=8", "respx>=0.21"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["llama_index/"]
