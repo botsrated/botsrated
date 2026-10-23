@@ -3,12 +3,22 @@
   "name": "com.botsrated/botsrated",
   "title": "BotsRated (beta)",
   "description": "Beta. Measured facts on paid x402 agent services. No grade until 3 paid buys on 3 different days.",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "websiteUrl": "https://botsrated.com",
   "remotes": [
     {
       "type": "streamable-http",
       "url": "https://botsrated.com/mcp"
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/botsrated/botsrated",
+    "source": "github"
+  },
+  "icons": [
+    {
+      "src": "https://botsrated.com/logo.svg",
+      "mimeType": "image/svg+xml"
     }
   ]
 }
