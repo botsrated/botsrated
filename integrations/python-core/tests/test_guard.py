@@ -147,11 +147,56 @@ def test_paid_refuses_other_payto(mock_api):
     assert e.value.code == "terms_rejected"
 
 
-def test_paid_failure_releases(mock_api):
-    c = BotsRatedClient(budget_usd="0.01", paying_get=lambda u: httpx.Response(500))
-    with pytest.raises(BotsRatedError):
+def test_paid_failure_keeps_amount_counted(mock_api):
+    # A signed payment may settle before the call fails, so the budget is a hard ceiling.
+    c = BotsRatedClient(budget_usd="0.001", paying_get=lambda u: httpx.Response(500))
+    with pytest.raises(BotsRatedError) as e:
         c.check("blockrun.ai")
-    assert c.budget.spent_atomic == 0 and c.budget.remaining_atomic == 10000
+    assert e.value.code == "paid_call_failed"
+    assert c.budget.spent_atomic == 1000 and c.budget.remaining_atomic == 0
+    with pytest.raises(BotsRatedError) as e:
+        c.check("blockrun.ai")
+    assert e.value.code == "budget_exceeded"
+
+
+def test_paid_exception_keeps_amount_counted(mock_api):
+    def boom(url):
+        raise TimeoutError("read")
+
+    c = BotsRatedClient(budget_usd="0.01", paying_get=boom)
+    with pytest.raises(TimeoutError):
+        c.check("blockrun.ai")
+    assert c.budget.spent_atomic == 1000
+
+
+def test_paid_rejects_quote_with_any_foreign_option(check_402_b64):
+    import base64
+    import json
+
+    terms = json.loads(base64.b64decode(check_402_b64))
+    good = terms["accepts"][0]
+    terms["accepts"] = [{**good, "amount": "500000", "payTo": DEAD}, good]
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": base64.b64encode(json.dumps(terms).encode()).decode()})
+        c = BotsRatedClient(budget_usd=1, paying_get=lambda u: pytest.fail("must not pay"))
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+    assert e.value.code == "terms_rejected"
+
+
+def test_listing_payto_alone_does_not_confirm(found):
+    listed = "0x1111111111111111111111111111111111111111"
+    body = {**found, "listing": {**(found.get("listing") or {}), "payTo": listed}}
+    facts = facts_from(body, "blockrun.ai", "preflight")
+    assert listed not in facts.known_pay_tos
+    d = evaluate_payment(facts, req(found, payTo=listed), None)
+    assert d.action == "block" and d.reasons[0].code == "payto_mismatch"
+    no_probe = {**body, "latest_probe": None, "measured": {}}
+    facts = facts_from(no_probe, "blockrun.ai", "preflight")
+    d = evaluate_payment(facts, req(found, payTo=listed), None)
+    assert d.action == "allow" and d.reasons[0].code == "payto_listing_only"
+    d = evaluate_payment(facts, req(found, payTo=DEAD), None)
+    assert d.action == "block"
 
 
 def test_guard_paid_check_threshold(mock_api, sample_check, found):

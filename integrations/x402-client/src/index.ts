@@ -105,7 +105,7 @@ export function hostOf(urlOrHost: string): string {
 
 const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-/** Spend tracker in atomic USDC. Amounts are reserved before paying and released if the call fails. */
+/** Spend tracker in atomic USDC. Amounts are reserved before paying; a failed paid call stays counted (it may have settled). */
 export class Budget {
   private spent = 0n;
   private reserved = 0n;
@@ -262,21 +262,24 @@ export class BotsRatedClient {
       throw new BotsRatedError(body?.error?.message ?? `expected 402, got ${quote.status}`, body?.error?.code ?? "unexpected_status", quote.status);
     }
     const terms = await readPaymentRequired(quote);
-    const option = terms.accepts?.find((a) => this.acceptable(a, PAID_ROUTE_MAX_ATOMIC[route]));
-    if (!option) throw new BotsRatedError("no acceptable payment option (Base USDC, exact, BotsRated payTo, published price)", "terms_rejected");
-    const amount = BigInt(option.amount);
+    const accepts = terms.accepts;
+    // Fail closed: the payment client re-reads the 402 and picks an option itself, so every option must be acceptable.
+    if (!Array.isArray(accepts) || accepts.length === 0 || !accepts.every((a) => this.acceptable(a, PAID_ROUTE_MAX_ATOMIC[route]))) {
+      throw new BotsRatedError("every payment option must be exact Base USDC to BotsRated at or below the published price", "terms_rejected");
+    }
+    const amount = accepts.reduce((m, a) => (BigInt(a.amount) > m ? BigInt(a.amount) : m), 0n);
     this.budget.reserve(amount);
     let res: Response;
     try {
-      res = await paid.fetchWithPayment(this.baseUrl + path, { headers: { accept: "application/json" } });
+      res = await paid.fetchWithPayment(this.baseUrl + path, { headers: { accept: "application/json" }, redirect: "manual" });
     } catch (e) {
-      this.budget.release(amount);
+      // A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
+      this.budget.commit(amount);
       throw e;
     }
-    // BotsRated settles only on a 2xx answer.
     if (!res.ok) {
-      this.budget.release(amount);
-      throw new BotsRatedError(`paid ${route} returned ${res.status}`, "paid_call_failed", res.status);
+      this.budget.commit(amount);
+      throw new BotsRatedError(`paid ${route} returned ${res.status}; the amount stays counted against the budget in case it settled`, "paid_call_failed", res.status);
     }
     const out = (await res.json()) as Record<string, any>;
     // A free-quota answer on the paid attempt means no payment was made: give the reservation back.
@@ -312,7 +315,10 @@ export interface PreflightResult {
 export interface SellerFacts {
   covered: boolean;
   host: string;
+  /** payTos BotsRated's own probes observed (the listing is seller-controlled and never counts). */
   knownPayTos: string[];
+  /** payTo from the seller's directory listing, if any. */
+  listingPayTo?: string;
   observedNetwork?: string;
   probedUrl?: string;
   observedAmount?: string;
@@ -330,11 +336,12 @@ export function factsFrom(body: Record<string, any>, host: string, source: "pref
   const measured = body.measured ?? {};
   const listing = body.listing ?? {};
   const rw = body.recent_window ?? measured.recent_window ?? {};
-  const payTos = [listing.payTo, probe.live_payTo, measured.last_quoted_payTo].filter((x): x is string => typeof x === "string" && x.length > 0);
+  const payTos = [probe.live_payTo, measured.last_quoted_payTo].filter((x): x is string => typeof x === "string" && x.length > 0);
   return {
     covered: body.found !== false,
     host,
     knownPayTos: [...new Set(payTos.map((p) => p.toLowerCase()))],
+    listingPayTo: typeof listing.payTo === "string" && listing.payTo ? listing.payTo.toLowerCase() : undefined,
     observedNetwork: probe.live_network ?? listing.network,
     probedUrl: probe.url ?? body.route_probed?.url,
     observedAmount: probe.live_amount ?? measured.last_quoted_amount_atomic,
@@ -407,6 +414,12 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
       add("network_not_measured", `paying on ${req.network}; BotsRated measured ${facts.observedNetwork}`, "info");
     } else if (facts.knownPayTos.length > 0 && !facts.knownPayTos.includes(req.payTo.toLowerCase())) {
       add("payto_mismatch", `payTo ${req.payTo} was never seen by BotsRated for ${facts.host} (seen: ${facts.knownPayTos.join(", ")})`, p.payToMismatch);
+    } else if (facts.knownPayTos.length === 0 && facts.listingPayTo) {
+      if (req.payTo.toLowerCase() === facts.listingPayTo) {
+        add("payto_listing_only", `payTo ${req.payTo} matches ${facts.host}'s listing but no BotsRated probe has observed it yet`, "info");
+      } else {
+        add("payto_mismatch", `payTo ${req.payTo} differs from ${facts.host}'s listing (${facts.listingPayTo})`, p.payToMismatch);
+      }
     }
     if (facts.observedAmount && /^\d+$/.test(facts.observedAmount) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
       add("price_above_observed", `quoted ${req.amount} atomic; BotsRated last observed ${facts.observedAmount} on this route`, p.priceAboveObserved);

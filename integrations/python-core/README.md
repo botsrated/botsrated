@@ -29,7 +29,9 @@ client.on_before_payment_creation(PrePaymentGuard().x402_hook)
 ```
 
 Defaults:
-- A payTo that differs from every payTo BotsRated saw for the host, on the same network, is **blocked**.
+- A payTo that differs from every payTo BotsRated's own probes saw for the host, on the same network, is **blocked**.
+  The seller's directory listing alone never confirms a payTo: with no probe observation, a listing match is
+  allowed with a `payto_listing_only` note and a listing mismatch is blocked.
 - A price above the last observed price on the same route is a warning.
 - A host that is not covered is allowed.
 - Data older than 24 h is allowed.
@@ -59,9 +61,10 @@ How paid calls work:
   served free (200 with `charged: false` and a `free_quota` block). The client asks unpaid first, so
   inside the quota nothing is paid and the budget is untouched; `check()`/`report()` also work without
   a budget until the quota is used up (then `paid_disabled`). `client.last_free_quota` shows what is left.
-- Otherwise the client reads the 402 quote unpaid first. It accepts only `exact` USDC on Base to BotsRated's payTo
+- Otherwise the client reads the 402 quote unpaid first. It accepts the quote only if **every** option is `exact` USDC on Base to BotsRated's payTo
   `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
-- The amount is reserved from the budget before paying and released if the call fails.
+- The amount is reserved from the budget before paying. If the paid call fails or raises, it stays counted
+  (the payment may already have settled), so the budget is a hard ceiling. Only a free-quota answer releases it.
 - When the guard is registered, it refuses any payment to botsrated.com that the client did not reserve.
 
 ## Tests

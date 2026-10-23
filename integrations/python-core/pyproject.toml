@@ -1,6 +1,6 @@
 [project]
 name = "botsrated"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pre-payment check for x402 agents: free BotsRated preflight before paying a seller; paid lookups opt-in with a budget."
 readme = "README.md"
 license = "MIT"

@@ -50,7 +50,7 @@ const mcp = createx402MCPClient({
 
 | Check | Default | Option |
 |---|---|---|
-| payTo differs from every payTo BotsRated saw for the host (same network) | **block** | `policy.payToMismatch: "warn" \| "allow"` |
+| payTo differs from every payTo BotsRated's own probes saw for the host (same network); the seller's listing alone never confirms one | **block** | `policy.payToMismatch: "warn" \| "allow"` |
 | Same route quoted above the last price BotsRated observed | warn | `policy.priceAboveObserved: "block"` |
 | Host not covered | allow | `policy.notCovered: "block"` |
 | Data older than 24 h | allow | `policy.stale: "block"` |
@@ -83,10 +83,10 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
   even without `paid` until the quota is used up (then they throw `paid_disabled`).
   `client.lastFreeQuota` shows the remaining quota.
-- Otherwise the client reads the 402 quote unpaid first. It accepts only `exact` USDC on Base (`eip155:8453`)
+- Otherwise the client reads the 402 quote unpaid first. It accepts it only if **every** option is `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
-- The amount is reserved from the budget before paying and released if the call fails. BotsRated
-  settles only on a 2xx response.
+- The amount is reserved from the budget before paying. If the paid call fails or throws it stays counted
+  (the payment may already have settled), so the budget is a hard ceiling. Only a free-quota answer releases it.
 - When the guard is registered, it refuses any payment to botsrated.com that the client has not
   reserved.
 - `paidCheckAtOrAboveUsd` runs a check only for seller payments at or above that amount: free within

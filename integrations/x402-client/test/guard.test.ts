@@ -192,11 +192,38 @@ describe("paid routes (opt-in, budgeted)", () => {
     expect(pay).not.toHaveBeenCalled();
   });
 
-  it("releases the reservation when the paid call fails", async () => {
-    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.01, fetchWithPayment: async () => json({}, 500) } });
+  it("keeps the amount counted when the paid call fails (it may have settled)", async () => {
+    const pay = vi.fn(async () => json({}, 500));
+    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.001, fetchWithPayment: pay } });
     await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "paid_call_failed" });
-    expect(c.budget!.spentAtomic).toBe(0n);
-    expect(c.budget!.remainingAtomic).toBe(10000n);
+    expect(c.budget!.spentAtomic).toBe(1000n);
+    expect(c.budget!.remainingAtomic).toBe(0n);
+    await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "budget_exceeded" });
+    expect(pay).toHaveBeenCalledTimes(1);
+    expect((pay.mock.calls[0] as unknown as [string, RequestInit])[1]).toMatchObject({ redirect: "manual" });
+  });
+
+  it("refuses a quote that also offers any other payment option", async () => {
+    const terms = JSON.parse(atob(CHECK_402_B64));
+    const good = terms.accepts[0];
+    terms.accepts = [{ ...good, amount: "500000", payTo: "0x000000000000000000000000000000000000dEaD" }, good];
+    const f = async (u: string | URL | Request) =>
+      String(u).includes("/v1/check") ? json({}, 402, { "payment-required": btoa(JSON.stringify(terms)) }) : botsratedFetch()(String(u));
+    const pay = vi.fn();
+    const c = new BotsRatedClient({ fetch: f as typeof fetch, paid: { budgetUsd: 1, fetchWithPayment: pay } });
+    await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "terms_rejected" });
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("does not treat a listing-only payTo as observed", () => {
+    const listed = "0x1111111111111111111111111111111111111111";
+    const facts = factsFrom({ ...FOUND, listing: { ...(FOUND.listing ?? {}), payTo: listed } }, "blockrun.ai", "preflight");
+    expect(facts.knownPayTos).not.toContain(listed);
+    expect(evaluatePayment(facts, req({ payTo: listed }), SELLER_URL).action).toBe("block");
+    const noProbe = factsFrom({ ...FOUND, latest_probe: null, measured: {}, listing: { payTo: listed } }, "blockrun.ai", "preflight");
+    const d = evaluatePayment(noProbe, req({ payTo: listed }), SELLER_URL);
+    expect(d.action).toBe("allow");
+    expect(d.reasons[0].code).toBe("payto_listing_only");
   });
 
   it("the guard lets the client's own reserved payment through", async () => {

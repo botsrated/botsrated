@@ -257,21 +257,32 @@ class BotsRatedClient:
                 quote_resp.status_code,
             )
         terms = read_payment_required(quote_resp)
-        option = next((a for a in terms.get("accepts", []) if self.acceptable_payment(a, PAID_ROUTE_MAX_ATOMIC[route])), None)
-        if option is None:
+        accepts = terms.get("accepts") if isinstance(terms, dict) else None
+        # Fail closed: the payment client re-reads the 402 and picks an option itself, so every option
+        # has to be one this client is willing to pay, not just one of them.
+        if (
+            not isinstance(accepts, list)
+            or not accepts
+            or not all(isinstance(a, dict) and self.acceptable_payment(a, PAID_ROUTE_MAX_ATOMIC[route]) for a in accepts)
+        ):
             raise BotsRatedError(
-                "no acceptable payment option (Base USDC, exact, BotsRated payTo, published price)", "terms_rejected"
+                "every payment option must be exact Base USDC to BotsRated at or below the published price", "terms_rejected"
             )
-        amount = int(option["amount"])
+        amount = max(int(a["amount"]) for a in accepts)
         self.budget.reserve(amount)
         try:
             resp = self._paying_get(self.base_url + path)
         except Exception:
-            self.budget.release(amount)
+            # A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
+            self.budget.commit(amount)
             raise
         if not 200 <= resp.status_code < 300:
-            self.budget.release(amount)
-            raise BotsRatedError(f"paid {route} returned {resp.status_code}", "paid_call_failed", resp.status_code)
+            self.budget.commit(amount)
+            raise BotsRatedError(
+                f"paid {route} returned {resp.status_code}; the amount stays counted against the budget in case it settled",
+                "paid_call_failed",
+                resp.status_code,
+            )
         out = resp.json()
         if is_free_quota_answer(out):
             # Answered from the free quota on the paid attempt: no payment happened.

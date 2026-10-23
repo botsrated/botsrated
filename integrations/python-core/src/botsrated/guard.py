@@ -24,7 +24,8 @@ class SellerFacts:
     covered: bool
     host: str
     source: Literal["preflight", "check"]
-    known_pay_tos: list[str] = field(default_factory=list)
+    known_pay_tos: list[str] = field(default_factory=list)  # payTos BotsRated's own probes observed
+    listing_pay_to: str | None = None  # from the seller's directory listing (seller-controlled)
     observed_network: str | None = None
     probed_url: str | None = None
     observed_amount: str | None = None
@@ -64,13 +65,15 @@ def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "ch
     measured = body.get("measured") or {}
     listing = body.get("listing") or {}
     rw = body.get("recent_window") or measured.get("recent_window") or {}
-    pay_tos = [listing.get("payTo"), probe.get("live_payTo"), measured.get("last_quoted_payTo")]
+    # Only BotsRated's own observations confirm a payTo; the listing is seller-controlled.
+    pay_tos = [probe.get("live_payTo"), measured.get("last_quoted_payTo")]
     freshness = body.get("freshness") or {}
     return SellerFacts(
         covered=body.get("found") is not False,
         host=host,
         source=source,
         known_pay_tos=sorted({p.lower() for p in pay_tos if isinstance(p, str) and p}),
+        listing_pay_to=listing.get("payTo").lower() if isinstance(listing.get("payTo"), str) and listing.get("payTo") else None,
         observed_network=probe.get("live_network") or listing.get("network"),
         probed_url=probe.get("url") or (body.get("route_probed") or {}).get("url"),
         observed_amount=probe.get("live_amount") or measured.get("last_quoted_amount_atomic"),
@@ -124,6 +127,11 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                 f"payTo {pay_to} was never seen by BotsRated for {facts.host} (seen: {', '.join(facts.known_pay_tos)})",
                 p.pay_to_mismatch,
             )
+        elif not facts.known_pay_tos and facts.listing_pay_to:
+            if pay_to.lower() == facts.listing_pay_to:
+                add("payto_listing_only", f"payTo {pay_to} matches {facts.host}'s listing but no BotsRated probe has observed it yet", "info")
+            else:
+                add("payto_mismatch", f"payTo {pay_to} differs from {facts.host}'s listing ({facts.listing_pay_to})", p.pay_to_mismatch)
         if (
             facts.observed_amount
             and str(facts.observed_amount).isdigit()
