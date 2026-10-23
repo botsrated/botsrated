@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from botsrated.client import BotsRatedClient, BotsRatedError, host_of, usd_to_atomic
+from botsrated.client import BotsRatedClient, BotsRatedError, extensions_ok, host_of, usd_to_atomic
 
 Effect = Literal["block", "warn", "info"]
 
@@ -217,6 +217,13 @@ class PrePaymentGuard:
         resource = getattr(pr, "resource", None)
         url = getattr(resource, "url", None) if resource is not None else None
         d = self.decide(url, context.selected_requirements)
+        if url and d.action == "allow" and host_of(url) == self.client.host:
+            # A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an
+            # ERC-20 approval of Permit2) and never hand any extensions to the signer.
+            if not extensions_ok(getattr(pr, "extensions", None)):
+                d = Decision("block", d.host, [Reason("botsrated_payment_extensions", "BotsRated quotes must not carry payment extensions", "block")])
+            else:
+                pr.extensions = None
         if self.on_decision:
             self.on_decision(d)
         if d.action == "block":

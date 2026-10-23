@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed. Hosts outside that set are allowed by default.
 
-**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.0).**
+**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.1).**
 
 ## Install
 
@@ -85,10 +85,14 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   `client.lastFreeQuota` shows the remaining quota.
 - Otherwise the client reads the 402 quote unpaid first. It accepts it only if **every** option is `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
+- Only a one-shot EIP-3009 payment is accepted: an option whose `extra` holds anything beyond the token's
+  `name`/`version` (e.g. `assetTransferMethod: "permit2"`), a `maxTimeoutSeconds` above 600, or payment
+  extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`; only the discovery-only `bazaar` key is tolerated)
+  is refused with `terms_rejected` before anything is paid.
 - The amount is reserved from the budget before paying. If the paid call fails or throws it stays counted
   (the payment may already have settled), so the budget is a hard ceiling.
 - When the guard is registered, it refuses any payment to botsrated.com that the client has not
-  reserved.
+  reserved or that carries payment extensions, and strips extensions before the scheme signs.
 - `paidCheckAtOrAboveUsd` runs a check only for seller payments at or above that amount: free within
   the daily quota, then a $0.001 paid check if the client is paid-enabled (skipped otherwise).
   If the budget is used up, the guard falls back to the free preflight.

@@ -291,3 +291,35 @@ describe("paid routes (opt-in, budgeted)", () => {
     expect(usdToAtomic(0.002)).toBe(2000n);
   });
 });
+
+describe("paid quote hardening (Permit2 / payment extensions)", () => {
+  const base = () => JSON.parse(atob(CHECK_402_B64));
+  const cases: Array<[string, (t: any) => void]> = [
+    ["permit2 extra", (t) => (t.accepts[0].extra = { ...t.accepts[0].extra, assetTransferMethod: "permit2" })],
+    ["paymentFlow extra", (t) => (t.accepts[0].extra = { ...t.accepts[0].extra, paymentFlow: "x" })],
+    ["approval extension", (t) => (t.extensions = { ...(t.extensions ?? {}), erc20ApprovalGasSponsoring: {} })],
+    ["eip2612 extension", (t) => (t.extensions = { eip2612GasSponsoring: {} })],
+    ["long timeout", (t) => (t.accepts[0].maxTimeoutSeconds = 86400)],
+    ["string timeout", (t) => (t.accepts[0].maxTimeoutSeconds = "300")],
+    ["x402 v1", (t) => (t.x402Version = 1)],
+  ];
+  it.each(cases)("refuses a quote with %s before paying", async (_n, mutate) => {
+    const terms = base();
+    mutate(terms);
+    const f = async (u: string | URL | Request) =>
+      String(u).includes("/v1/check") ? json({}, 402, { "payment-required": btoa(JSON.stringify(terms)) }) : botsratedFetch()(String(u));
+    const pay = vi.fn();
+    const c = new BotsRatedClient({ fetch: f as typeof fetch, paid: { budgetUsd: 1, fetchWithPayment: pay } });
+    await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "terms_rejected" });
+    expect(pay).not.toHaveBeenCalled();
+    expect(c.budget!.pendingAtomic + c.budget!.spentAtomic).toBe(0n);
+  });
+
+  it("accepts BotsRated's real 402 (EIP-3009 extra, bazaar discovery extension)", async () => {
+    const t = base();
+    expect(Object.keys(t.extensions ?? {})).toEqual(["bazaar"]);
+    const pay = vi.fn(async () => json(SAMPLE_CHECK));
+    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.01, fetchWithPayment: pay } });
+    expect((await c.check("blockrun.ai")).host).toBe("blockrun.ai");
+  });
+});

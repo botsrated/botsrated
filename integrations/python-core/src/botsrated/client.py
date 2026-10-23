@@ -22,6 +22,19 @@ BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 1000, "report": 2000, "best": 10000}
 # Free calls per client (IP) per UTC day. Inside the quota BotsRated answers 200 with charged: false, no 402.
 FREE_DAILY_QUOTA: dict[str, int] = {"check": 100, "report": 10, "best": 0}
+# Longest payment authorization window accepted for a BotsRated payment.
+MAX_TIMEOUT_SECONDS = 600
+# EIP-3009 needs only the token's EIP-712 domain name/version. Any other ``extra`` key (e.g.
+# assetTransferMethod=permit2, paymentFlow) switches the x402 signer to a different flow.
+ALLOWED_EXTRA = frozenset({"name", "version"})
+# Discovery metadata only. Payment extensions (erc20ApprovalGasSponsoring, eip2612GasSponsoring, ...)
+# can make the signer sign more than the one-shot payment, so a BotsRated quote carrying them is refused.
+IGNORED_EXTENSIONS = frozenset({"bazaar"})
+
+
+def extensions_ok(extensions: Any) -> bool:
+    """True when a PaymentRequired.extensions value carries nothing but discovery metadata."""
+    return extensions is None or (isinstance(extensions, dict) and set(extensions) <= IGNORED_EXTENSIONS)
 
 
 def is_free_quota_answer(body: Any) -> bool:
@@ -209,8 +222,19 @@ class BotsRatedClient:
 
     def acceptable_payment(self, req: dict[str, Any], max_atomic: int = PAID_ROUTE_MAX_ATOMIC["best"]) -> bool:
         amount = str(req.get("amount", ""))
+        extra = req.get("extra")
+        if extra is None:
+            extra = {}
+        timeout = req.get("maxTimeoutSeconds", req.get("max_timeout_seconds"))
+        if timeout is None:
+            timeout = MAX_TIMEOUT_SECONDS
         return (
-            req.get("scheme") == "exact"
+            isinstance(extra, dict)
+            and set(extra) <= ALLOWED_EXTRA
+            and all(isinstance(v, str) for v in extra.values())
+            and type(timeout) is int
+            and 0 < timeout <= MAX_TIMEOUT_SECONDS
+            and req.get("scheme") == "exact"
             and req.get("network") == BASE_MAINNET
             and _eq(req.get("asset"), BASE_USDC)
             and _eq(req.get("payTo") or req.get("pay_to"), self._expected_pay_to)
@@ -261,12 +285,17 @@ class BotsRatedClient:
         # Fail closed: the payment client re-reads the 402 and picks an option itself, so every option
         # has to be one this client is willing to pay, not just one of them.
         if (
-            not isinstance(accepts, list)
+            not isinstance(terms, dict)
+            or terms.get("x402Version") != 2
+            or not extensions_ok(terms.get("extensions"))
+            or not isinstance(accepts, list)
             or not accepts
             or not all(isinstance(a, dict) and self.acceptable_payment(a, PAID_ROUTE_MAX_ATOMIC[route]) for a in accepts)
         ):
             raise BotsRatedError(
-                "every payment option must be exact Base USDC to BotsRated at or below the published price", "terms_rejected"
+                "every payment option must be exact EIP-3009 Base USDC to BotsRated at or below the published price, "
+                "with no payment extensions",
+                "terms_rejected",
             )
         amount = max(int(a["amount"]) for a in accepts)
         self.budget.reserve(amount)

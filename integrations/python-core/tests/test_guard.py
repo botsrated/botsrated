@@ -261,3 +261,46 @@ def test_guard_check_uses_free_quota_without_paid(found, not_covered, free_check
         m.get("/v1/check").respond(200, json=free_check)
         g = PrePaymentGuard(BotsRatedClient(), paid_check_at_or_above_usd=0.5)
         assert g.decide(found["latest_probe"]["url"], req(found, amount="1000000")).facts.source == "check"
+
+
+def _hdr(terms):
+    import base64, json as _json
+
+    return base64.b64encode(_json.dumps(terms).encode()).decode()
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda t: t["accepts"][0]["extra"].update(assetTransferMethod="permit2"),
+        lambda t: t["accepts"][0]["extra"].update(paymentFlow="x"),
+        lambda t: t.update(extensions={**t.get("extensions", {}), "erc20ApprovalGasSponsoring": {}}),
+        lambda t: t.update(extensions={"eip2612GasSponsoring": {}}),
+        lambda t: t["accepts"][0].update(maxTimeoutSeconds=86400),
+        lambda t: t["accepts"][0].update(maxTimeoutSeconds="300"),
+        lambda t: t.update(x402Version=1),
+    ],
+)
+def test_paid_rejects_permit2_extra_extensions_and_long_timeout(check_402_b64, mutate):
+    import base64, json as _json
+
+    terms = _json.loads(base64.b64decode(check_402_b64))
+    mutate(terms)
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": _hdr(terms)})
+        c = BotsRatedClient(budget_usd=1, paying_get=lambda u: pytest.fail("must not pay"))
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+    assert e.value.code == "terms_rejected"
+    assert c.budget.pending_atomic == 0 and c.budget.spent_atomic == 0
+
+
+def test_real_402_with_bazaar_extension_is_accepted(check_402_b64):
+    import base64, json as _json
+
+    terms = _json.loads(base64.b64decode(check_402_b64))
+    assert terms["accepts"][0]["extra"] and set(terms.get("extensions") or {}) <= {"bazaar"}
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": check_402_b64})
+        c = BotsRatedClient(budget_usd=1, paying_get=lambda u: httpx.Response(200, json={"host": "blockrun.ai"}))
+        assert c.check("blockrun.ai")["host"] == "blockrun.ai"

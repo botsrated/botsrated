@@ -17,6 +17,32 @@ export const PAID_ROUTE_MAX_ATOMIC = { check: 1000n, report: 2000n, best: 10000n
 /** Free daily quota per client (IP) per UTC day. Within it BotsRated answers 200 with `charged: false` and no 402. */
 export const FREE_DAILY_QUOTA = { check: 100, report: 10, best: 0 } as const;
 export type PaidRoute = keyof typeof PAID_ROUTE_MAX_ATOMIC;
+/** Longest payment authorization window accepted for a BotsRated payment. */
+export const MAX_TIMEOUT_SECONDS = 600;
+/** EIP-3009 needs only the token's EIP-712 name/version; any other `extra` key (e.g. assetTransferMethod=permit2) is refused. */
+const ALLOWED_EXTRA = new Set(["name", "version"]);
+/** Discovery metadata only. Payment extensions (erc20ApprovalGasSponsoring, eip2612GasSponsoring, ...) are refused. */
+const IGNORED_EXTENSIONS = new Set(["bazaar"]);
+
+/** True when a PaymentRequired `extensions` value carries nothing but discovery metadata. */
+export function extensionsOk(extensions: unknown): boolean {
+  if (extensions === undefined || extensions === null) return true;
+  return typeof extensions === "object" && !Array.isArray(extensions) && Object.keys(extensions).every((k) => IGNORED_EXTENSIONS.has(k));
+}
+
+/** True when a payment option is a plain one-shot EIP-3009 payment: `extra` only name/version strings, timeout 1..600 s. */
+function eip3009Only(req: PaymentRequirementsLike): boolean {
+  const extra = req.extra ?? {};
+  const timeout = req.maxTimeoutSeconds ?? MAX_TIMEOUT_SECONDS;
+  return (
+    typeof extra === "object" &&
+    !Array.isArray(extra) &&
+    Object.entries(extra).every(([k, v]) => ALLOWED_EXTRA.has(k) && typeof v === "string") &&
+    Number.isInteger(timeout) &&
+    (timeout as number) > 0 &&
+    (timeout as number) <= MAX_TIMEOUT_SECONDS
+  );
+}
 
 /** `free_quota` block of a free-quota answer. */
 export interface FreeQuotaInfo {
@@ -40,6 +66,8 @@ export interface PaymentRequirementsLike {
   amount: string;
   asset: string;
   payTo: string;
+  maxTimeoutSeconds?: unknown;
+  extra?: Record<string, unknown> | null;
 }
 
 /** Structural subset of x402 v2 `PaymentRequired`. */
@@ -47,6 +75,7 @@ export interface PaymentRequiredLike {
   x402Version: number;
   resource?: { url?: string };
   accepts: PaymentRequirementsLike[];
+  extensions?: Record<string, unknown> | null;
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -223,6 +252,9 @@ export class BotsRatedClient {
   private acceptable(req: PaymentRequirementsLike, max: bigint): boolean {
     const payTo = this.options.paid?.expectedPayTo ?? BOTSRATED_PAY_TO;
     return (
+      !!req &&
+      typeof req === "object" &&
+      eip3009Only(req) &&
       req.scheme === "exact" &&
       req.network === BASE_MAINNET &&
       eq(req.asset, BASE_USDC) &&
@@ -264,8 +296,17 @@ export class BotsRatedClient {
     const terms = await readPaymentRequired(quote);
     const accepts = terms.accepts;
     // Fail closed: the payment client re-reads the 402 and picks an option itself, so every option must be acceptable.
-    if (!Array.isArray(accepts) || accepts.length === 0 || !accepts.every((a) => this.acceptable(a, PAID_ROUTE_MAX_ATOMIC[route]))) {
-      throw new BotsRatedError("every payment option must be exact Base USDC to BotsRated at or below the published price", "terms_rejected");
+    if (
+      terms?.x402Version !== 2 ||
+      !extensionsOk(terms.extensions) ||
+      !Array.isArray(accepts) ||
+      accepts.length === 0 ||
+      !accepts.every((a) => this.acceptable(a, PAID_ROUTE_MAX_ATOMIC[route]))
+    ) {
+      throw new BotsRatedError(
+        "every payment option must be exact EIP-3009 Base USDC to BotsRated at or below the published price, with no payment extensions",
+        "terms_rejected",
+      );
     }
     const amount = accepts.reduce((m, a) => (BigInt(a.amount) > m ? BigInt(a.amount) : m), 0n);
     this.budget.reserve(amount);
@@ -507,7 +548,17 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     client,
     decide,
     async beforePaymentCreation(ctx) {
-      const d = await decide(ctx.paymentRequired.resource?.url, ctx.selectedRequirements);
+      const url = ctx.paymentRequired.resource?.url;
+      let d = await decide(url, ctx.selectedRequirements);
+      if (d.action === "allow" && url && hostOf(url) === client.host) {
+        // A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an ERC-20
+        // approval of Permit2) and never hand any extensions to the signer.
+        if (!extensionsOk(ctx.paymentRequired.extensions)) {
+          d = { action: "block", host: d.host, reasons: [{ code: "botsrated_payment_extensions", detail: "BotsRated quotes must not carry payment extensions", effect: "block" }] };
+        } else {
+          delete ctx.paymentRequired.extensions;
+        }
+      }
       options.onDecision?.(d, ctx.selectedRequirements);
       if (d.action === "block") return { abort: true, reason: formatDecision(d) };
     },

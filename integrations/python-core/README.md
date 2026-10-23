@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed.
 
-**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.0.**
+**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.3.**
 
 ```bash
 pip install botsrated            # free preflight + guard
@@ -65,7 +65,12 @@ How paid calls work:
   `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying. If the paid call fails or raises, it stays counted
   (the payment may already have settled), so the budget is a hard ceiling.
-- When the guard is registered, it refuses any payment to botsrated.com that the client did not reserve.
+- Only a one-shot EIP-3009 payment is signed: an option whose `extra` holds anything beyond the token's
+  `name`/`version` (e.g. `assetTransferMethod: permit2`, `paymentFlow`), a `maxTimeoutSeconds` above 600, or
+  payment extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`; only the discovery-only `bazaar` key is
+  tolerated) rejects the quote with `terms_rejected` before anything is paid.
+- When the guard is registered, it refuses any payment to botsrated.com that the client did not reserve or
+  that carries payment extensions, and strips extensions before the x402 signer runs.
 
 ## Tests
 
