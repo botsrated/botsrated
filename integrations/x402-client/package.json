@@ -1,0 +1,52 @@
+{
+  "name": "@botsrated/x402-preflight",
+  "version": "0.1.0",
+  "description": "Pre-payment check for x402 clients: asks BotsRated's free preflight about a seller before your agent signs a payment. Paid BotsRated lookups are opt-in and capped by a budget you set.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "x402",
+    "botsrated",
+    "preflight",
+    "agents",
+    "payments",
+    "mcp",
+    "base",
+    "usdc"
+  ],
+  "homepage": "https://botsrated.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/botsrated/botsrated.git",
+    "directory": "integrations/x402-client"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@x402/core": "^2.28.0",
+    "@x402/evm": "^2.28.0",
+    "typescript": "^5.6.0",
+    "viem": "^2.57.10",
+    "vitest": "^3.2.0"
+  }
+}
