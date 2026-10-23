@@ -1,0 +1,67 @@
+{
+  "kind": "mcp_probe",
+  "spec": "botsrated-receipt/0.2",
+  "ts": "2026-10-23T16:24:37Z",
+  "host": "kundaly.com",
+  "url": "https://kundaly.com/mcp",
+  "transport": "streamable-http",
+  "method": "POST",
+  "server_id": "1ed3cca8e0b7b622f7c1",
+  "listed_name": "com.kundaly/vedic-astrology",
+  "status": 200,
+  "error": null,
+  "latency_ms": 822,
+  "tools_latency_ms": 280,
+  "reachable": true,
+  "tls": "ok",
+  "handshake_ok": true,
+  "auth_required": false,
+  "auth": null,
+  "protocol_version_requested": "2025-06-18",
+  "protocol_version": "2025-06-18",
+  "server_name": "Kundaly",
+  "server_version": "1.0",
+  "capabilities": [
+    "prompts",
+    "resources",
+    "tools"
+  ],
+  "tools_listed": true,
+  "tool_count": 4,
+  "tools_more_pages": false,
+  "tool_names": [
+    "festivals",
+    "find_birth_star",
+    "monthly_forecast",
+    "panchang"
+  ],
+  "tool_hashes": [
+    "9cffb170896f",
+    "4ef8c4bcf0c9",
+    "a5cc4aec9dab",
+    "67cb75f49f86"
+  ],
+  "tools_sha256": "33c6660c9a1a3a3d23a690adab14ba909287a12b61170973b7cdfa5ca81f0a61",
+  "tools_changed": null,
+  "calls": [
+    "initialize",
+    "notifications/initialized",
+    "tools/list"
+  ],
+  "redirects": 0,
+  "req_sha256": "477a8d0a1e7d59a38f024ee41bc6dd35285767d61cef7147a05734f3fd620a9e",
+  "resp_sha256": "d8581dc44f027031432bd5daa9233967aacffc437f52f9cb13d0bcb8cc1fb901",
+  "dns_public": true,
+  "prober_ua": "BotsRated-mcp-probe/0.4 (unauthenticated initialize + tools/list only; never calls tools; +https://botsrated.com/disputes)",
+  "prober": "botsrated-prober (Cloudflare cron)",
+  "probe_version": "0.4-mcp",
+  "tools_status": 200,
+  "state": "ok",
+  "id": "7850687e1f25d3d38c23",
+  "sig": {
+    "alg": "ed25519",
+    "key_id": "botsrated-prober-1",
+    "signed": "canonical JSON of this receipt without the sig field (keys sorted, no whitespace)",
+    "sig_b64": "tzG83sAoppX+jS68ge+WeysNayOtnDxVAKPatdmunjV0WzHa10aJ1MLcSbYksfnN4AXR2KoFBtJpOj6rB6o4Cg=="
+  }
+}

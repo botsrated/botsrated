@@ -1,11 +1,11 @@
-# BotsRated Receipt & Rating Format v0.1 (Draft)
+# BotsRated Receipt & Rating Format v0.2 (Draft)
 
 | | |
 |---|---|
-| Status | Draft for comment. Not stable: fields may still change before 1.0 (see §11). |
+| Status | Draft for comment (v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4). Not stable: fields may still change before 1.0 (see §11). |
 | Date | 2026-10-23 |
 | Editors | BotsRated (https://botsrated.com) |
-| Reference implementation | https://botsrated.com (beta). Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
+| Reference implementation | https://botsrated.com (beta). Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
 | Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs) |
 | License | Text CC BY 4.0. Schema, examples and code MIT (§12) |
 
@@ -21,7 +21,7 @@ Buyers of x402 resources (agents, wallets, directories) need facts about a selle
 
 The format records observations, not opinions. It does not label sellers good or bad. Any producer (directory, agent, seller, auditor) can emit, sign and publish receipts in this format; BotsRated is one producer.
 
-In scope: HTTP x402 resources (x402 v1 and v2), EVM networks, with USDC on Base (`eip155:8453`) as the reference case. Out of scope: payment execution (see the x402 core spec), identity registries (see ERC-8004), and how a buyer acts on the facts.
+In scope: HTTP x402 resources (x402 v1 and v2), EVM networks, with USDC on Base (`eip155:8453`) as the reference case. From v0.2 also **remote MCP servers** (Streamable HTTP and the legacy HTTP+SSE transport): an unauthenticated handshake is recorded as an `mcp_probe` receipt (§3.4). Out of scope: payment execution (see the x402 core spec), identity registries (see ERC-8004), and how a buyer acts on the facts.
 
 ### 1.1 Relation to existing work
 - **x402 core and extensions** ([coinbase/x402 `specs/`](https://github.com/coinbase/x402/tree/main/specs)). Receipts reuse x402 terms as defined there (`PaymentRequired`, `accepts`, `scheme`, `network` in CAIP-2, `amount`, `asset`, `payTo`) and do not redefine them.
@@ -44,7 +44,7 @@ A receipt is a JSON object. `kind` selects the type. Unknown fields MUST be pres
 ### 3.1 Common fields
 | Field | Type | Req. | Meaning |
 |---|---|---|---|
-| `kind` | string | yes | `unpaid_probe` or `paid_test_buy` |
+| `kind` | string | yes | `unpaid_probe`, `paid_test_buy` or (v0.2) `mcp_probe` |
 | `id` | string | yes | 20 lowercase hex characters, derived as in §4.2 |
 | `ts` | string | yes | UTC start time, RFC 3339 with `Z` (seconds; paid receipts may carry milliseconds) |
 | `host` | string | yes | Seller hostname |
@@ -94,6 +94,29 @@ A real x402 payment of the live quoted price, followed by a check of what was de
 
 A producer MUST NOT publish a paid receipt for a payment it cannot show on-chain. The reference buyer writes a receipt only after it has verified a transaction with status 1 that contains the USDC `Transfer(payer → payTo, amount)`. Real example: [`examples/paid-test-buy.json`](examples/paid-test-buy.json) (round 1, made before paid receipts were signed, so it has no `sig`; BotsRated paid receipts from 2026-10-23T15:00:00Z carry a `botsrated-prod-1` `sig`, §4.3).
 
+### 3.4 MCP probe (`kind: "mcp_probe"`, new in v0.2)
+One **unauthenticated** MCP handshake with a remote MCP server, as listed in a registry (reference: the Official MCP Registry, latest version of each entry). The producer sends exactly, in order: `initialize` (reference: `protocolVersion` `2025-06-18`, empty client capabilities), `notifications/initialized`, `tools/list` (first page only). With the legacy HTTP+SSE transport it first opens the event stream (`sse:connect`), takes the `endpoint` event (which MUST be on the same host) and posts the same three messages there.
+
+A producer MUST NOT send any other method (in particular never `tools/call`, `resources/read` or `prompts/get`), MUST NOT send credentials (no `Authorization`, cookies or API-key headers, even if the listing declares them), and MUST only contact public `https` URLs on DNS names whose A/AAAA answers are public addresses, with at most 3 redirects, each re-checked. The reference prober uses a 12 s deadline, reads at most 64 KiB for `initialize` and 1 MiB for `tools/list`, and probes each endpoint about once a day.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `url`, `transport`, `method` | string | Endpoint as listed; `streamable-http` or `sse`; `POST` (initialize) or `GET` (SSE stream) |
+| `server_id`, `listed_name` | string | Producer's endpoint id (first 20 hex of sha256 of the normalized URL); registry name (seller-supplied) |
+| `status`, `error`, `latency_ms` | int\|null, string\|null, int\|null | HTTP status and round trip of `initialize` (SSE: of the stream); neutral error class (`Timeout`, `DNSError`, `TLSError`, `BlockedUrl`, `BlockedPrivateIp`, `NoInitializeResult`, `InitializeError`, `NoToolsListResult`, `ToolsListOverCap`, `NoEventStream`, …) |
+| `reachable`, `tls` | bool, `ok`\|`failed`\|null | Any HTTP answer; certificate-verified HTTPS answer |
+| `handshake_ok`, `protocol_version_requested`, `protocol_version`, `server_name`, `server_version`, `capabilities` | | `initialize` returned a JSON-RPC result with a `protocolVersion`; what was asked and answered |
+| `auth_required`, `auth` | bool, object\|null | 401/403 on initialize, the stream or tools/list; `{status, at, scheme, resource_metadata, scope}` from `WWW-Authenticate` (OAuth protected-resource metadata URL if given). Nothing further is fetched. |
+| `tools_listed`, `tool_count`, `tools_more_pages`, `tools_status`, `tools_latency_ms` | | `tools/list` answered with a `tools` array |
+| `tool_names`, `tool_hashes` | string[] | Sorted names (first 200) and, aligned, first 12 hex of `sha256(canon({name, description, inputSchema, annotations}))` per tool |
+| `tools_sha256`, `tools_changed` | hex\|null, bool\|null | sha256 of `canon` of all tools (sorted by name, same 4 fields); whether it differs from the producer's previous probe of the endpoint |
+| `calls`, `redirects`, `req_sha256`, `resp_sha256`, `dns_public` | | What was sent; redirects followed; hashes of the initialize request body and response body; public-address check result (null = cached) |
+| `state` | string | Derived and factual: `ok` (initialize and tools/list answered), `auth_required`, `handshake_failed` (HTTP answer without a valid MCP result), `unreachable` (no HTTP answer), `blocked` (URL guard) |
+
+Real example: [`examples/mcp-probe.signed.json`](examples/mcp-probe.signed.json) (cron prober, 2026-10-23, verifies with `verify.mjs`). The live API serves these at `/receipt/<id>?mcp=<shard>&day=<YYYY-MM-DD>` and may add `receipt_url`/`signature` hints that are not part of the signed body.
+
+States are observations from one vantage point, not judgements: `auth_required` is the expected answer of many production servers, and an endpoint can be reachable for authenticated clients while `unreachable` from the producer.
+
 ## 4. Canonical serialization, ids and signing
 
 ### 4.1 Canonical JSON
@@ -102,7 +125,7 @@ A producer MUST NOT publish a paid receipt for a payment it cannot show on-chain
 ### 4.2 Receipt id
 | Receipt | Rule |
 |---|---|
-| `unpaid_probe` with `probe_version` | first 20 hex of `sha256(canon(receipt without id and sig))` |
+| `unpaid_probe` with `probe_version`, and `mcp_probe` (v0.2) | first 20 hex of `sha256(canon(receipt without id and sig))` |
 | `paid_test_buy` | first 20 hex of `sha256("paid|" + tx_hash)` |
 | legacy `unpaid_probe` (no `probe_version`; made before 2026-10-23 12:45 UTC by the box prober) | first 20 hex of `sha256(python json.dumps(receipt without id, sort_keys=True))`, with default separators `", "`/`": "` and ASCII escaping |
 
@@ -114,7 +137,7 @@ New producers MUST use the first rule for every kind they create, and MAY add a 
 - `sig = {alg: "ed25519", key_id, sig_b64, signed}`. `sig_b64` is the 64-byte signature in standard padded base64. `signed` is human-readable text only.
 - Key set: the producer publishes `{keys: [{key_id, alg, public_key_b64, signs, status?, valid_from?, valid_until?, sha256_fingerprint?}]}` over HTTPS, with each `public_key_b64` the raw 32-byte key and `sha256_fingerprint` the sha256 of those 32 bytes. BotsRated's is `https://botsrated.com/.well-known/botsrated-key` ([example](examples/keys.json)):
   - `botsrated-prod-1` (active from 2026-10-23T15:00:00Z, valid until 2027-10-23T00:00:00Z) signs dataset snapshots and paid test-buy receipts. Fingerprint `ac58fa77b9f6a26805efb65d331d6d77da3dfbdbbe981cc7510692852a50e74a`.
-  - `botsrated-prober-1` (active from 2026-10-23T12:00:00Z) signs cron probe receipts, daily aggregates and archive manifests.
+  - `botsrated-prober-1` (active from 2026-10-23T12:00:00Z) signs cron probe receipts (`unpaid_probe` and, from v0.2, `mcp_probe`), daily aggregates and archive manifests.
   - `botsrated-staging-1` is **retired** since 2026-10-23T15:00:00Z. It signs nothing new, but stays listed so snapshots generated before that time still verify.
 - Validity window: a signature by a key is valid only for an object whose own timestamp (`ts` for receipts, `generated_at` for snapshots, aggregates and manifests) lies in `[valid_from, valid_until)`. A missing bound is open.
 - Snapshot signature: a producer MAY also sign a dataset snapshot. The snapshot is the exact bytes of `dataset.json` (itself `canon(dataset)`), and the signature is published as `dataset.sig.json` `{key_id, alg, public_key_b64, sha256, signature_b64, generated_at}` ([example](examples/dataset.sig.json)). A receipt without `sig` is valid only if a signed snapshot lists its `id` in that host's `receipt_ids` or `paid_receipt_ids`.
@@ -157,12 +180,15 @@ Rates are rounded to 3 decimals and are `null` when there is no data. Methodolog
 
 Real example: [`examples/dataset-host-entry.json`](examples/dataset-host-entry.json).
 
+**MCP server facts (v0.2).** Per endpoint, from its `mcp_probe` receipts only: `probes`, `ok_count`, `reachable_count`, `auth_required_count`, `last_state`, `protocol_version`, `server_info`, `tls`, `auth`, `tool_count`, `tools_sha256`, `tools_changed_at`, `tools_changes_seen`, `latency_p50_ms`/`latency_p90_ms` (same nearest-rank rule, over the last 20 probes that got an MCP answer: `ok` or `auth_required`), and `recent_window = {probes, ok, ok_rate, wilson_lower_bound_95, states}` over the last 20 probes. No composite score and no paid outcomes are defined for MCP servers. Selection (e.g. `/v1/best` `mcp_results`) MUST only consider endpoints whose last `ok` probe is within 48 h; matching on tool names and descriptions uses the producer's copy of the last `tools/list` answer (seller-supplied text).
+
 ## 6. Freshness and staleness
 - Every host fact set carries `freshness = {last_probe_at, age_seconds, stale, stale_after_seconds, probe_schedule, served_at}`.
 - `stale` is `true` when there is no probe or `age_seconds > 86400`. Consumers SHOULD NOT treat stale facts as current, and SHOULD re-probe or re-query instead.
 - Responses also state `served_at`, `data.last_probe_run_at` and `data.signed_snapshot_generated_at`, so a consumer can tell the live store from the snapshot.
 - Selection features (such as BotsRated `/v1/best`) MUST only consider hosts with a valid 402 within the last 48 h.
 - Reference schedule: every host is probed about every 5.4 h (161 shards, one every 2 min). A host with no valid 402 in 7 days, over at least 6 probes, is marked `probe: inactive` and probed about daily. A host missing from every source list for 3 days in a row is marked `listing: delisted`. That is a fact about the lists, not about the seller.
+- Reference MCP schedule (v0.2): each remote MCP endpoint is probed about once a day (one of 480 daily shards every 3 minutes). An endpoint with no MCP answer (`ok` or `auth_required`) for 7 days, over at least 3 probes, is probed about every 4 days. `mcp_probe` receipts stay in the live store for 30 days (no daily archive yet).
 - Retention: raw signed receipts stay live for 7 days. After that, each UTC day is archived byte for byte (gzip NDJSON, with a sha256 per part and a signed manifest), and a signed `daily_aggregate` is kept per host. Receipt URLs keep resolving from the archive. Receipts are never edited (§9).
 
 Real example: [`examples/preflight-response.json`](examples/preflight-response.json).
@@ -253,7 +279,7 @@ The producer MUST NOT post a composite score that §5 does not define.
 - Spec versions are `MAJOR.MINOR`. 0.x drafts may break. From 1.0, adding optional fields is a MINOR change. Renaming or removing a field, changing its meaning, or changing §4 is a MAJOR change.
 - Receipts are immutable. Verifiers MUST verify a receipt under the rules in force when it was issued, using `probe_version` and the legacy rule in §4.2. Producers MAY set `spec`.
 - Producer implementation (`probe_version`) and methodology (`methodology_version` in snapshots) are versioned separately from this spec.
-- Changes: 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
+- Changes: 0.2 (2026-10-23, draft) adds the `mcp_probe` receipt (§3.4), its id rule (§4.2), the prober key covering it (§4.3) and MCP server facts (§5). Nothing in 0.1 changed. 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
 
 ## 12. License
 This specification text is licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). `receipt.schema.json`, `verify.mjs` and the files in `examples/` are licensed under MIT, like the rest of this repository. The examples are real BotsRated receipts and public on-chain data from 2026-10-23.

@@ -14,6 +14,7 @@ const sha256 = (b) => crypto.createHash("sha256").update(b).digest("hex");
 // Canonical JSON (SPEC section 4.1): keys sorted, no whitespace, JSON.stringify scalars. Equal to RFC 8785 for integer/string/bool/null data.
 const canon = (v) => v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]`
   : `{${Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+// mcp_probe (spec v0.2) carries probe_version, so it uses the canonical-JSON id rule and the same sig check.
 // Legacy ids (box prober, no probe_version): Python json.dumps(sort_keys=True) with default separators and ASCII escaping.
 const ascii = (s) => JSON.stringify(s).replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 const pyDumps = (v) => v === null ? "null" : typeof v === "string" ? ascii(v) : typeof v !== "object" ? JSON.stringify(v)
