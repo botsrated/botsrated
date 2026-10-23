@@ -4,7 +4,11 @@ These are small client packages that check an x402 seller with BotsRated before 
 preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 100 free per day) is opt-in and stays within a budget
 the user sets.
 
-**Status: none of these packages is published to npm or PyPI yet.** You can install them from source.
+**Status: the Python packages are published on PyPI (0.1.0):
+[`botsrated`](https://pypi.org/project/botsrated/),
+[`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/),
+[`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/).
+The npm packages are not published yet; install them from source.**
 
 | Directory | Package (planned name) | For |
 |---|---|---|

@@ -3,9 +3,13 @@
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com) (beta). Use it as a pre-payment check
 before an agent pays an x402 seller.
 
-**Status: prepared, not yet published to PyPI.** It depends on the `botsrated` package (`../python-core`,
-also unpublished). LlamaIndex no longer accepts new integration packages in its monorepo, so this
-package is meant to be published on its own.
+**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.0.**
+It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package. LlamaIndex no longer accepts new
+integration packages in its monorepo, so this package is published on its own.
+
+```bash
+pip install llama-index-tools-botsrated
+```
 
 ```python
 from llama_index.tools.botsrated import BotsRatedToolSpec

@@ -3,8 +3,13 @@
 LangChain tools for [BotsRated](https://botsrated.com) (beta). Use them as a pre-payment check before
 an agent pays an x402 seller.
 
-**Status: prepared, not yet published to PyPI.** It depends on the `botsrated` package (also unpublished),
-which lives in `../python-core`.
+**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.0.**
+It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package (source:
+[`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
+
+```bash
+pip install langchain-botsrated
+```
 
 | Tool | Cost | Notes |
 |---|---|---|
@@ -22,6 +27,6 @@ tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", paying_get=session.ge
 ```
 
 To guard every payment that an x402 client makes (not just when the model calls a tool), register
-`botsrated.PrePaymentGuard().x402_hook` with `x402Client.on_before_payment_creation`. See `../python-core`.
+`botsrated.PrePaymentGuard().x402_hook` with `x402Client.on_before_payment_creation`. See [`botsrated`](https://pypi.org/project/botsrated/).
 
 Tests: `pytest tests/unit_tests` runs the tool tests and LangChain's `ToolsUnitTests`.
