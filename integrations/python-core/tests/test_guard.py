@@ -304,3 +304,57 @@ def test_real_402_with_bazaar_extension_is_accepted(check_402_b64):
         m.get("/v1/check").respond(402, json={}, headers={"payment-required": check_402_b64})
         c = BotsRatedClient(budget_usd=1, paying_get=lambda u: httpx.Response(200, json={"host": "blockrun.ai"}))
         assert c.check("blockrun.ai")["host"] == "blockrun.ai"
+
+
+def test_paid_config_x402_client_or_paying_get():
+    with pytest.raises(BotsRatedError):
+        BotsRatedClient(budget_usd=1, paying_get=lambda u: None, x402_client=object())
+    with pytest.raises(BotsRatedError):
+        BotsRatedClient(x402_client=object())
+    assert BotsRatedClient(budget_usd=1, x402_client=object()).paid_enabled
+
+
+class _RecordingX402:
+    def __init__(self):
+        self.seen = []
+
+    def create_payment_payload(self, pr):
+        self.seen.append(pr)
+        raise AssertionError("must not sign")
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda t: (t["accepts"][0]["extra"].update(assetTransferMethod="permit2"), t.update(extensions={"erc20ApprovalGasSponsoring": {}})),
+        lambda t: t["accepts"][0]["extra"].update(assetTransferMethod="permit2"),
+        lambda t: t.update(extensions={**t.get("extensions", {}), "erc20ApprovalGasSponsoring": {}}),
+        lambda t: t["accepts"][0].update(maxTimeoutSeconds=86400),
+        lambda t: t.update(x402Version=1),
+    ],
+)
+def test_x402_client_mode_rejects_permit2_before_signing(check_402_b64, mutate):
+    import base64, json as _json
+
+    terms = _json.loads(base64.b64decode(check_402_b64))
+    mutate(terms)
+    signer = _RecordingX402()
+    with respx.mock(base_url="https://botsrated.com") as m:
+        route = m.get("/v1/check").respond(402, json={}, headers={"payment-required": _hdr(terms)})
+        c = BotsRatedClient(budget_usd=1, x402_client=signer)
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+    assert e.value.code == "terms_rejected"
+    assert signer.seen == [] and route.call_count == 1
+    assert c.budget.pending_atomic == 0 and c.budget.spent_atomic == 0
+
+
+def test_x402_client_mode_sign_failure_releases(check_402_b64):
+    with respx.mock(base_url="https://botsrated.com") as m:
+        route = m.get("/v1/check").respond(402, json={}, headers={"payment-required": check_402_b64})
+        c = BotsRatedClient(budget_usd="0.001", x402_client=_RecordingX402())
+        pytest.importorskip("x402")
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+    assert e.value.code == "payment_not_created"
+    assert route.call_count == 1 and c.budget.remaining_atomic == 1000

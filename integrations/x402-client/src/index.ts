@@ -4,7 +4,7 @@
  * Ask BotsRated (https://botsrated.com) about an x402 seller before paying it.
  * The default path only uses the free `GET /v1/preflight` route. Paid BotsRated
  * routes (`/v1/check` $0.001, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 100 checks + 10 reports per day free) are
- * off unless you pass `paid` with a budget and a payment-capable fetch.
+ * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
 export const BOTSRATED_BASE_URL = "https://botsrated.com";
@@ -80,11 +80,25 @@ export interface PaymentRequiredLike {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** Structural subset of `x402Client` from `@x402/core/client`: signs one `PaymentRequired`. */
+export interface X402ClientLike {
+  createPaymentPayload(paymentRequired: any): Promise<unknown>;
+}
+
 export interface PaidOptions {
   /** Total USD this client may spend on BotsRated paid routes. Required, > 0. */
   budgetUsd: number;
-  /** A fetch that pays x402 challenges, e.g. `wrapFetchWithPayment(fetch, x402Client)` from `@x402/fetch`. */
-  fetchWithPayment: FetchLike;
+  /**
+   * Recommended. An `x402Client` (from `@x402/core/client` or `@x402/fetch`) with your signer registered.
+   * The client signs a copy of the validated 402 rebuilt from allowlisted fields only and sends
+   * `PAYMENT-SIGNATURE` itself, so the signer never sees the raw quote. Pass this or `fetchWithPayment`.
+   */
+  x402Client?: X402ClientLike;
+  /**
+   * A fetch that pays x402 challenges, e.g. `wrapFetchWithPayment(fetch, x402Client)` from `@x402/fetch`.
+   * It re-reads the 402 itself, so register `createPrePaymentGuard({ client })` on the same x402 client.
+   */
+  fetchWithPayment?: FetchLike;
   /** Defaults to {@link BOTSRATED_PAY_TO}. */
   expectedPayTo?: string;
 }
@@ -168,6 +182,14 @@ export class Budget {
   }
 }
 
+/** Base64 of the JSON payment payload, as the x402 v2 `PAYMENT-SIGNATURE` header expects. */
+function encodeHeader(payload: unknown): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
 /** Decodes the x402 v2 `PAYMENT-REQUIRED` header (base64 JSON), falling back to the JSON body. */
 export async function readPaymentRequired(res: Response): Promise<PaymentRequiredLike> {
   const header = res.headers.get("payment-required");
@@ -192,7 +214,13 @@ export class BotsRatedClient {
     this.fetchFn = options.fetch ?? ((input, init) => fetch(input, init));
     this.timeoutMs = options.timeoutMs ?? 4000;
     this.cacheTtlMs = options.cacheTtlMs ?? 300_000;
-    if (options.paid) this.budget = new Budget(usdToAtomic(options.paid.budgetUsd));
+    if (options.paid) {
+      const { x402Client, fetchWithPayment } = options.paid;
+      if (!x402Client === !fetchWithPayment) {
+        throw new BotsRatedError("paid routes need exactly one of `x402Client` or `fetchWithPayment`", "invalid_config");
+      }
+      this.budget = new Budget(usdToAtomic(options.paid.budgetUsd));
+    }
   }
 
   get paidEnabled(): boolean {
@@ -250,8 +278,13 @@ export class BotsRatedClient {
   }
 
   private acceptable(req: PaymentRequirementsLike, max: bigint): boolean {
+    return this.minimalOption(req, max) !== undefined;
+  }
+
+  /** Allowlisted copy of one payment option, or undefined unless it is exact EIP-3009 Base USDC to BotsRated. */
+  private minimalOption(req: PaymentRequirementsLike, max: bigint): PaymentRequirementsLike | undefined {
     const payTo = this.options.paid?.expectedPayTo ?? BOTSRATED_PAY_TO;
-    return (
+    const ok =
       !!req &&
       typeof req === "object" &&
       eip3009Only(req) &&
@@ -259,9 +292,41 @@ export class BotsRatedClient {
       req.network === BASE_MAINNET &&
       eq(req.asset, BASE_USDC) &&
       eq(req.payTo, payTo) &&
+      typeof req.amount === "string" &&
       /^\d+$/.test(req.amount) &&
-      BigInt(req.amount) <= max
-    );
+      BigInt(req.amount) <= max;
+    if (!ok) return undefined;
+    const extra: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.extra ?? {})) extra[k] = v as string;
+    return {
+      scheme: "exact",
+      network: BASE_MAINNET,
+      asset: req.asset,
+      amount: req.amount,
+      payTo: req.payTo,
+      maxTimeoutSeconds: (req.maxTimeoutSeconds ?? MAX_TIMEOUT_SECONDS) as number,
+      extra,
+    };
+  }
+
+  /**
+   * Rebuilds a 402 from allowlisted fields only, or returns undefined if any part is not allowed: x402 v2,
+   * every option acceptable, `extensions` at most the discovery-only `bazaar` key (never copied).
+   */
+  signableTerms(terms: PaymentRequiredLike, max: bigint = PAID_ROUTE_MAX_ATOMIC.best): PaymentRequiredLike | undefined {
+    if (!terms || typeof terms !== "object" || terms.x402Version !== 2 || !extensionsOk(terms.extensions)) return undefined;
+    const accepts = terms.accepts;
+    if (!Array.isArray(accepts) || accepts.length === 0) return undefined;
+    const clean = accepts.map((a) => this.minimalOption(a, max));
+    if (clean.some((c) => c === undefined)) return undefined;
+    const out: PaymentRequiredLike = { x402Version: 2, accepts: clean as PaymentRequirementsLike[] };
+    const r = terms.resource as Record<string, unknown> | undefined;
+    if (r && typeof r === "object" && typeof r.url === "string") {
+      const resource: Record<string, string> = {};
+      for (const k of ["url", "description", "mimeType"]) if (typeof r[k] === "string") resource[k] = r[k] as string;
+      out.resource = resource;
+    }
+    return out;
   }
 
   /** Last `free_quota` block seen (from a free-quota answer), or undefined. */
@@ -283,8 +348,8 @@ export class BotsRatedClient {
     if (!paid || !this.budget) {
       throw new BotsRatedError(
         quote.status === 402
-          ? "free daily quota used up and paid BotsRated routes are disabled; pass `paid: { budgetUsd, fetchWithPayment }`"
-          : "paid BotsRated routes are disabled; pass `paid: { budgetUsd, fetchWithPayment }`",
+          ? "free daily quota used up and paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`"
+          : "paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`",
         "paid_disabled",
         quote.status,
       );
@@ -294,25 +359,35 @@ export class BotsRatedClient {
       throw new BotsRatedError(body?.error?.message ?? `expected 402, got ${quote.status}`, body?.error?.code ?? "unexpected_status", quote.status);
     }
     const terms = await readPaymentRequired(quote);
-    const accepts = terms.accepts;
-    // Fail closed: the payment client re-reads the 402 and picks an option itself, so every option must be acceptable.
-    if (
-      terms?.x402Version !== 2 ||
-      !extensionsOk(terms.extensions) ||
-      !Array.isArray(accepts) ||
-      accepts.length === 0 ||
-      !accepts.every((a) => this.acceptable(a, PAID_ROUTE_MAX_ATOMIC[route]))
-    ) {
+    // Fail closed: every option must be acceptable (a fetchWithPayment re-reads the 402 and picks one itself).
+    const signable = this.signableTerms(terms, PAID_ROUTE_MAX_ATOMIC[route]);
+    if (!signable) {
       throw new BotsRatedError(
         "every payment option must be exact EIP-3009 Base USDC to BotsRated at or below the published price, with no payment extensions",
         "terms_rejected",
       );
     }
-    const amount = accepts.reduce((m, a) => (BigInt(a.amount) > m ? BigInt(a.amount) : m), 0n);
+    const amount = signable.accepts.reduce((m, a) => (BigInt(a.amount) > m ? BigInt(a.amount) : m), 0n);
     this.budget.reserve(amount);
+    let signature: string | undefined;
+    if (paid.x402Client) {
+      try {
+        signature = encodeHeader(await paid.x402Client.createPaymentPayload(signable));
+      } catch (e) {
+        // Nothing was signed, so nothing can settle.
+        this.budget.release(amount);
+        throw new BotsRatedError(`payment not created: ${(e as Error).message}`, "payment_not_created");
+      }
+    }
     let res: Response;
     try {
-      res = await paid.fetchWithPayment(this.baseUrl + path, { headers: { accept: "application/json" }, redirect: "manual" });
+      res =
+        signature !== undefined
+          ? await this.fetchFn(this.baseUrl + path, {
+              headers: { accept: "application/json", "PAYMENT-SIGNATURE": signature },
+              redirect: "manual",
+            })
+          : await paid.fetchWithPayment!(this.baseUrl + path, { headers: { accept: "application/json" }, redirect: "manual" });
     } catch (e) {
       // A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
       this.budget.commit(amount);

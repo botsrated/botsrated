@@ -1,5 +1,5 @@
 // Prepared entry for vercel/ai content/tools-registry/registry.ts (PR title: "feat(tools-registry): add botsrated").
-// Submitted as a PR to vercel/ai (see listings). npm: @botsrated/ai-sdk; docs: https://botsrated.com/docs/ai-sdk
+// Submitted as vercel/ai#23894 (2026-10-23, from amcc8q; the PR uses isStepCount per registry convention). npm: @botsrated/ai-sdk; docs: https://botsrated.com/docs/ai-sdk
   {
     slug: 'botsrated',
     name: 'BotsRated',

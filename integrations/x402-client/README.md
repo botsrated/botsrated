@@ -62,13 +62,14 @@ receives every decision, including warnings and receipt URLs.
 
 ## Opt-in paid lookups, with a budget
 
-Paid routes are off by default. To turn them on, pass a budget and a fetch that can pay:
+Paid routes are off by default. To turn them on, pass a budget and your `x402Client` (with your signer
+registered):
 
 ```ts
 import { BotsRatedClient, createPrePaymentGuard } from "@botsrated/x402-preflight";
 
 const botsrated = new BotsRatedClient({
-  paid: { budgetUsd: 0.05, fetchWithPayment: wrapFetchWithPayment(fetch, client) },
+  paid: { budgetUsd: 0.05, x402Client: client }, // signs only the validated, rebuilt quote
 });
 const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 0.25 });
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
@@ -78,6 +79,13 @@ await botsrated.report("seller.example");           // $0.002 (first 10/day free
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 
+- With `x402Client` (since 0.1.2, recommended), the client validates the 402, rebuilds it from the
+  allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSeconds, EIP-3009 `name`/`version`,
+  resource url/description/mimeType; never `extensions`), signs that copy with `createPaymentPayload` and sends
+  `PAYMENT-SIGNATURE` itself (no redirects). The signer never sees the raw 402. If signing fails, nothing can
+  settle and the reservation is released (`payment_not_created`). The older
+  `fetchWithPayment: wrapFetchWithPayment(fetch, client)` still works, but it re-reads the 402 itself, so
+  register the guard on the same `x402Client` so that re-served 402 is checked again before signing.
 - Free daily quota: BotsRated serves the first 100 `/v1/check` and 10 `/v1/report` calls per client
   per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work

@@ -43,11 +43,9 @@ Change these with `GuardPolicy(...)`. Preflight answers are cached for 5 minutes
 ## Opt-in paid lookups with a budget
 
 ```python
-from x402.http.clients import x402_requests
 from botsrated import BotsRatedClient, PrePaymentGuard
 
-session = x402_requests(client)                      # pays x402 challenges
-botsrated = BotsRatedClient(budget_usd="0.05", paying_get=session.get)
+botsrated = BotsRatedClient(budget_usd="0.05", x402_client=client)   # signs only the validated quote
 guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
@@ -55,6 +53,13 @@ botsrated.check("seller.example")     # $0.001 (first 100/day free)
 botsrated.report("seller.example")    # $0.002 (first 10/day free)
 botsrated.best("web search")          # $0.01
 ```
+
+`x402_client=` (since 0.1.4) is the recommended mode: the client validates the 402, rebuilds it from
+the allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSeconds, EIP-3009
+`name`/`version`, resource url/description/mimeType; never `extensions`), signs that copy with
+`client.create_payment_payload`, and sends `PAYMENT-SIGNATURE` itself. The signer never sees the raw
+402. The older `paying_get=x402_requests(client).get` still works, but that session re-reads the 402
+itself, so register the guard on the same x402 client so the re-served 402 is checked again before signing.
 
 How paid calls work:
 - Free daily quota: the first 100 `/v1/check` and 10 `/v1/report` calls per client per UTC day are
@@ -69,6 +74,7 @@ How paid calls work:
   `name`/`version` (e.g. `assetTransferMethod: permit2`, `paymentFlow`), a `maxTimeoutSeconds` above 600, or
   payment extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`; only the discovery-only `bazaar` key is
   tolerated) rejects the quote with `terms_rejected` before anything is paid.
+- With `x402_client=`, if signing fails nothing can settle and the reservation is released (`payment_not_created`).
 - When the guard is registered, it refuses any payment to botsrated.com that the client did not reserve or
   that carries payment extensions, and strips extensions before the x402 signer runs.
 

@@ -4,13 +4,17 @@ These are small client packages that check an x402 seller with BotsRated before 
 preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 100 free per day) is opt-in and stays within a budget
 the user sets.
 
-**Status: the Python packages are published on PyPI (0.1.0):
-[`botsrated`](https://pypi.org/project/botsrated/) (0.1.2),
-[`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/),
-[`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/).
-The npm packages are published on npm (0.1.0):
-[`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight),
-[`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk).**
+**Status: published.** PyPI: [`botsrated`](https://pypi.org/project/botsrated/) (0.1.4),
+[`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) (0.1.1),
+[`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) (0.1.1),
+[`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) (0.1.0).
+npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.2),
+[`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).
+
+Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
+(`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2
+(`extra.assetTransferMethod`), carrying payment extensions (e.g. `erc20ApprovalGasSponsoring`) or a
+`maxTimeoutSeconds` above 600 is refused before anything is signed.
 
 | Directory | Package | For |
 |---|---|---|
@@ -21,7 +25,7 @@ The npm packages are published on npm (0.1.0):
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
-| `microsoft-agent-framework/` | `agent-framework-botsrated` (install from this repo) | Microsoft Agent Framework (Python): `FunctionMiddleware` that checks a payment tool's payTo before it runs, a check tool, and the hosted MCP server |
+| `microsoft-agent-framework/` | `agent-framework-botsrated` (PyPI) | Microsoft Agent Framework (Python): `FunctionMiddleware` that checks a payment tool's payTo before it runs, a check tool, and the hosted MCP server |
 | `fixtures/` | | real BotsRated responses used by the tests |
 
 Upstream proposals:

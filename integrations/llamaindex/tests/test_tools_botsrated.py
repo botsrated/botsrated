@@ -56,3 +56,21 @@ def test_paid_check_free_quota_answer():
         spec = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.001", paying_get=lambda u: pytest.fail("must not pay")))
         out = spec.paid_check("www.ax1.vc")
         assert out["charged"] is False and out["remaining_usd"] == 0.001
+
+
+class _NoSign:
+    def create_payment_payload(self, pr):
+        pytest.fail("must not sign")
+
+
+def test_paid_check_refuses_permit2_quote_before_signing():
+    import base64
+
+    terms = json.loads(base64.b64decode(B64))
+    terms["accepts"][0]["extra"]["assetTransferMethod"] = "permit2"
+    terms["extensions"] = {"erc20ApprovalGasSponsoring": {"info": {}, "schema": {}}}
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": base64.b64encode(json.dumps(terms).encode()).decode()})
+        client = BotsRatedClient(budget_usd="0.001", x402_client=_NoSign())
+        out = BotsRatedToolSpec(client).paid_check("blockrun.ai")
+    assert out["error"] == "terms_rejected" and client.budget.remaining_atomic == 1000

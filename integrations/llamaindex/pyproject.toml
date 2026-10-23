@@ -1,11 +1,11 @@
 [project]
 name = "llama-index-tools-botsrated"
-version = "0.1.0"
+version = "0.1.1"
 description = "LlamaIndex tool spec for BotsRated: free pre-payment preflight of x402 sellers, opt-in budgeted paid checks."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["llama-index-core>=0.12", "botsrated>=0.1.0"]
+dependencies = ["llama-index-core>=0.12", "botsrated>=0.1.4"]
 
 [project.urls]
 Homepage = "https://botsrated.com"

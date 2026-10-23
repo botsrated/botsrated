@@ -62,6 +62,12 @@ PayingGet = Callable[[str], _ResponseLike]
 """A GET that pays x402 challenges, e.g. ``x402_requests(x402_client).get`` or a sync httpx x402 client's ``get``."""
 
 
+class X402ClientLike(Protocol):
+    """Structural subset of ``x402.x402ClientSync``: signs one ``PaymentRequired``."""
+
+    def create_payment_payload(self, payment_required: Any) -> Any: ...
+
+
 def usd_to_atomic(usd: float | str | Decimal) -> int:
     d = Decimal(str(usd))
     if d < 0:
@@ -139,7 +145,11 @@ class BotsRatedClient:
         timeout: Seconds per unpaid request.
         cache_ttl: Preflight cache per host, seconds. 0 disables.
         budget_usd: Total USD allowed for paid routes. Paid routes stay disabled unless this and ``paying_get`` are set.
-        paying_get: A GET callable that pays x402 challenges.
+        x402_client: An ``x402ClientSync`` (recommended). The client signs a copy of the validated 402
+            rebuilt from allowlisted fields only and sends ``PAYMENT-SIGNATURE`` itself; the signer never sees
+            the raw quote and nothing re-reads the 402. Pass this or ``paying_get``, not both.
+        paying_get: A GET callable that pays x402 challenges. It re-reads the 402 itself, so register
+            ``PrePaymentGuard(client).x402_hook`` on the same x402 client to re-check that 402 before signing.
         expected_pay_to: BotsRated payTo to accept. Defaults to ``BOTSRATED_PAY_TO``.
     """
 
@@ -153,6 +163,7 @@ class BotsRatedClient:
         budget_usd: float | str | None = None,
         paying_get: PayingGet | None = None,
         expected_pay_to: str = BOTSRATED_PAY_TO,
+        x402_client: X402ClientLike | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.host = host_of(self.base_url)
@@ -160,11 +171,14 @@ class BotsRatedClient:
         self._cache_ttl = cache_ttl
         self._cache: dict[str, tuple[float, PreflightResult]] = {}
         self._paying_get = paying_get
+        self._x402_client = x402_client
         self._expected_pay_to = expected_pay_to
         self.budget: Budget | None = None
         self.last_free_quota: dict[str, Any] | None = None
-        if (budget_usd is None) != (paying_get is None):
-            raise BotsRatedError("paid routes need both budget_usd and paying_get", "invalid_config")
+        if paying_get is not None and x402_client is not None:
+            raise BotsRatedError("pass x402_client or paying_get, not both", "invalid_config")
+        if (budget_usd is None) != (paying_get is None and x402_client is None):
+            raise BotsRatedError("paid routes need budget_usd and one of x402_client or paying_get", "invalid_config")
         if budget_usd is not None:
             self.budget = Budget(usd_to_atomic(budget_usd))
 
@@ -221,6 +235,12 @@ class BotsRatedClient:
         return self._paid(f"/v1/best?{urlencode(q)}", "best")
 
     def acceptable_payment(self, req: dict[str, Any], max_atomic: int = PAID_ROUTE_MAX_ATOMIC["best"]) -> bool:
+        return self._minimal_option(req, max_atomic) is not None
+
+    def _minimal_option(self, req: Any, max_atomic: int) -> dict[str, Any] | None:
+        """The allowlisted copy of one payment option, or None unless it is exact EIP-3009 Base USDC to BotsRated."""
+        if not isinstance(req, dict):
+            return None
         amount = str(req.get("amount", ""))
         extra = req.get("extra")
         if extra is None:
@@ -228,7 +248,8 @@ class BotsRatedClient:
         timeout = req.get("maxTimeoutSeconds", req.get("max_timeout_seconds"))
         if timeout is None:
             timeout = MAX_TIMEOUT_SECONDS
-        return (
+        pay_to = req.get("payTo") or req.get("pay_to")
+        if not (
             isinstance(extra, dict)
             and set(extra) <= ALLOWED_EXTRA
             and all(isinstance(v, str) for v in extra.values())
@@ -237,10 +258,40 @@ class BotsRatedClient:
             and req.get("scheme") == "exact"
             and req.get("network") == BASE_MAINNET
             and _eq(req.get("asset"), BASE_USDC)
-            and _eq(req.get("payTo") or req.get("pay_to"), self._expected_pay_to)
+            and _eq(pay_to, self._expected_pay_to)
             and amount.isdigit()
             and int(amount) <= max_atomic
-        )
+        ):
+            return None
+        return {
+            "scheme": "exact",
+            "network": BASE_MAINNET,
+            "asset": req["asset"],
+            "amount": amount,
+            "payTo": pay_to,
+            "maxTimeoutSeconds": timeout,
+            "extra": dict(extra),
+        }
+
+    def signable_terms(self, terms: Any, max_atomic: int = PAID_ROUTE_MAX_ATOMIC["best"]) -> dict[str, Any] | None:
+        """Rebuild a 402 ``PaymentRequired`` from allowlisted fields only, or None if any part is not allowed.
+
+        x402 v2 only; every option must pass :meth:`acceptable_payment`; ``extensions`` may only hold the
+        discovery-only ``bazaar`` key and are never copied. The signer only ever sees the returned dict.
+        """
+        if not isinstance(terms, dict) or terms.get("x402Version") != 2 or not extensions_ok(terms.get("extensions")):
+            return None
+        accepts = terms.get("accepts")
+        if not isinstance(accepts, list) or not accepts:
+            return None
+        clean = [self._minimal_option(a, max_atomic) for a in accepts]
+        if any(c is None for c in clean):
+            return None
+        out: dict[str, Any] = {"x402Version": 2, "accepts": clean}
+        resource = terms.get("resource")
+        if isinstance(resource, dict) and isinstance(resource.get("url"), str):
+            out["resource"] = {k: resource[k] for k in ("url", "description", "mimeType") if isinstance(resource.get(k), str)}
+        return out
 
     def is_reserved_payment(self, req: dict[str, Any]) -> bool:
         """True if ``req`` is an acceptable BotsRated payment this client has reserved budget for."""
@@ -265,7 +316,7 @@ class BotsRatedClient:
             raise BotsRatedError(
                 f"expected 402 or a free-quota answer, got {quote_resp.status_code}", "unexpected_status", quote_resp.status_code
             )
-        if self.budget is None or self._paying_get is None:
+        if self.budget is None or (self._paying_get is None and self._x402_client is None):
             msg = "paid BotsRated routes are disabled; pass budget_usd and paying_get"
             if quote_resp.status_code == 402:
                 msg = "free daily quota used up and " + msg
@@ -281,26 +332,31 @@ class BotsRatedClient:
                 quote_resp.status_code,
             )
         terms = read_payment_required(quote_resp)
-        accepts = terms.get("accepts") if isinstance(terms, dict) else None
-        # Fail closed: the payment client re-reads the 402 and picks an option itself, so every option
-        # has to be one this client is willing to pay, not just one of them.
-        if (
-            not isinstance(terms, dict)
-            or terms.get("x402Version") != 2
-            or not extensions_ok(terms.get("extensions"))
-            or not isinstance(accepts, list)
-            or not accepts
-            or not all(isinstance(a, dict) and self.acceptable_payment(a, PAID_ROUTE_MAX_ATOMIC[route]) for a in accepts)
-        ):
+        # Fail closed: every option has to be one this client is willing to pay, not just one of them
+        # (a paying_get re-reads the 402 and picks an option itself).
+        signable = self.signable_terms(terms, PAID_ROUTE_MAX_ATOMIC[route])
+        if signable is None:
             raise BotsRatedError(
                 "every payment option must be exact EIP-3009 Base USDC to BotsRated at or below the published price, "
                 "with no payment extensions",
                 "terms_rejected",
             )
-        amount = max(int(a["amount"]) for a in accepts)
+        amount = max(int(a["amount"]) for a in signable["accepts"])
         self.budget.reserve(amount)
+        if self._x402_client is not None:
+            try:
+                signature = _sign(self._x402_client, signable)
+            except Exception as e:
+                # Nothing was signed, so nothing can settle.
+                self.budget.release(amount)
+                raise BotsRatedError(f"payment not created: {e}", "payment_not_created") from e
         try:
-            resp = self._paying_get(self.base_url + path)
+            if self._x402_client is not None:
+                # Send exactly the signed payment; no redirects (httpx default), no re-read of the 402.
+                resp = self._http.get(self.base_url + path, headers={"PAYMENT-SIGNATURE": signature})
+            else:
+                assert self._paying_get is not None
+                resp = self._paying_get(self.base_url + path)
         except Exception:
             # A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
             self.budget.commit(amount)
@@ -318,3 +374,13 @@ class BotsRatedClient:
         if is_free_quota_answer(out):
             self.last_free_quota = out["free_quota"]
         return out
+
+
+def _sign(x402_client: X402ClientLike, terms: dict[str, Any]) -> str:
+    """Sign the rebuilt quote with the caller's x402 client; returns the PAYMENT-SIGNATURE header value."""
+    # Optional dependency: botsrated[x402].
+    from x402.http.utils import encode_payment_signature_header
+    from x402.schemas.helpers import parse_payment_required
+
+    payload = x402_client.create_payment_payload(parse_payment_required(terms))
+    return str(encode_payment_signature_header(payload))

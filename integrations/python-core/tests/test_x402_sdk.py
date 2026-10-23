@@ -109,3 +109,46 @@ def test_permit2_botsrated_quote_never_reaches_rpc_signer():
         payload = c.create_payment_payload(_botsrated_pr(None, {"bazaar": {"info": {}}}))
         assert payload.accepted.amount == "1000" and not payload.extensions
         sign_tx.assert_not_called()
+
+
+def test_x402_client_mode_signs_only_rebuilt_quote(check_402_b64):
+    """BotsRatedClient(x402_client=...) signs a copy rebuilt from allowlisted fields and sends it itself."""
+    import base64
+    import json
+    from unittest.mock import patch
+
+    from x402.mechanisms.evm.exact import ExactEvmScheme
+    from x402.mechanisms.evm.signers import EthAccountSignerWithRPC
+
+    from botsrated import BotsRatedClient
+
+    terms = json.loads(base64.b64decode(check_402_b64))
+    terms["accepts"][0]["unknownField"] = "x"
+    terms["resource"]["tags"] = ["x"]
+    signer = EthAccountSignerWithRPC(eth_account.Account.create(), rpc_url="http://127.0.0.1:9")
+    c = x402ClientSync()
+    c.register("eip155:*", ExactEvmScheme(signer=signer))
+    bc = BotsRatedClient(budget_usd="0.01", x402_client=c)
+    c.on_before_payment_creation(PrePaymentGuard(bc).x402_hook)
+    hdr = base64.b64encode(json.dumps(terms).encode()).decode()
+    with (
+        respx.mock(base_url="https://botsrated.com") as m,
+        patch.object(c, "create_payment_payload", wraps=c.create_payment_payload) as create,
+        patch.object(signer, "sign_transaction") as sign_tx,
+    ):
+        route = m.get("/v1/check").mock(
+            side_effect=lambda req: respx.MockResponse(200, json={"host": "blockrun.ai"})
+            if "payment-signature" in req.headers
+            else respx.MockResponse(402, json={}, headers={"payment-required": hdr})
+        )
+        assert bc.check("blockrun.ai") == {"host": "blockrun.ai"}
+        assert route.call_count == 2
+        signed = create.call_args.args[0]
+        assert signed.extensions is None
+        assert signed.accepts[0].extra == terms["accepts"][0]["extra"]
+        assert "unknownField" not in signed.accepts[0].model_dump(by_alias=True)
+        sent = json.loads(base64.b64decode(route.calls[1].request.headers["payment-signature"]))
+        assert sent["accepted"]["payTo"].lower() == terms["accepts"][0]["payTo"].lower()
+        assert not sent.get("extensions")
+        sign_tx.assert_not_called()
+    assert bc.budget.spent_atomic == 1000 and bc.budget.pending_atomic == 0

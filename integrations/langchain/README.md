@@ -22,8 +22,9 @@ from langchain_botsrated import botsrated_tools
 
 tools = botsrated_tools()            # free preflight only
 
-# Opt-in paid check, max $0.02 total (session pays x402, e.g. x402.http.clients.x402_requests(x402_client))
-tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", paying_get=session.get))
+# Opt-in paid check, max $0.02 total. x402_client is an x402.x402ClientSync with your signer registered;
+# it only ever signs a copy of BotsRated's quote rebuilt from allowlisted fields (no Permit2, no extensions).
+tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", x402_client=x402_client))
 ```
 
 To guard every payment that an x402 client makes (not just when the model calls a tool), register
