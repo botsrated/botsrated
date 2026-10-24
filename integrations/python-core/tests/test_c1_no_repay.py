@@ -259,3 +259,34 @@ def test_strict_policy_stops_before_signing(found):
     with pytest.raises(Exception, match="Payment stopped by your payment policy"):
         asyncio.run(get(found["latest_probe"]["url"]))
     assert sent == [] and guard.records() == []
+
+
+# L-1 (re-review 2026-10-24): importing the guard must not load the signing client (botsrated.client / _sign).
+@pytest.mark.parametrize(
+    "stmt",
+    [
+        "import botsrated.payment_guard",
+        "from botsrated.payment_guard import PaymentGuard",
+        "from botsrated import PaymentGuard, POLICIES, check_payment_state",
+        "import botsrated",
+    ],
+)
+def test_guard_import_does_not_load_the_client(stmt):
+    import subprocess
+    import sys
+
+    code = f"{stmt}\nimport sys\nloaded = [m for m in ('botsrated.client', 'botsrated.guard') if m in sys.modules]\nprint(loaded)\nraise SystemExit(1 if loaded else 0)"
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_public_api_still_exports_the_client_lazily():
+    import botsrated
+
+    assert botsrated.BotsRatedClient.__name__ == "BotsRatedClient"
+    assert botsrated.PrePaymentGuard.__name__ == "PrePaymentGuard"
+    for name in botsrated.__all__:
+        assert getattr(botsrated, name) is not None, name
+    assert set(botsrated.__all__) <= set(dir(botsrated))
+    with pytest.raises(AttributeError):
+        botsrated.nope  # noqa: B018

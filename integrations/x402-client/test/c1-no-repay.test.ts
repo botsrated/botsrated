@@ -29,7 +29,18 @@ const FORBIDDEN: Array<[string, RegExp]> = [
   ["transaction sending", /eth_sendRawTransaction|eth_sendTransaction|cancelAuthorization|transferWithAuthorization/],
   ["retry pipeline", /retry\.mjs|runReplay|RETRY_CHECK/],
   ["dynamic code", /\beval\s*\(|\bnew\s+Function\s*\(|\bimport\s*\(/],
+  // L-2 (re-review 2026-10-24): dynamic module loaders. The one allowed call is stripped first (ALLOWED_LOADER).
+  ["module loader", /getBuiltinModule|createRequire|\brequire\s*\(|\bmodule\.require\b|process\.binding|process\.dlopen/],
 ];
+/** The only allowed dynamic loader: node:async_hooks for AsyncLocalStorage (source and compiled forms). */
+const ALLOWED_LOADER = /\(?globalThis(?: as any)?\)?\.process\?\.getBuiltinModule\?\.\("node:async_hooks"\)/g;
+const WHOLE_DIST_FORBIDDEN = /onPaymentCreationFailure|recovered|\beval\s*\(|\bnew\s+Function\s*\(|\bimport\s*\(|getBuiltinModule|createRequire|\brequire\s*\(/;
+/** Source text with the one allowed loader call removed (at most once per file). */
+const scannable = (text: string) => {
+  const n = (text.match(ALLOWED_LOADER) ?? []).length;
+  expect(n, "the node:async_hooks loader may appear at most once per file").toBeLessThanOrEqual(1);
+  return text.replace(ALLOWED_LOADER, "");
+};
 
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
@@ -119,7 +130,7 @@ describe("C1: source and dist of the guard contain no signing, resend or retry c
   const files = (dir: string, ext: string) => GUARD_MODULES.map((m) => join(dir, `${m}${ext}`));
   it("src: no forbidden tokens, imports only sibling guard modules", () => {
     for (const f of files("src", ".ts")) {
-      const text = read(f);
+      const text = scannable(read(f));
       for (const [name, re] of FORBIDDEN) expect(re.test(text), `${f} contains ${name}`).toBe(false);
       const imports = [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
       for (const i of imports) expect(["./onchain.js", "./util.js", "./chain-cache.js"], `${f} imports ${i}`).toContain(i);
@@ -135,14 +146,33 @@ describe("C1: source and dist of the guard contain no signing, resend or retry c
     for (const f of built) expect(read(join("dist", f)), `dist/${f} is stale; run npm run build`).toBe(readFileSync(join(out, f), "utf8"));
     for (const f of files("dist", ".js")) {
       expect(existsSync(join(ROOT, f))).toBe(true);
-      const text = read(f);
+      const text = scannable(read(f));
       for (const [name, re] of FORBIDDEN) expect(re.test(text), `${f} contains ${name}`).toBe(false);
     }
     // Whole package: no failure-hook registration, no recovery flag, no dynamic code anywhere in dist.
     for (const f of built.filter((x) => x.endsWith(".js"))) {
-      const text = read(join("dist", f));
-      expect(/onPaymentCreationFailure|recovered|\beval\s*\(|\bnew\s+Function\s*\(|\bimport\s*\(/.test(text), `dist/${f}`).toBe(false);
+      const text = scannable(read(join("dist", f)));
+      expect(WHOLE_DIST_FORBIDDEN.test(text), `dist/${f}`).toBe(false);
     }
+  });
+
+  it("the module-loader scan catches createRequire, require( and any other getBuiltinModule call", () => {
+    const loader = FORBIDDEN.find(([n]) => n === "module loader")![1];
+    const bad = [
+      'import { createRequire } from "node:module"; const r = createRequire(import.meta.url);',
+      'const cp = require("node:child_process");',
+      'const m = process.getBuiltinModule("node:child_process");',
+      '(globalThis as any).process?.getBuiltinModule?.("node:module")',
+      'globalThis.process?.getBuiltinModule?.(name)',
+    ];
+    for (const b of bad) {
+      expect(loader.test(scannable(b)), b).toBe(true);
+      expect(WHOLE_DIST_FORBIDDEN.test(scannable(b)), b).toBe(true);
+    }
+    for (const ok of ['(globalThis as any).process?.getBuiltinModule?.("node:async_hooks")', 'globalThis.process?.getBuiltinModule?.("node:async_hooks")']) {
+      expect(loader.test(scannable(ok)), ok).toBe(false);
+    }
+    expect(() => scannable('globalThis.process?.getBuiltinModule?.("node:async_hooks"); globalThis.process?.getBuiltinModule?.("node:async_hooks")')).toThrow();
   });
 
   it("zero runtime dependencies (M6)", () => {
