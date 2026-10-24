@@ -246,6 +246,14 @@ def test_quota_used_up_message(mock_api):
         BotsRatedClient().check("blockrun.ai")
 
 
+def test_best_without_paid_lookups_does_not_mention_a_quota():
+    http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(402, json={})))
+    with pytest.raises(BotsRatedError) as e:
+        BotsRatedClient(http=http).best("weather")
+    assert e.value.code == "paid_disabled"
+    assert "quota" not in str(e.value) and "x402_client" in str(e.value)
+
+
 def test_refuses_old_check_price(check_402_b64):
     import base64
     import json as _json

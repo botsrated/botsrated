@@ -163,6 +163,18 @@ describe("M4-R1: strict needs the real request URL; the 402's own fields never s
   });
 });
 
+describe("no lookup: the message says no seller facts were checked", () => {
+  it("unreachable and hosted: false", async () => {
+    const { decisions, onDecision } = collect();
+    const down = vi.fn(async () => { throw new Error("down"); });
+    await beforeFor(createPaymentGuard({ fetch: down, onDecision }), SELLER_URL, ctx(SELLER_URL));
+    expect(decisions[0].message).toBe("Payment guard for blockrun.ai: BotsRated's preflight could not be reached; no seller facts were checked.");
+    const { f } = recordingFetch();
+    await beforeFor(createPaymentGuard({ fetch: f, hosted: false, onDecision }), SELLER_URL, ctx(SELLER_URL));
+    expect(decisions[1].message).toBe("Payment guard for blockrun.ai: hosted checks are off (hosted: false); no seller facts were checked.");
+  });
+});
+
 describe("payment guard: seller data is hostile input (M1, M2)", () => {
   const nasty = [
     "http://[bad",

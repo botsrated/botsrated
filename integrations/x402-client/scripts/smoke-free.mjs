@@ -9,4 +9,7 @@ console.log("uncovered found:", nc.found);
 const guard = createPrePaymentGuard({ client });
 const req = { scheme: "exact", network: BASE_MAINNET, asset: BASE_USDC, payTo: pre.body.latest_probe.live_payTo, amount: pre.body.latest_probe.live_amount };
 console.log("matching payTo:", (await guard.decide(pre.body.latest_probe.url, req)).action);
-console.log("unseen payTo:", (await guard.decide(pre.body.latest_probe.url, { ...req, payTo: "0x000000000000000000000000000000000000dEaD" })).action);
+const unseen = await guard.decide(pre.body.latest_probe.url, { ...req, payTo: "0x000000000000000000000000000000000000dEaD" });
+const warned = unseen.reasons.filter((r) => r.effect === "warn").map((r) => r.code);
+// The default policy is advice-only: an unseen payTo is allowed with a warning, not silently.
+console.log("unseen payTo:", unseen.action + (warned.length ? ` (warn: ${warned.join(", ")})` : ""));

@@ -352,8 +352,8 @@ class BotsRatedClient:
                 f"expected 402 or a free-quota answer, got {quote_resp.status_code}", "unexpected_status", quote_resp.status_code
             )
         if self.budget is None or (self._paying_get is None and self._x402_client is None):
-            msg = "paid BotsRated routes are disabled; pass budget_usd and paying_get"
-            if quote_resp.status_code == 402:
+            msg = "paid BotsRated routes are disabled; pass budget_usd and x402_client"
+            if quote_resp.status_code == 402 and route != "best":  # /v1/best has no free daily quota
                 msg = "free daily quota used up and " + msg
             raise BotsRatedError(msg, "paid_disabled", quote_resp.status_code)
         if quote_resp.status_code != 402:

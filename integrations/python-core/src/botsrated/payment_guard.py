@@ -231,7 +231,21 @@ def _summarize(d: GuardDecision) -> str:
     notes = [r for r in d.reasons if r.effect == "warn"]
     if notes:
         return f"Payment guard note{host_part}: " + " ".join(f"{r.code}: {r.fact}" for r in notes) + f" {MEASUREMENT_NOTE} Dispute: {d.dispute_url}"
+    if d.phase == "before_payment" and d.facts is None:
+        return f"Payment guard{host_part}: {_no_facts_note(d.reasons)}"
     return f"Payment guard: no policy rule matched{host_part}."
+
+
+def _no_facts_note(reasons: list[GuardReason]) -> str:
+    """Said when no BotsRated lookup happened, so "no rule matched" is not read as "checked and fine"."""
+    codes = {r.code for r in reasons}
+    if "botsrated_unreachable" in codes:
+        return "BotsRated's preflight could not be reached; no seller facts were checked."
+    if "hosted_off" in codes:
+        return "hosted checks are off (hosted=False); no seller facts were checked."
+    if "botsrated_payment" in codes:
+        return "this is a payment to BotsRated; no seller facts were checked."
+    return "no seller facts were checked."
 
 
 # ----------------------------------------------------------------------------------------------------------------

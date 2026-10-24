@@ -276,6 +276,14 @@ describe("paid routes (opt-in, budgeted)", () => {
     await expect(c.check("blockrun.ai")).rejects.toThrow(/free daily quota used up/);
   });
 
+  it("best() without paid lookups does not mention a free daily quota (/v1/best has none)", async () => {
+    const quote402 = vi.fn(async () => new Response("{}", { status: 402 }));
+    const c = new BotsRatedClient({ fetch: quote402 as any });
+    const err = await c.best("weather").catch((e) => e);
+    expect(err).toMatchObject({ code: "paid_disabled" });
+    expect(String(err.message)).not.toMatch(/quota/);
+  });
+
   it("refuses a check quote above the new published price (1000 atomic)", async () => {
     const terms = JSON.parse(atob(CHECK_402_B64));
     terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "2000" }));

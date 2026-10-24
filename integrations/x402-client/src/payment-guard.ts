@@ -279,7 +279,17 @@ function summarize(d: Omit<GuardDecision, "message">): string {
   }
   const notes = d.reasons.filter((r) => r.effect === "warn");
   if (notes.length) return `Payment guard note${hostPart}: ${notes.map((r) => `${r.code}: ${r.fact}`).join(" ")} ${MEASUREMENT_NOTE} Dispute: ${d.disputeUrl}`;
+  if (d.phase === "before_payment" && !d.facts) return `Payment guard${hostPart}: ${noFactsNote(d.reasons)}`;
   return `Payment guard: no policy rule matched${hostPart}.`;
+}
+
+/** Said when no BotsRated lookup happened, so "no rule matched" is not read as "checked and fine". */
+function noFactsNote(reasons: GuardReason[]): string {
+  const has = (c: string) => reasons.some((r) => r.code === c);
+  if (has("botsrated_unreachable")) return "BotsRated's preflight could not be reached; no seller facts were checked.";
+  if (has("hosted_off")) return "hosted checks are off (hosted: false); no seller facts were checked.";
+  if (has("botsrated_payment")) return "this is a payment to BotsRated; no seller facts were checked.";
+  return "no seller facts were checked.";
 }
 
 /** Pure, local comparison of one payment option with BotsRated facts. */

@@ -151,6 +151,21 @@ def test_policies_expose_paid_url_unknown():
     assert POLICIES["strict"].paid_url_unknown == "block"
 
 
+def test_no_lookup_says_no_seller_facts_were_checked(found):
+    def down(r):
+        raise httpx.ConnectError("boom")
+
+    seen = []
+    g, _ = guard_with(found, answer=down, on_decision=seen.append)
+    with g.request(found["latest_probe"]["url"]):
+        g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found)))
+    assert seen[0].message == "Payment guard for blockrun.ai: BotsRated's preflight could not be reached; no seller facts were checked."
+    off, _ = guard_with(found, hosted=False, on_decision=seen.append)
+    with off.request(found["latest_probe"]["url"]):
+        off.before_payment_creation(ctx(found["latest_probe"]["url"], req(found)))
+    assert seen[1].message == "Payment guard for blockrun.ai: hosted checks are off (hosted=False); no seller facts were checked."
+
+
 def test_fail_open_and_fail_closed(found):
     pytest.importorskip("x402")
 

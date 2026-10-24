@@ -423,7 +423,8 @@ export class BotsRatedClient {
     }
     if (!paid || !this.budget) {
       throw new BotsRatedError(
-        quote.status === 402
+        // /v1/best has no free daily quota, so only check and report mention one.
+        quote.status === 402 && route !== "best"
           ? "free daily quota used up and paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`"
           : "paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`",
         "paid_disabled",
