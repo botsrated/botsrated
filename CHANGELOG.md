@@ -5,6 +5,9 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
+  (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
+  packages); viem dev dependency 2.57.11.
 - `@botsrated/x402-preflight`: `mcpPaymentApprover` throws `invalid_host` when an `allowResourceHosts` entry contains
   `*` (wildcards were never supported; such an entry used to be compared as a literal host and never matched).
 - `botsrated` (Python): `host_of` reads backslashes as forward slashes before parsing, as WHATWG URL parsers do, so it
