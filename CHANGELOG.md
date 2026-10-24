@@ -8,6 +8,16 @@ All notable changes to the packages in this repository. Each package has its own
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.
+- Release drafts, after Security's review of PR #4 (F-1, F-2, F-4):
+  - The approval summary's "changes since the last release" now starts at the commit of the last version actually
+    published on the registry (npm `gitHead`, or its provenance commit; for PyPI the tag of PyPI's latest version),
+    not the newest `<package>-v*` tag, which anyone with Write could plant. Tags whose version isn't on the
+    registry, or that don't point at the registry's commit, are shown as a WARNING; if the base can't be
+    determined, the summary says so loudly and starts at the first commit. New self-test
+    `integrations/release-tools/test-release-summary.sh` (fake npm and PyPI, no network).
+  - Commit subjects, authors and file names in the summary are HTML-escaped inside `<pre>` blocks, so they can't
+    render Markdown or break out of the block with ``` or `</pre>`.
+  - `docs/drafts/README.md` describes the separate `botsrated-bot` account and the main ruleset now in place.
 - Release drafts, after Security's review of the phone gate:
   - Before approval, the run's Summary shows "What you are approving": who started it, the commit, a compare link
     and commit list since the last `<package>-v*` tag (or the first commit), and the sha256 of every file to be
