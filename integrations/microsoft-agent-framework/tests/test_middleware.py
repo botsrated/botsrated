@@ -1,5 +1,7 @@
 """Offline tests: the BotsRated guard is replaced by a recorder, so no network is used."""
 
+from importlib.metadata import version as _botsrated_version
+
 import pytest
 from agent_framework import Agent
 from botsrated import Decision, GuardPolicy, PrePaymentGuard, Reason, SellerFacts, evaluate_payment
@@ -18,6 +20,11 @@ GOOD = "0x1111111111111111111111111111111111111111"
 BAD = "0x2222222222222222222222222222222222222222"
 
 
+# Reason code for a payTo BotsRated never observed: payto_not_observed since botsrated 0.2, payto_mismatch before.
+_BOTSRATED_MINOR = tuple(int(x) for x in _botsrated_version("botsrated").split(".")[:2])
+PAYTO_CODE = "payto_not_observed" if _BOTSRATED_MINOR >= (0, 2) else "payto_mismatch"
+
+
 class RecordingGuard(PrePaymentGuard):
     """Uses the real botsrated policy on fixed facts instead of calling the API."""
 
@@ -28,7 +35,8 @@ class RecordingGuard(PrePaymentGuard):
 
     def decide(self, resource_url, requirements):  # type: ignore[override]
         self.calls.append((resource_url, dict(requirements)))
-        return evaluate_payment(self.facts, requirements, resource_url, GuardPolicy())
+        # Blocking on an unobserved payTo is opt-in since botsrated 0.2 (advice only by default).
+        return evaluate_payment(self.facts, requirements, resource_url, GuardPolicy(pay_to_mismatch="block"))
 
 
 paid: list[str] = []
@@ -63,7 +71,7 @@ async def test_blocks_unknown_pay_to_and_allows_observed_one() -> None:
     agent = Agent(client=model, tools=[pay_x402], middleware=[BotsRatedPaymentMiddleware(["pay_x402"], guard=guard)])
     out = results(await agent.run("pay"))
     assert paid == [GOOD]  # the blocked call never ran
-    assert "was not executed" in str(out["bad"]) and "payto_mismatch" in str(out["bad"])
+    assert "was not executed" in str(out["bad"]) and PAYTO_CODE in str(out["bad"])
     assert out["good"] == f"PAID {GOOD}"
     assert [d.action for d in seen] == ["block", "allow"]
     assert guard.calls[0] == (SELLER, {"scheme": "exact", "network": "eip155:8453", "payTo": BAD, "amount": "2000"})
@@ -135,7 +143,7 @@ async def test_on_block_raise_ends_the_run() -> None:
     )
     with pytest.raises(BotsRatedPaymentBlocked) as info:
         await agent.run("pay")
-    assert info.value.decision.reasons[0].code == "payto_mismatch"
+    assert info.value.decision.reasons[0].code == PAYTO_CODE
     assert paid == []
 
 
@@ -188,4 +196,4 @@ def test_version_comes_from_package_metadata() -> None:
 
     import agent_framework_botsrated
 
-    assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.2"
+    assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.3"
