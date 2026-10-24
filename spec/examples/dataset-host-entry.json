@@ -1,36 +1,36 @@
 {
-  "_note": "Excerpt: the api.exa.ai entry of the signed snapshot https://botsrated.com/dataset.json (sha256 9401389cb54d0ba17f822d6de3a0c679907714cbd9d66d2b84c6f1b2816350d1, generated_at 2026-10-23T12:55:56Z). The signature covers the full file, not this excerpt.",
+  "_note": "Excerpt: the api.exa.ai entry of the signed snapshot https://botsrated.com/dataset.json (sha256 83107d566b05c2188d2b3b4b211f714fcc1d16fa4762cee905c3d1e80f90a40c, generated_at 2026-10-24T02:54:12Z). The signature covers the full file, not this excerpt. Paid test-buy fields appear only once a host has 3 paid test-buys on 3 different UTC days.",
   "snapshot_header": {
     "beta": true,
     "canonical_url": "https://botsrated.com",
-    "generated_at": "2026-10-23T12:55:56Z",
-    "hosts_count": 4821,
-    "measurements_count": 6323,
-    "methodology_version": "0.2",
-    "network_note": "unpaid probes plus paid test-buys (category paid) of Base mainnet sellers; this API takes Base mainnet USDC via x402",
-    "paid_tests_count": 5,
+    "generated_at": "2026-10-24T02:54:12Z",
+    "hosts_count": 4857,
+    "index_rule": "No index until 3 paid test-buys on 3 different UTC days.",
+    "measurements_count": 33953,
+    "methodology_version": "0.4",
+    "network_note": "unpaid probes of x402 sellers on Base; paid test-buys are summarized per host once a host has 3 on 3 different UTC days; this API takes Base mainnet USDC via x402",
     "publisher": "BotsRated",
-    "tagline": "Reviews for Bots, by Bots. Every Score Backed by a Real Receipt."
+    "source": "live store (Cloudflare D1), updated by the cron prober",
+    "tagline": "Signed checks of paid AI services, before your agent pays."
   },
   "host_entry": {
     "category": "eat:search/web-read",
-    "charged_as_quoted_rate": 1.0,
-    "charged_on_failure_count": 0,
     "description": "Exa /search endpoint",
     "distinct_payto_seen": 1,
-    "first_measured": "2026-10-23T04:05:00Z",
-    "first_pass_success_rate": 1.0,
     "free_200_count": 0,
     "host": "api.exa.ai",
     "index": null,
-    "index_label": "paid tests: 1 on 1 day(s). No index until 3 paid buys on 3 different days.",
-    "last_measured": "2026-10-23T12:42:33Z",
-    "last_paid_test": "2026-10-23T05:21:29.367Z",
+    "index_label": "No index yet",
+    "last_measured": "2026-10-24T01:10:14Z",
     "last_quoted_amount_atomic": "7000",
     "last_quoted_price_usd": 0.007,
-    "latency_p50_ms": 168,
-    "latency_p90_ms": 445,
+    "last_receipt_id": "fcab7fec2508b4a4e11c",
+    "last_status": 402,
+    "last_valid_402_at": "2026-10-24T01:10:14Z",
+    "latency_p50_ms": 191,
+    "latency_p90_ms": 339,
     "listing": {
+      "amount_atomic": "7000",
       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       "calls_30d": 6614,
       "listed_in": [
@@ -42,28 +42,20 @@
       "payTo": "0x6d6E695b09861467c7d462f5AAF31cF3540B9192",
       "payers_30d": 92,
       "price_usd": 0.007,
-      "source": "cdp-bazaar"
+      "source": "cdp-bazaar",
+      "state": "listed"
     },
     "max_payment_required_header_bytes": 8432,
-    "other_status": [],
-    "paid_receipt_ids": [
-      "c64bb232bd13c36bb701"
-    ],
-    "paid_test_days": 1,
-    "paid_tests": 1,
-    "paid_total_usd": 0.007,
     "payto_differs_from_listing_count": 0,
     "price_differs_from_listing_count": 0,
-    "probes": 3,
-    "reachable_count": 3,
-    "receipt_ids": [
-      "a12e559cd801ad345242",
-      "4604401e593df3108b38",
-      "ca675b3c959b983079eb"
-    ],
+    "probes": 9,
+    "reachable_count": 9,
+    "recent_window": {
+      "probes": 9,
+      "valid_402": 9
+    },
     "route": "https://api.exa.ai/search",
-    "schema_valid_rate": 1.0,
-    "valid_402_count": 3,
+    "valid_402_count": 9,
     "x402_version": 2
   }
 }

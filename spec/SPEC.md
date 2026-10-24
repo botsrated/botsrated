@@ -172,7 +172,9 @@ Host facts are a pure function of the receipts. Each number MUST be reproducible
 | `charged_as_quoted_rate`, `schema_valid_rate` | Shares of paid tests |
 | `charged_on_failure_count` | Paid tests with `delivered == false` (the payment had settled) |
 
-Rates are rounded to 3 decimals and are `null` when there is no data. Methodology summary (full text: https://botsrated.com/methodology):
+Rates are rounded to 3 decimals and are `null` when there is no data.
+
+Snapshot `methodology_version` 0.4 (2026-10-23): `dataset.json` is built from the live store, so the per-host counts are cumulative counters, not recomputed from a list of receipts in the file. Each host cites its newest receipt (`last_receipt_id`); the full receipt list per host and day is in the signed daily aggregates (with every receipt id and the sha256 of those receipts) and the raw-receipt archive. The paid-test fields are omitted for a host until it has 3 paid test-buys on 3 distinct UTC days (`index_label` is then "No index yet"), and test or demo listings are left out. Methodology summary (full text: https://botsrated.com/methodology):
 - Hosts come from public lists (CDP Bazaar, Agentic.Market, 402index, x402-list). One representative route per host (its most-called listed route) is probed on a rolling schedule.
 - Buys are made from a capped wallet ($1.50 per buy, $2 per day, $20 per month), at the live quoted price, with an independent correctness check.
 - The producer never rates itself. Its own purchases are kept private.
