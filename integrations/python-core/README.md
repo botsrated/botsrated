@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed.
 
-**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.3.**
+**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.5.**
 
 ```bash
 pip install botsrated            # free preflight + guard
@@ -21,12 +21,26 @@ pip install "botsrated[x402]"    # + x402 SDK hook / paid lookups
 from x402 import x402ClientSync
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact import ExactEvmScheme
+from x402.http.clients import x402_requests
 from botsrated import PrePaymentGuard
 
 client = x402ClientSync()
 client.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(account)))
-client.on_before_payment_creation(PrePaymentGuard().x402_hook)
+guard = PrePaymentGuard()
+client.on_before_payment_creation(guard.x402_hook)
+
+# Tell the guard which URL is actually being paid (since 0.1.5):
+session = x402_requests(client)
+paid_get = guard.wrap_get(session.get)       # or: with paying_request(url): session.get(url)
+paid_get("https://seller.example/api")
 ```
+
+The 402's `resource.url` is chosen by the seller, so on its own it only says which host the seller
+*claims* to be. When the guard knows the request URL (`guard.wrap_get(...)`, `guard.wrap_async_get(...)`,
+`with paying_request(url):`, `guard.x402_hook_for(url)`, or `guard.decide(..., request_url=url)`), it looks
+up that URL's host and blocks the payment with `resource_url_mismatch` if `resource.url` names a different
+host. That block applies even with `fail_open=True`. Without a request URL the host is still read from
+`resource.url` (as before 0.1.5); set `GuardPolicy(require_request_url=True)` to block those payments instead.
 
 Defaults:
 - A payTo that differs from every payTo BotsRated's own probes saw for the host, on the same network, is **blocked**.
@@ -70,6 +84,8 @@ How paid calls work:
   `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying. If the paid call fails or raises, it stays counted
   (the payment may already have settled), so the budget is a hard ceiling.
+- Amounts must be ASCII digits only (`[0-9]+`); since 0.1.5 a quote with e.g. Arabic-Indic or full-width
+  digits is refused.
 - Only a one-shot EIP-3009 payment is signed: an option whose `extra` holds anything beyond the token's
   `name`/`version` (e.g. `assetTransferMethod: permit2`, `paymentFlow`), a `maxTimeoutSeconds` above 600, or
   payment extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`; only the discovery-only `bazaar` key is

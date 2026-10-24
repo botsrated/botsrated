@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
 
 from botsrated.client import (
     BotsRatedClient,
     BotsRatedError,
+    current_request_url,
     extensions_ok,
     host_of,
+    is_atomic_amount,
+    paying_request,
     usd_to_atomic,
 )
+
+T = TypeVar("T")
 
 Effect = Literal["block", "warn", "info"]
 
@@ -64,6 +69,9 @@ class GuardPolicy:
     price_above_observed: Literal["allow", "warn", "block"] = "warn"
     stale: Literal["allow", "block"] = "allow"
     min_valid_402_rate: float | None = None
+    # Block an x402 hook payment when the request URL being paid is unknown (no ``paying_request`` /
+    # ``wrap_get`` / ``x402_hook_for``). Off by default: the host is then read from the 402's resource.url.
+    require_request_url: bool = False
 
 
 def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "check"]) -> SellerFacts:
@@ -141,8 +149,8 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                 add("payto_mismatch", f"payTo {pay_to} differs from {facts.host}'s listing ({facts.listing_pay_to})", p.pay_to_mismatch)
         if (
             facts.observed_amount
-            and str(facts.observed_amount).isdigit()
-            and amount.isdigit()
+            and is_atomic_amount(str(facts.observed_amount))
+            and is_atomic_amount(amount)
             and _same_route(resource_url, facts.probed_url)
             and int(amount) > int(facts.observed_amount)
         ):
@@ -187,8 +195,41 @@ class PrePaymentGuard:
         self.paid_threshold = paid_check_at_or_above_usd
         self.on_decision = on_decision
 
-    def decide(self, resource_url: str | None, requirements: Any) -> Decision:
+    def decide(self, resource_url: str | None, requirements: Any, *, request_url: str | None = None) -> Decision:
+        """Decide on one payment.
+
+        Args:
+            resource_url: The URL the payment is for. In an x402 hook this is the seller-supplied 402
+                ``resource.url``, so on its own it is only a claim.
+            requirements: The payment option about to be signed.
+            request_url: The URL actually being requested and paid. When given, BotsRated looks up this
+                URL's host, and the payment is blocked (even with ``fail_open``) if ``resource_url`` names
+                a different host.
+        """
         req = as_requirements(requirements)
+        if request_url:
+            try:
+                host = host_of(request_url)
+            except BotsRatedError as e:
+                return Decision("block", None, [Reason("invalid_request_url", str(e), "block")])
+            if resource_url:
+                try:
+                    claimed: str | None = host_of(resource_url)
+                except BotsRatedError:
+                    claimed = None
+                if claimed != host:
+                    return Decision(
+                        "block",
+                        host,
+                        [
+                            Reason(
+                                "resource_url_mismatch",
+                                f"the 402's resource.url ({resource_url}) does not name the host being paid ({host}); refusing to pay",
+                                "block",
+                            )
+                        ],
+                    )
+            resource_url = request_url
         if not resource_url:
             eff: Effect = "info" if self.fail_open else "block"
             return Decision("allow" if self.fail_open else "block", None, [Reason("no_resource_url", "payment has no resource URL", eff)])
@@ -204,7 +245,7 @@ class PrePaymentGuard:
             if (
                 pre.found
                 and self.paid_threshold is not None
-                and str(req.get("amount", "")).isdigit()
+                and is_atomic_amount(str(req.get("amount", "")))
                 and int(req["amount"]) >= usd_to_atomic(self.paid_threshold)
             ):
                 try:
@@ -219,12 +260,45 @@ class PrePaymentGuard:
             return Decision("allow" if self.fail_open else "block", host, [Reason("botsrated_unavailable", str(e), eff)])
 
     def x402_hook(self, context: Any) -> Any:
-        """Hook for ``x402Client(Sync).on_before_payment_creation``. Returns ``AbortResult`` to block."""
+        """Hook for ``x402Client(Sync).on_before_payment_creation``. Returns ``AbortResult`` to block.
+
+        The request URL comes from :func:`paying_request` (or :meth:`wrap_get`). Without it the host is read
+        from the seller-supplied 402 ``resource.url`` (blocked instead with ``GuardPolicy(require_request_url=True)``).
+        """
+        return self._hook(context, current_request_url())
+
+    def x402_hook_for(self, request_url: str) -> Callable[[Any], Any]:
+        """A hook bound to one request URL, for an x402 client used for a single request."""
+        return lambda context: self._hook(context, request_url)
+
+    def wrap_get(self, get: Callable[..., T]) -> Callable[..., T]:
+        """Wrap a paying GET (e.g. ``x402_requests(client).get``) so :meth:`x402_hook` knows the URL being paid."""
+
+        def guarded_get(url: Any, *args: Any, **kwargs: Any) -> T:
+            with paying_request(str(url)):
+                return get(url, *args, **kwargs)
+
+        return guarded_get
+
+    def wrap_async_get(self, get: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+        """Async version of :meth:`wrap_get`, e.g. for an x402 ``httpx.AsyncClient``'s ``get``."""
+
+        async def guarded_get(url: Any, *args: Any, **kwargs: Any) -> T:
+            with paying_request(str(url)):
+                return await get(url, *args, **kwargs)
+
+        return guarded_get
+
+    def _hook(self, context: Any, request_url: str | None) -> Any:
         pr = context.payment_required
         resource = getattr(pr, "resource", None)
         url = getattr(resource, "url", None) if resource is not None else None
-        d = self.decide(url, context.selected_requirements)
-        if url and d.action == "allow" and host_of(url) == self.client.host:
+        if not request_url and self.policy.require_request_url:
+            d = Decision("block", None, [Reason("no_request_url", "the URL being paid is unknown; wrap the request with paying_request(url)", "block")])
+        else:
+            d = self.decide(url, context.selected_requirements, request_url=request_url)
+        paid_url = request_url or url
+        if paid_url and d.action == "allow" and host_of(paid_url) == self.client.host:
             # A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an
             # ERC-20 approval of Permit2) and never hand any extensions to the signer.
             if not extensions_ok(getattr(pr, "extensions", None)):

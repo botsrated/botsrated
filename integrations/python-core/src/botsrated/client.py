@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, Protocol
@@ -30,6 +33,36 @@ ALLOWED_EXTRA = frozenset({"name", "version"})
 # Discovery metadata only. Payment extensions (erc20ApprovalGasSponsoring, eip2612GasSponsoring, ...)
 # can make the signer sign more than the one-shot payment, so a BotsRated quote carrying them is refused.
 IGNORED_EXTENSIONS = frozenset({"bazaar"})
+
+
+_ATOMIC_RE = re.compile(r"[0-9]+")
+
+
+def is_atomic_amount(value: Any) -> bool:
+    """True for a string of ASCII digits only. ``str.isdigit`` also accepts e.g. Arabic-Indic or superscript digits."""
+    return isinstance(value, str) and _ATOMIC_RE.fullmatch(value) is not None
+
+
+_REQUEST_URL: ContextVar[str | None] = ContextVar("botsrated_request_url", default=None)
+
+
+def current_request_url() -> str | None:
+    """The URL set by :func:`paying_request` in this thread / async task, if any."""
+    return _REQUEST_URL.get()
+
+
+@contextmanager
+def paying_request(url: str) -> Iterator[None]:
+    """Tell ``PrePaymentGuard.x402_hook`` which URL the x402 request inside this block is actually paying.
+
+    The guard then looks up that URL's host (not the seller-supplied 402 ``resource.url``) and blocks the
+    payment if ``resource.url`` names a different host.
+    """
+    token = _REQUEST_URL.set(url)
+    try:
+        yield
+    finally:
+        _REQUEST_URL.reset(token)
 
 
 def extensions_ok(extensions: Any) -> bool:
@@ -132,7 +165,7 @@ def read_payment_required(resp: _ResponseLike) -> dict[str, Any]:
     header = resp.headers.get("payment-required")
     try:
         return json.loads(base64.b64decode(header)) if header else resp.json()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         raise BotsRatedError("could not parse the 402 payment terms", "bad_402") from e
 
 
@@ -259,7 +292,7 @@ class BotsRatedClient:
             and req.get("network") == BASE_MAINNET
             and _eq(req.get("asset"), BASE_USDC)
             and _eq(pay_to, self._expected_pay_to)
-            and amount.isdigit()
+            and is_atomic_amount(amount)
             and int(amount) <= max_atomic
         ):
             return None
@@ -350,13 +383,15 @@ class BotsRatedClient:
                 # Nothing was signed, so nothing can settle.
                 self.budget.release(amount)
                 raise BotsRatedError(f"payment not created: {e}", "payment_not_created") from e
+        resp: _ResponseLike
         try:
             if self._x402_client is not None:
                 # Send exactly the signed payment; no redirects (httpx default), no re-read of the 402.
                 resp = self._http.get(self.base_url + path, headers={"PAYMENT-SIGNATURE": signature})
             else:
                 assert self._paying_get is not None
-                resp = self._paying_get(self.base_url + path)
+                with paying_request(self.base_url + path):
+                    resp = self._paying_get(self.base_url + path)
         except Exception:
             # A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
             self.budget.commit(amount)

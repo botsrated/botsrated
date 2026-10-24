@@ -161,3 +161,18 @@ describe("BotsRatedClient paid: { x402Client } (signs only the rebuilt quote)", 
     expect(() => new BotsRatedClient({ paid: { budgetUsd: 1, fetchWithPayment: vi.fn(), x402Client: { createPaymentPayload: vi.fn() } } })).toThrow(/exactly one/);
   });
 });
+
+describe("@x402/core with guard.wrapFetch: the request URL, not resource.url, is checked", () => {
+  it("aborts when a 402 copies another seller's resource.url", async () => {
+    const client = new x402Client();
+    registerExactEvmScheme(client, { signer: privateKeyToAccount(generatePrivateKey()) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }) });
+    client.onBeforePaymentCreation(guard.beforePaymentCreation);
+    const pay = guard.wrapFetch(async (input: string) => {
+      await client.createPaymentPayload(paymentRequired(FOUND.latest_probe.live_payTo) as any);
+      return new Response("ok");
+    });
+    await expect(pay("https://evil.example/api")).rejects.toThrow(/resource_url_mismatch/);
+    expect(await (await pay(FOUND.latest_probe.url)).text()).toBe("ok");
+  });
+});

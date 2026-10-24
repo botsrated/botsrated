@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed. Hosts outside that set are allowed by default.
 
-**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.1).**
+**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.3).**
 
 ## Install
 
@@ -29,9 +29,18 @@ registerExactEvmScheme(client, { signer });
 const guard = createPrePaymentGuard(); // free preflight only
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
-const fetchWithPayment = wrapFetchWithPayment(fetch, client);
+// wrapFetch tells the guard which URL is actually being paid (since 0.1.3)
+const fetchWithPayment = guard.wrapFetch(wrapFetchWithPayment(fetch, client));
 await fetchWithPayment("https://seller.example/api"); // throws "Payment creation aborted: BotsRated pre-payment check blocked ..." on a block
 ```
+
+The 402's `resource.url` is chosen by the seller, so on its own it only says which host the seller *claims* to
+be. When the guard knows the request URL (`guard.wrapFetch(...)`, `payingRequest(url, fn)`, `guard.forRequest(url)`,
+or `guard.decide(resourceUrl, req, requestUrl)`), it looks up that URL's host and blocks the payment with
+`resource_url_mismatch` if `resource.url` names a different host, even with `failOpen: true`. Without a request URL
+the host is still read from `resource.url` (as before 0.1.3); set `policy.requireRequestUrl: true` to block those
+payments instead. Concurrent requests are kept apart with `AsyncLocalStorage` where the runtime exposes it
+(Node 20.16+ / 22.3+); elsewhere the guard matches against the requests currently in flight.
 
 ## Use with `@x402/mcp`
 
@@ -45,6 +54,9 @@ const mcp = createx402MCPClient({
   onPaymentRequested: mcpPaymentApprover(guard, "https://seller.example/mcp"),
 });
 ```
+
+`mcpPaymentApprover` looks up the MCP server URL you pass, and since 0.1.3 refuses a payment whose http(s)
+`resource.url` names a different host.
 
 ## What is checked (defaults)
 

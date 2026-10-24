@@ -363,3 +363,76 @@ def test_x402_client_mode_sign_failure_releases(check_402_b64):
             c.check("blockrun.ai")
     assert e.value.code == "payment_not_created"
     assert route.call_count == 1 and c.budget.remaining_atomic == 1000
+
+
+@pytest.mark.parametrize("bad", ["\u0661\u0660\u0660\u0660", "1\u00b2", "\uff11\uff10", "", " 1000", "1000\n", "-1", "1e3"])
+def test_is_atomic_amount_ascii_digits_only(bad):
+    from botsrated import is_atomic_amount
+
+    assert is_atomic_amount("1000")
+    assert not is_atomic_amount(bad)
+    assert not is_atomic_amount(1000)
+
+
+@pytest.mark.parametrize("amount", ["\u0661\u0660\u0660\u0660", "\u0967\u0966\u0966\u0966", "\uff11\uff10\uff10\uff10"])
+def test_paid_rejects_non_ascii_digit_amount(check_402_b64, amount):
+    """str.isdigit() and int() accept Arabic-Indic, Devanagari and full-width digits; the client must not."""
+    import base64
+    import json as _json
+
+    terms = _json.loads(base64.b64decode(check_402_b64))
+    terms["accepts"][0]["amount"] = amount
+    assert int(amount) == 1000  # would have passed the old isdigit() + int() check
+    c = BotsRatedClient(budget_usd=1, paying_get=lambda u: pytest.fail("must not pay"))
+    assert c.signable_terms(terms) is None
+    assert not c.acceptable_payment(terms["accepts"][0])
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": _hdr(terms)})
+        with pytest.raises(BotsRatedError) as e:
+            c.check("blockrun.ai")
+    assert e.value.code == "terms_rejected"
+    assert c.budget.pending_atomic == 0 and c.budget.spent_atomic == 0
+
+
+def test_decide_with_request_url_blocks_resource_url_of_other_host(mock_api, found):
+    g = PrePaymentGuard()
+    paid = found["latest_probe"]["url"]
+    # The seller at evil.example claims to be blockrun.ai in its 402 resource.url: fail closed, even fail_open.
+    d = g.decide(paid, req(found), request_url="https://evil.example/pay")
+    assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch"
+    assert d.host == "evil.example" and "evil.example" in d.summary()
+    assert not any(r.url.host == "botsrated.com" for r, _ in mock_api.calls)
+    # Same host: allowed, and the lookup uses the request URL.
+    d = g.decide(paid, req(found), request_url=paid)
+    assert d.action == "allow" and d.host == "blockrun.ai"
+    # No resource.url in the 402: the request URL alone is used.
+    assert g.decide(None, req(found), request_url=paid).action == "allow"
+
+
+def test_decide_with_request_url_looks_up_request_host(mock_api, found):
+    g = PrePaymentGuard()
+    d = g.decide(None, req(found), request_url="https://other.example/x")
+    assert d.host == "other.example" and d.facts is not None and not d.facts.covered
+    q = str(mock_api.calls.last.request.url)
+    assert "other.example" in q and "blockrun.ai" not in q
+
+
+def test_decide_request_url_claiming_botsrated_is_blocked(mock_api, found):
+    d = PrePaymentGuard().decide("https://botsrated.com/v1/check?host=x", req(found), request_url="https://evil.example/")
+    assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch"
+
+
+def test_paying_get_runs_inside_paying_request(check_402_b64):
+    from botsrated import current_request_url
+
+    seen = []
+
+    def get(u):
+        seen.append(current_request_url())
+        return httpx.Response(200, json={"host": "blockrun.ai"})
+
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": check_402_b64})
+        BotsRatedClient(budget_usd=1, paying_get=get).check("blockrun.ai")
+    assert seen == ["https://botsrated.com/v1/check?host=blockrun.ai"]
+    assert current_request_url() is None

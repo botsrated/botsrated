@@ -4,18 +4,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from botsrated import BotsRatedClient, BotsRatedError, evaluate_payment, facts_from
 from llama_index.core.tools.tool_spec.base import BaseToolSpec
+
+from botsrated import BotsRatedClient, BotsRatedError, evaluate_payment, facts_from
 
 
 class BotsRatedToolSpec(BaseToolSpec):
     """Look up BotsRated measurements of an x402 seller before paying it.
 
     ``preflight`` is free. ``paid_check`` ($0.001 USDC on Base; first 100 per day free) is only exposed when the client
-    was created with ``budget_usd`` and ``paying_get``.
+    was created with ``budget_usd`` and ``x402_client`` (an ``x402ClientSync``; the client signs only a validated
+    quote rebuilt from allowlisted fields). The older ``paying_get`` re-reads the 402 itself and is not recommended.
     """
 
-    spec_functions = ["preflight"]
+    spec_functions = ["preflight"]  # noqa: RUF012 - LlamaIndex BaseToolSpec convention
 
     def __init__(self, client: BotsRatedClient | None = None) -> None:
         self.client = client or BotsRatedClient()

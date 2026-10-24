@@ -65,7 +65,11 @@ class BotsRatedPreflightTool(BaseTool):
 
 
 class BotsRatedCheckTool(BaseTool):
-    """Paid ($0.001; first 100/day free) BotsRated check. Only works with a client configured with budget_usd and paying_get."""
+    """Paid ($0.001; first 100/day free) BotsRated check. Only works with a client configured with budget_usd and x402_client.
+
+    Use ``BotsRatedClient(budget_usd=..., x402_client=x402ClientSync(...))``: it signs only a validated quote rebuilt
+    from allowlisted fields. The older ``paying_get`` re-reads the 402 itself and is not recommended.
+    """
 
     name: str = "botsrated_paid_check"
     description: str = (

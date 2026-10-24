@@ -6,10 +6,10 @@ import respx
 x402 = pytest.importorskip("x402")
 eth_account = pytest.importorskip("eth_account")
 
-from x402 import x402ClientSync  # noqa: E402
-from x402.schemas import PaymentRequired  # noqa: E402
+from x402 import x402ClientSync
+from x402.schemas import PaymentRequired
 
-from botsrated import BASE_MAINNET, BASE_USDC, PrePaymentGuard  # noqa: E402
+from botsrated import BASE_MAINNET, BASE_USDC, PrePaymentGuard
 
 
 def _client(guard):
@@ -152,3 +152,55 @@ def test_x402_client_mode_signs_only_rebuilt_quote(check_402_b64):
         assert not sent.get("extensions")
         sign_tx.assert_not_called()
     assert bc.budget.spent_atomic == 1000 and bc.budget.pending_atomic == 0
+
+
+def test_hook_uses_request_url_and_blocks_resource_url_mismatch(found):
+    """The 402's resource.url is seller-supplied: with the request URL known, a different host is refused."""
+    from botsrated import GuardPolicy, paying_request
+
+    good = found["latest_probe"]["live_payTo"]
+    with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        m.get("/v1/preflight").respond(200, json=found)
+        guard = PrePaymentGuard()
+        client = _client(guard)
+        # evil.example serves a 402 that copies blockrun.ai's resource.url and payTo.
+        with paying_request("https://evil.example/api"), pytest.raises(Exception, match="resource_url_mismatch"):
+            client.create_payment_payload(_pr(found, good))
+        # Bound hook and wrapped GET give the same answer.
+        decisions = []
+        g2 = PrePaymentGuard(on_decision=decisions.append)
+        c2 = x402ClientSync()
+        from x402.mechanisms.evm import EthAccountSigner
+        from x402.mechanisms.evm.exact import ExactEvmScheme
+
+        c2.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(eth_account.Account.create())))
+        c2.on_before_payment_creation(g2.x402_hook_for("https://evil.example/api"))
+        with pytest.raises(Exception, match="resource_url_mismatch"):
+            c2.create_payment_payload(_pr(found, good))
+        get = guard.wrap_get(lambda url: client.create_payment_payload(_pr(found, good)))
+        with pytest.raises(Exception, match="resource_url_mismatch"):
+            get("https://evil.example/api")
+        # The real seller URL is allowed.
+        assert get(found["latest_probe"]["url"]).accepted.pay_to.lower() == good.lower()
+        # Outside paying_request the legacy behavior holds, unless the policy requires the request URL.
+        assert client.create_payment_payload(_pr(found, good))
+        strict = _client(PrePaymentGuard(policy=GuardPolicy(require_request_url=True)))
+        with pytest.raises(Exception, match="no_request_url"):
+            strict.create_payment_payload(_pr(found, good))
+    assert decisions[0].reasons[0].code == "resource_url_mismatch"
+
+
+async def _async_ok(url):
+    from botsrated import current_request_url
+
+    return current_request_url()
+
+
+def test_wrap_async_get_sets_request_url():
+    import asyncio
+
+    from botsrated import current_request_url
+
+    g = PrePaymentGuard()
+    assert asyncio.run(g.wrap_async_get(_async_ok)("https://seller.example/x")) == "https://seller.example/x"
+    assert current_request_url() is None

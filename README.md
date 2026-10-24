@@ -83,6 +83,22 @@ VS Code (`.vscode/mcp.json`):
 { "servers": { "botsrated": { "type": "http", "url": "https://botsrated.com/mcp" } } }
 ```
 
+## Changelog
+
+### 2026-10-23: SDK security fixes (security review M3, L4, L6, L7)
+- `botsrated` 0.1.5 and `@botsrated/x402-preflight` 0.1.3: the pre-payment guard can take the URL actually being
+  requested and paid (`guard.wrap_get` / `paying_request` / `x402_hook_for` in Python; `guard.wrapFetch` /
+  `payingRequest` / `guard.forRequest` in TypeScript; or `decide(..., request_url=...)`). It looks up that host and
+  blocks with `resource_url_mismatch` (even when failing open) if the seller's 402 `resource.url` names another host.
+  `GuardPolicy(require_request_url=True)` / `policy.requireRequestUrl` blocks hook payments with no known request URL.
+  `mcpPaymentApprover` now looks up the server URL and refuses a 402 `resource.url` on another host.
+- `botsrated` 0.1.5: payment amounts must be ASCII digits (`[0-9]+`); `str.isdigit()` accepted e.g. Arabic-Indic
+  digits. Ships `py.typed`. Fixed the mypy error in the paid call.
+- `agent-framework-botsrated` 0.1.1, `langchain-botsrated` 0.1.2, `llama-index-tools-botsrated` 0.1.2: depend on
+  `botsrated>=0.1.5,<0.2` (was `>=0.1.2,<0.2` / `>=0.1.4`). The middleware's amount check is ASCII-digits only. The
+  LangChain and LlamaIndex docstrings point to `x402_client=` instead of `paying_get`.
+- Repo: removed committed `__pycache__/*.pyc` files and added a `.gitignore`.
+
 ## Methodology, disputes
 - Methodology: https://botsrated.com/methodology
 - Sellers can reply or dispute for free: https://botsrated.com/disputes (`POST /v1/dispute`)

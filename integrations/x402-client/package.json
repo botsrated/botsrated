@@ -1,6 +1,6 @@
 {
   "name": "@botsrated/x402-preflight",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Pre-payment check for x402 clients: asks BotsRated's free preflight about a seller before your agent signs a payment. Paid BotsRated lookups are opt-in and capped by a budget you set.",
   "license": "MIT",
   "type": "module",

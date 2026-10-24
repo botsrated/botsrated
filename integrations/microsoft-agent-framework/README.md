@@ -16,7 +16,7 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.2+.
+Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.5+ (below 0.2).
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 
@@ -60,7 +60,9 @@ Default policy (from `botsrated.GuardPolicy`, configurable through `guard=PrePay
 
 The middleware checks what the payment tool was asked to pay. If your tool fetches the 402 itself and signs it, also
 register `botsrated.PrePaymentGuard().x402_hook` on your `x402Client`'s `on_before_payment_creation` so the check
-runs on the exact quote being signed.
+runs on the exact quote being signed, and make the request through `guard.wrap_get(...)` (or inside
+`with botsrated.paying_request(url):`) so the guard checks the host actually being paid rather than the
+seller-supplied 402 `resource.url` (botsrated 0.1.5+).
 
 ## Tool: let the model check a payment option
 

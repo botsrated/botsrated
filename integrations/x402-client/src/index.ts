@@ -201,6 +201,70 @@ export async function readPaymentRequired(res: Response): Promise<PaymentRequire
   }
 }
 
+/** Minimal `AsyncLocalStorage` shape (Node's `node:async_hooks`). */
+interface AsyncLocalStorageLike<T> {
+  run<R>(store: T, fn: () => R): R;
+  getStore(): T | undefined;
+}
+
+/** Per-async-context request URL when the runtime exposes AsyncLocalStorage synchronously (Node >= 20.16 / 22.3). */
+const requestUrlStore: AsyncLocalStorageLike<string> | undefined = (() => {
+  try {
+    const mod = (globalThis as any).process?.getBuiltinModule?.("node:async_hooks");
+    return mod?.AsyncLocalStorage ? (new mod.AsyncLocalStorage() as AsyncLocalStorageLike<string>) : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+/** Fallback without AsyncLocalStorage: URLs of the {@link payingRequest} calls currently in flight. */
+const inFlightRequestUrls = new Map<string, number>();
+
+/**
+ * Runs `fn` (an x402 request that may pay) and tells the guard's `beforePaymentCreation` which URL is actually
+ * being paid. The guard then looks up that URL's host, not the seller-supplied 402 `resource.url`, and blocks the
+ * payment if `resource.url` names a different host.
+ */
+export async function payingRequest<T>(url: string, fn: () => Promise<T>): Promise<T> {
+  inFlightRequestUrls.set(url, (inFlightRequestUrls.get(url) ?? 0) + 1);
+  try {
+    return await (requestUrlStore ? requestUrlStore.run(url, fn) : fn());
+  } finally {
+    const n = (inFlightRequestUrls.get(url) ?? 1) - 1;
+    if (n > 0) inFlightRequestUrls.set(url, n);
+    else inFlightRequestUrls.delete(url);
+  }
+}
+
+/**
+ * The URL set by {@link payingRequest} for the current async context. Without AsyncLocalStorage (browsers, Node < 20.16)
+ * this falls back to the requests in flight: with several, the one on `resourceUrl`'s host if there is one, otherwise
+ * any other (which the guard then blocks as a mismatch).
+ */
+export function currentRequestUrl(resourceUrl?: string): string | undefined {
+  if (requestUrlStore) return requestUrlStore.getStore();
+  const urls = [...inFlightRequestUrls.keys()];
+  if (urls.length <= 1) return urls[0];
+  let claimed: string | undefined;
+  try {
+    claimed = resourceUrl ? hostOf(resourceUrl) : undefined;
+  } catch {
+    claimed = undefined;
+  }
+  return urls.find((u) => {
+    try {
+      return hostOf(u) === claimed;
+    } catch {
+      return false;
+    }
+  }) ?? urls[0];
+}
+
+function requestUrlOf(input: unknown): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return String((input as { url?: unknown })?.url ?? input);
+}
+
 export class BotsRatedClient {
   readonly baseUrl: string;
   readonly budget?: Budget;
@@ -293,7 +357,7 @@ export class BotsRatedClient {
       eq(req.asset, BASE_USDC) &&
       eq(req.payTo, payTo) &&
       typeof req.amount === "string" &&
-      /^\d+$/.test(req.amount) &&
+      /^[0-9]+$/.test(req.amount) &&
       BigInt(req.amount) <= max;
     if (!ok) return undefined;
     const extra: Record<string, string> = {};
@@ -387,7 +451,9 @@ export class BotsRatedClient {
               headers: { accept: "application/json", "PAYMENT-SIGNATURE": signature },
               redirect: "manual",
             })
-          : await paid.fetchWithPayment!(this.baseUrl + path, { headers: { accept: "application/json" }, redirect: "manual" });
+          : await payingRequest(this.baseUrl + path, () =>
+              paid.fetchWithPayment!(this.baseUrl + path, { headers: { accept: "application/json" }, redirect: "manual" }),
+            );
     } catch (e) {
       // A signed payment may already have settled: keep it counted so the budget is a hard ceiling.
       this.budget.commit(amount);
@@ -478,6 +544,11 @@ export interface GuardPolicy {
   stale?: "allow" | "block";
   /** Block when the recent valid-402 rate is below this (only with >= 3 recent probes). Off by default. */
   minValid402Rate?: number;
+  /**
+   * Block a `beforePaymentCreation` payment when the URL being paid is unknown (no {@link payingRequest},
+   * `guard.wrapFetch` or `guard.forRequest`). Default false: the host is then read from the 402's `resource.url`.
+   */
+  requireRequestUrl?: boolean;
 }
 
 export interface Reason {
@@ -493,7 +564,7 @@ export interface Decision {
   facts?: SellerFacts;
 }
 
-const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate">> = {
+const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate" | "requireRequestUrl">> = {
   notCovered: "allow",
   payToMismatch: "block",
   priceAboveObserved: "warn",
@@ -533,7 +604,7 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
         add("payto_mismatch", `payTo ${req.payTo} differs from ${facts.host}'s listing (${facts.listingPayTo})`, p.payToMismatch);
       }
     }
-    if (facts.observedAmount && /^\d+$/.test(facts.observedAmount) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
+    if (facts.observedAmount && /^[0-9]+$/.test(facts.observedAmount) && /^[0-9]+$/.test(req.amount) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
       add("price_above_observed", `quoted ${req.amount} atomic; BotsRated last observed ${facts.observedAmount} on this route`, p.priceAboveObserved);
     }
     if (facts.stale) add("stale", `BotsRated data is older than 24 h (last probe ${facts.lastProbeAt})`, p.stale === "block" ? "block" : "info");
@@ -561,12 +632,26 @@ export interface BeforePaymentContextLike {
   selectedRequirements: PaymentRequirementsLike;
 }
 
+export type BeforePaymentHook = (ctx: BeforePaymentContextLike) => Promise<void | { abort: true; reason: string }>;
+
 export interface PrePaymentGuard {
   client: BotsRatedClient;
-  /** Decide on one payment. Never throws when `failOpen` is true. */
-  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike): Promise<Decision>;
-  /** Register with `x402Client.onBeforePaymentCreation(guard.beforePaymentCreation)`. */
-  beforePaymentCreation(ctx: BeforePaymentContextLike): Promise<void | { abort: true; reason: string }>;
+  /**
+   * Decide on one payment. Never throws when `failOpen` is true.
+   * @param resourceUrl The URL the payment is for; in an x402 hook this is the seller-supplied 402 `resource.url`.
+   * @param requestUrl The URL actually being requested and paid. When given, its host is looked up, and the payment
+   *   is blocked (even with `failOpen`) if `resourceUrl` names a different host.
+   */
+  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision>;
+  /**
+   * Register with `x402Client.onBeforePaymentCreation(guard.beforePaymentCreation)`. The URL being paid comes from
+   * {@link payingRequest} / {@link PrePaymentGuard.wrapFetch}; without it the host is read from the 402's `resource.url`.
+   */
+  beforePaymentCreation: BeforePaymentHook;
+  /** A hook bound to one request URL, for an x402 client used for a single request. */
+  forRequest(requestUrl: string): BeforePaymentHook;
+  /** Wraps a paying fetch (e.g. `wrapFetchWithPayment(fetch, client)`) so `beforePaymentCreation` knows the URL being paid. */
+  wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F;
 }
 
 export function formatDecision(d: Decision): string {
@@ -580,7 +665,37 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
   const client = options.client ?? new BotsRatedClient();
   const failOpen = options.failOpen ?? true;
 
-  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike): Promise<Decision> {
+  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
+    if (requestUrl) {
+      let paidHost: string;
+      try {
+        paidHost = hostOf(requestUrl);
+      } catch (e) {
+        return { action: "block", reasons: [{ code: "invalid_request_url", detail: (e as Error).message, effect: "block" }] };
+      }
+      if (resourceUrl) {
+        let claimed: string | undefined;
+        try {
+          claimed = hostOf(resourceUrl);
+        } catch {
+          claimed = undefined;
+        }
+        if (claimed !== paidHost) {
+          return {
+            action: "block",
+            host: paidHost,
+            reasons: [
+              {
+                code: "resource_url_mismatch",
+                detail: `the 402's resource.url (${resourceUrl}) does not name the host being paid (${paidHost}); refusing to pay`,
+                effect: "block",
+              },
+            ],
+          };
+        }
+      }
+      resourceUrl = requestUrl;
+    }
     if (!resourceUrl) {
       return { action: failOpen ? "allow" : "block", reasons: [{ code: "no_resource_url", detail: "payment has no resource URL to look up", effect: failOpen ? "info" : "block" }] };
     }
@@ -600,7 +715,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
       const extra: Reason[] = [];
       const threshold = options.paidCheckAtOrAboveUsd;
       // Uses BotsRated's free daily quota first; pays (within budget) only with a paid-enabled client.
-      if (pre.found && threshold !== undefined && BigInt(req.amount) >= usdToAtomic(threshold)) {
+      if (pre.found && threshold !== undefined && /^[0-9]+$/.test(String(req.amount)) && BigInt(req.amount) >= usdToAtomic(threshold)) {
         try {
           facts = factsFrom(await client.check(host), host, "check");
         } catch (e) {
@@ -619,37 +734,48 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     }
   }
 
+  async function hook(ctx: BeforePaymentContextLike, requestUrl: string | undefined): Promise<void | { abort: true; reason: string }> {
+    const url = ctx.paymentRequired.resource?.url;
+    let d: Decision =
+      !requestUrl && options.policy?.requireRequestUrl
+        ? { action: "block", reasons: [{ code: "no_request_url", detail: "the URL being paid is unknown; wrap the request with guard.wrapFetch or payingRequest", effect: "block" }] }
+        : await decide(url, ctx.selectedRequirements, requestUrl);
+    const paidUrl = requestUrl ?? url;
+    if (d.action === "allow" && paidUrl && hostOf(paidUrl) === client.host) {
+      // A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an ERC-20
+      // approval of Permit2) and never hand any extensions to the signer.
+      if (!extensionsOk(ctx.paymentRequired.extensions)) {
+        d = { action: "block", host: d.host, reasons: [{ code: "botsrated_payment_extensions", detail: "BotsRated quotes must not carry payment extensions", effect: "block" }] };
+      } else {
+        delete ctx.paymentRequired.extensions;
+      }
+    }
+    options.onDecision?.(d, ctx.selectedRequirements);
+    if (d.action === "block") return { abort: true, reason: formatDecision(d) };
+  }
+
   return {
     client,
     decide,
-    async beforePaymentCreation(ctx) {
-      const url = ctx.paymentRequired.resource?.url;
-      let d = await decide(url, ctx.selectedRequirements);
-      if (d.action === "allow" && url && hostOf(url) === client.host) {
-        // A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an ERC-20
-        // approval of Permit2) and never hand any extensions to the signer.
-        if (!extensionsOk(ctx.paymentRequired.extensions)) {
-          d = { action: "block", host: d.host, reasons: [{ code: "botsrated_payment_extensions", detail: "BotsRated quotes must not carry payment extensions", effect: "block" }] };
-        } else {
-          delete ctx.paymentRequired.extensions;
-        }
-      }
-      options.onDecision?.(d, ctx.selectedRequirements);
-      if (d.action === "block") return { abort: true, reason: formatDecision(d) };
+    beforePaymentCreation: (ctx) => hook(ctx, currentRequestUrl(ctx.paymentRequired.resource?.url)),
+    forRequest: (requestUrl) => (ctx) => hook(ctx, requestUrl),
+    wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
+      return ((input: any, init?: any) => payingRequest(requestUrlOf(input), () => fetchWithPayment(input, init))) as F;
     },
   };
 }
 
 /**
  * Adapter for `@x402/mcp`'s `onPaymentRequested` option. Approves a paid MCP tool call only if
- * every offered payment option passes the guard. `serverUrl` is used when the 402 has no http(s) resource URL.
+ * every offered payment option passes the guard. `serverUrl` (the MCP server actually being paid) is the host
+ * looked up; an http(s) `resource.url` in the 402 that names a different host is refused.
  */
 export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string) {
   return async (ctx: { paymentRequired: PaymentRequiredLike }): Promise<boolean> => {
     const url = ctx.paymentRequired.resource?.url;
-    const resourceUrl = url && /^https?:\/\//i.test(url) ? url : serverUrl;
+    const resourceUrl = url && /^https?:\/\//i.test(url) ? url : undefined;
     for (const req of ctx.paymentRequired.accepts ?? []) {
-      if ((await guard.decide(resourceUrl, req)).action === "block") return false;
+      if ((await guard.decide(resourceUrl, req, serverUrl)).action === "block") return false;
     }
     return true;
   };

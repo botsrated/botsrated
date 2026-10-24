@@ -6,7 +6,11 @@ import pytest
 import respx
 from botsrated import BotsRatedClient
 
-from langchain_botsrated import BotsRatedCheckTool, BotsRatedPreflightTool, botsrated_tools
+from langchain_botsrated import (
+    BotsRatedCheckTool,
+    BotsRatedPreflightTool,
+    botsrated_tools,
+)
 
 FX = Path(__file__).resolve().parents[3] / "fixtures"
 FOUND = json.loads((FX / "preflight-found.json").read_text())

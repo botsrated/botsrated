@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
@@ -52,7 +53,8 @@ def default_quote_extractor(args: Mapping[str, Any]) -> PaymentQuote:
     if not isinstance(url, str) or not isinstance(pay_to, str) or amount is None:
         missing = [n for n, v in (("url", url), ("pay_to", pay_to), ("amount", amount)) if v is None]
         raise ValueError(f"payment arguments are missing or not text: {', '.join(missing) or 'url/pay_to'}")
-    if isinstance(amount, bool) or not str(amount).isdigit():
+    # ASCII digits only: str.isdigit() also accepts e.g. Arabic-Indic or full-width digits.
+    if isinstance(amount, bool) or re.fullmatch(r"[0-9]+", str(amount)) is None:
         raise ValueError("amount must be an integer number of atomic units")
     network = _first(args, "network") or DEFAULT_NETWORK
     scheme = _first(args, "scheme") or "exact"

@@ -10,7 +10,9 @@ import {
   evaluatePayment,
   factsFrom,
   hostOf,
+  currentRequestUrl,
   mcpPaymentApprover,
+  payingRequest,
   usdToAtomic,
 } from "../src/index";
 
@@ -321,5 +323,98 @@ describe("paid quote hardening (Permit2 / payment extensions)", () => {
     const pay = vi.fn(async () => json(SAMPLE_CHECK));
     const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 0.01, fetchWithPayment: pay } });
     expect((await c.check("blockrun.ai")).host).toBe("blockrun.ai");
+  });
+});
+
+describe("request URL vs the seller's resource.url", () => {
+  const ctx = (url: string, r = req()) => ({ paymentRequired: { x402Version: 2, resource: { url }, accepts: [r] }, selectedRequirements: r });
+  const EVIL = "https://evil.example/pay";
+
+  it("decide() blocks a resource.url naming another host, even with failOpen", async () => {
+    const f = botsratedFetch();
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: f }) });
+    const d = await guard.decide(SELLER_URL, req(), EVIL);
+    expect(d).toMatchObject({ action: "block", host: "evil.example", reasons: [{ code: "resource_url_mismatch" }] });
+    expect(f).not.toHaveBeenCalled();
+    expect((await guard.decide(SELLER_URL, req(), SELLER_URL)).action).toBe("allow");
+    expect((await guard.decide(undefined, req(), SELLER_URL)).action).toBe("allow");
+    expect((await guard.decide("https://botsrated.com/v1/check?host=x", req(), EVIL)).reasons[0].code).toBe("resource_url_mismatch");
+  });
+
+  it("decide() looks up the request URL's host", async () => {
+    const f = botsratedFetch();
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: f }) });
+    const d = await guard.decide(undefined, req(), "https://other.example/x");
+    expect(d.host).toBe("other.example");
+    expect(String(f.mock.calls[0][0])).toContain("other.example");
+  });
+
+  it("wrapFetch / payingRequest / forRequest give beforePaymentCreation the URL being paid", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const paying = guard.wrapFetch(async (input: string | URL) => {
+      const out = await guard.beforePaymentCreation(ctx(SELLER_URL));
+      return json({ out: out ?? null, seen: currentRequestUrl() ?? null });
+    });
+    const evil = await (await paying(EVIL)).json();
+    expect(evil.seen).toBe(EVIL);
+    expect(evil.out).toMatchObject({ abort: true });
+    expect(evil.out.reason).toMatch(/resource_url_mismatch/);
+    const good = await (await paying(new URL(SELLER_URL))).json();
+    expect(good).toEqual({ out: null, seen: SELLER_URL });
+    expect(currentRequestUrl()).toBeUndefined();
+    expect(await payingRequest(EVIL, () => guard.beforePaymentCreation(ctx(SELLER_URL)))).toMatchObject({ abort: true });
+    expect(await guard.forRequest(EVIL)(ctx(SELLER_URL))).toMatchObject({ abort: true });
+    expect(await guard.forRequest(SELLER_URL)(ctx(SELLER_URL))).toBeUndefined();
+  });
+
+  it("keeps concurrent requests apart", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const tick = () => new Promise((r) => setTimeout(r, 5));
+    const [a, b] = await Promise.all([
+      payingRequest(EVIL, async () => (await tick(), guard.beforePaymentCreation(ctx(SELLER_URL)))),
+      payingRequest(SELLER_URL, async () => (await tick(), guard.beforePaymentCreation(ctx(SELLER_URL)))),
+    ]);
+    expect(a).toMatchObject({ abort: true });
+    expect(b).toBeUndefined();
+  });
+
+  it("without a request URL keeps the old behavior unless requireRequestUrl is set", async () => {
+    const f = botsratedFetch();
+    expect(await createPrePaymentGuard({ client: new BotsRatedClient({ fetch: f }) }).beforePaymentCreation(ctx(SELLER_URL))).toBeUndefined();
+    const strict = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: f }), policy: { requireRequestUrl: true } });
+    expect(await strict.beforePaymentCreation(ctx(SELLER_URL))).toMatchObject({ abort: true, reason: expect.stringMatching(/no_request_url/) });
+    expect(await payingRequest(SELLER_URL, () => strict.beforePaymentCreation(ctx(SELLER_URL)))).toBeUndefined();
+  });
+
+  it("mcpPaymentApprover looks up the server URL and refuses a resource.url on another host", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const approve = mcpPaymentApprover(guard, "https://evil.example/mcp");
+    expect(await approve({ paymentRequired: { x402Version: 2, resource: { url: SELLER_URL }, accepts: [req()] } })).toBe(false);
+    const ok = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
+    expect(await ok({ paymentRequired: { x402Version: 2, resource: { url: SELLER_URL }, accepts: [req()] } })).toBe(true);
+  });
+
+  it("paid routes through fetchWithPayment run inside payingRequest", async () => {
+    let seen: string | undefined;
+    const c = new BotsRatedClient({
+      fetch: botsratedFetch(),
+      paid: {
+        budgetUsd: 0.01,
+        fetchWithPayment: async () => {
+          seen = currentRequestUrl();
+          return json(JSON.parse(SAMPLE_CHECK));
+        },
+      },
+    });
+    await c.check("blockrun.ai");
+    expect(seen).toBe("https://botsrated.com/v1/check?host=blockrun.ai");
+  });
+
+  it("refuses non-ASCII digit amounts", () => {
+    const c = new BotsRatedClient({ fetch: botsratedFetch(), paid: { budgetUsd: 1, fetchWithPayment: async () => json({}) } });
+    const terms = JSON.parse(atob(CHECK_402_B64));
+    expect(c.signableTerms(terms)).toBeDefined();
+    terms.accepts[0].amount = "\u0661\u0660\u0660\u0660";
+    expect(c.signableTerms(terms)).toBeUndefined();
   });
 });
