@@ -35,10 +35,12 @@ from typing import Any, Literal, TypeVar
 import httpx
 
 from botsrated.onchain import (
+    DEFAULT_BASE_RPCS,
     PaymentRecord,
     PaymentState,
     acheck_payment_state,
     check_payment_state,
+    rpc_list_of,
 )
 from botsrated.util import (
     BOTSRATED_BASE_URL,
@@ -346,7 +348,7 @@ class PaymentGuard:
         fail_open: When BotsRated can't be reached (or the guard errors): True allows (default), False stops.
         retry_key: Add a ``payment-identifier`` id where the seller advertises it. Default True.
         onchain: Keyword arguments for :func:`botsrated.onchain.check_payment_state` (``rpcs``, ``transport``...), or False.
-        base_url, timeout, cache_ttl: Hosted lookup settings (defaults: botsrated.com, 1.5 s, 300 s).
+        base_url, timeout, cache_ttl: Hosted lookup settings (defaults: botsrated.com, 3 s, 300 s).
         http / async_http: Optional ``httpx.Client`` / ``httpx.AsyncClient`` for the hosted lookup.
         preflight: Replace the hosted lookup: ``(host) -> (found, body)``. Receives a host name only.
         on_decision: Receives every decision. Errors raised in it are ignored.
@@ -362,7 +364,7 @@ class PaymentGuard:
         retry_key: bool = True,
         onchain: dict[str, Any] | Literal[False] | None = None,
         base_url: str = BOTSRATED_BASE_URL,
-        timeout: float = 1.5,
+        timeout: float = 3.0,
         cache_ttl: float = 300.0,
         http: httpx.Client | None = None,
         async_http: httpx.AsyncClient | None = None,
@@ -374,6 +376,8 @@ class PaymentGuard:
         self.hosted = hosted
         self.fail_open = fail_open
         self.retry_key = retry_key and not dry_run
+        if onchain:  # configuration errors (more than 3 RPCs) surface here, not mid-payment
+            rpc_list_of(onchain.get("rpcs", DEFAULT_BASE_RPCS), onchain.get("extra_rpc"))
         self.onchain = onchain
         self.base_url = base_url.rstrip("/")
         self._own_host = try_host_of(self.base_url) or "botsrated.com"

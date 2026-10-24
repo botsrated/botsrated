@@ -16,7 +16,8 @@ function setup() {
   const created = vi.fn(async () => {});
   client.onAfterPaymentCreation(created);
   const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }), policy: strictGuardPolicy });
-  client.onBeforePaymentCreation(guard.beforePaymentCreation);
+  // The legacy strict preset needs the real request URL (requireRequestUrl since 0.2.0).
+  client.onBeforePaymentCreation(guard.forRequest(FOUND.latest_probe.url));
   return { client, created };
 }
 

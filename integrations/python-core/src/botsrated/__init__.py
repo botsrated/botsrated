@@ -34,7 +34,6 @@ from botsrated.util import (
     is_atomic_amount,
 )
 
-
 # The guard-only path (botsrated.payment_guard, botsrated.onchain, botsrated.util) never loads the signing client.
 # BotsRatedClient and the legacy PrePaymentGuard (which uses it) load on first access (PEP 562), so
 # ``import botsrated`` / ``from botsrated import PaymentGuard`` keep botsrated.client out of the process.

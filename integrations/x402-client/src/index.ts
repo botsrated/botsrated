@@ -567,8 +567,12 @@ export interface GuardPolicy {
   requireRequestUrl?: boolean;
 }
 
-/** The pre-0.2.0 behaviour as an explicit choice: stop payments whose payTo BotsRated's probes did not record. */
-export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block" });
+/**
+ * The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
+ * Since 0.2.0 it also sets `requireRequestUrl`, so a payment whose real request URL is unknown is stopped too
+ * (use `guard.wrapFetch` or `guard.forRequest`).
+ */
+export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", requireRequestUrl: true });
 
 export interface Reason {
   code: string;

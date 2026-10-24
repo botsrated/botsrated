@@ -51,6 +51,18 @@ Added (both):
   hook returning `recovered` (yours or another library's) makes x402 pay again.
 
 Changed:
+- **Decision logic:** the legacy `strictGuardPolicy` / `STRICT_GUARD_POLICY` now also sets `requireRequestUrl` /
+  `require_request_url`, so it stops a payment whose real request URL is unknown (`no_request_url`). Use
+  `guard.wrapFetch` / `guard.forRequest(url)` (TS) or `wrap_get` / `x402_hook_for(url)` (Python) with it.
+- On-chain checks: more than 3 RPCs (`rpcs` plus `extraRpc` / `extra_rpc`) is now a configuration error
+  (`RangeError` / `ValueError`) when the guard is created or `checkPaymentState` / `check_payment_state` runs, instead
+  of the extra RPCs being dropped silently.
+- On-chain checks: `marginSeconds` / `margin_seconds` is clamped to 30 s .. 1 day; infinity no longer raises in
+  Python (`OverflowError`) or falls back to 60 in TS; NaN or a non-number uses 60. A Python string margin such as
+  `"90"` now uses 60, as in TS.
+- Docs: custom policies leave `paidUrlUnknown` / `paid_url_unknown` at warn unless set.
+- Payment guard: the default hosted lookup timeout is 3 s (`timeoutMs: 3000` / `timeout=3.0`); it was 1.5 s in
+  the 0.2.0 drafts. A slow or unreachable BotsRated still fails open.
 - **Decision logic:** the pre-payment guard's default for a payTo BotsRated's probes did not record is now **warn**
   (was block). Use `strictGuardPolicy` / `STRICT_GUARD_POLICY` (or `payToMismatch: "block"`) to keep the old
   behavior.

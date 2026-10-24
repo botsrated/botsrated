@@ -37,6 +37,18 @@ from botsrated.util import (
 # address, nonce and your IP when you run a check; pass your own with ``rpcs``.
 DEFAULT_BASE_RPCS: tuple[str, ...] = ("https://mainnet.base.org", "https://base-rpc.publicnode.com")
 MIN_MARGIN_SECONDS = 30
+MAX_MARGIN_SECONDS = 86_400  # 1 day; larger or infinite margins are clamped to it
+MAX_RPCS = 3
+
+
+def margin_of(v: Any) -> int:
+    """``margin_seconds`` as used: default 60; NaN or non-numbers give 60; below 30 (or -inf) is raised to 30;
+    above 1 day (or inf) is lowered to 1 day."""
+    if v is None or isinstance(v, bool) or not isinstance(v, (int, float)):
+        return 60
+    if isinstance(v, float) and math.isnan(v):
+        return 60
+    return math.ceil(min(MAX_MARGIN_SECONDS, max(MIN_MARGIN_SECONDS, v)))
 # keccak256("authorizationState(address,bytes32)")[0..4]
 AUTHORIZATION_STATE_SELECTOR = "0xe94a0102"
 # keccak256("AuthorizationUsed(address,bytes32)")
@@ -242,11 +254,16 @@ def _bad_record(rec: Any) -> str | None:
 
 
 def rpc_list_of(rpcs: Sequence[str] = DEFAULT_BASE_RPCS, extra_rpc: str | None = None) -> list[str]:
-    """The RPC URLs a check uses: ``rpcs`` (or the defaults) plus ``extra_rpc``, at most three."""
+    """The RPC URLs a check uses: ``rpcs`` (or the defaults) plus ``extra_rpc``. More than three raises ValueError."""
     urls = list(rpcs)
     if isinstance(extra_rpc, str) and extra_rpc:
         urls.append(extra_rpc)
-    return urls[:3]
+    if len(urls) > MAX_RPCS:
+        raise ValueError(
+            f"onchain: at most {MAX_RPCS} RPCs are supported (rpcs plus extra_rpc), got {len(urls)}. "
+            "Pass two or three RPC URLs on different hosts."
+        )
+    return urls
 
 
 def _views_at(t: Transport, urls: list[str], rec: PaymentRecord, tag: str, max_log_blocks: int) -> list[_View]:
@@ -266,7 +283,7 @@ def check_payment_state(
     extra_rpc: str | None = None,
     confirm_tag: Literal["safe", "finalized"] = "safe",
     expiry_tag: Literal["safe", "finalized"] = "safe",
-    margin_seconds: int = 60,
+    margin_seconds: float = 60,
     max_log_blocks: int = 9000,
     timeout: float = 5.0,
     transport: Transport | None = None,
@@ -280,13 +297,10 @@ def check_payment_state(
       AuthorizationUsed(from, nonce) plus Transfer(from, payTo, amount) from the pinned USDC contract.
     - "expired_unsettled": now > validBefore + margin, no answering RPC shows it used, and a quorum shows it unused
       at a block (at ``expiry_tag``, default "safe") whose timestamp is >= validBefore + margin. ``margin_seconds``
-      (default 60, minimum 30) is the safety margin; ``expiry_tag="finalized"`` is more conservative (20+ min).
+      (default 60, minimum 30) is the margin (extra wait after ``validBefore``); ``expiry_tag="finalized"`` is more conservative (20+ min).
     - otherwise "unknown" with ``wait_until``. Never retry or sign a new payment for the purchase on "unknown".
     """
-    try:
-        margin = max(MIN_MARGIN_SECONDS, int(margin_seconds))
-    except (TypeError, ValueError):
-        margin = 60
+    margin = margin_of(margin_seconds)
     vb = getattr(rec, "valid_before", None)
     wait_until = vb + margin if type(vb) is int else None
     urls = rpc_list_of(rpcs, extra_rpc)

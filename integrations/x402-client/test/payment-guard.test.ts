@@ -64,6 +64,29 @@ describe("payment guard: defaults are advice-only", () => {
     expect(decisions[0].reasons.filter((r) => r.effect !== "info")).toEqual([]);
   });
 
+  it("default hosted lookup timeout is 3 s", async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const hang = vi.fn(
+        (_u: string, init?: RequestInit) =>
+          new Promise<Response>((_res, rej) => {
+            signal = init?.signal ?? undefined;
+            signal?.addEventListener("abort", () => rej(new Error("aborted")));
+          }),
+      );
+      const g = createPaymentGuard({ fetch: hang as any });
+      const p = g.hooks.beforePaymentCreation(ctx(SELLER_URL));
+      await vi.advanceTimersByTimeAsync(2999);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(signal?.aborted).toBe(true);
+      expect(await p).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fail-open by default when BotsRated is unreachable; failOpen: false stops the payment", async () => {
     const down = vi.fn(async () => {
       throw new Error("ECONNRESET secret-ish detail");

@@ -276,7 +276,7 @@ def test_guard_import_does_not_load_the_client(stmt):
     import sys
 
     code = f"{stmt}\nimport sys\nloaded = [m for m in ('botsrated.client', 'botsrated.guard') if m in sys.modules]\nprint(loaded)\nraise SystemExit(1 if loaded else 0)"
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    r = subprocess.run([sys.executable, "-c", code], check=False, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
 
 

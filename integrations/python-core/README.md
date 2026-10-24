@@ -9,8 +9,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 - **After**, it keeps a local record (never the signature) and can read the blockchain, read-only, to see whether
   the payment settled once.
 
-It reduces the chance of paying the wrong address or paying twice. It lowers the chance of either; it can't rule
-them out.
+It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
 **Status: 0.2.0 is not released yet. The latest version on PyPI is
 [`botsrated` 0.1.6](https://pypi.org/project/botsrated/), which does not include the payment guard.**
@@ -85,11 +84,13 @@ A stopped payment raises the x402 abort error with text like:
 | `price_above_observed`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
 | `not_covered`: BotsRated has no probe record for the host | `not_covered` | info | info |
 | `stale`: BotsRated's latest probe is older than 24 h | `data_stale` | info | info |
-| BotsRated unreachable (1.5 s timeout) | `botsrated_unreachable` | info (`fail_open=True`) | info unless `fail_open=False` |
+| BotsRated unreachable (3 s timeout) | `botsrated_unreachable` | info (`fail_open=True`) | info unless `fail_open=False` |
 | After payment: the seller did not report a settled payment | `payment_state_unknown` | warn | warn |
 
 Each rule takes `"allow"`, `"warn"` or `"block"`, e.g.
-`dataclasses.replace(POLICIES["warn"], pay_to_mismatch="block")`. Every decision carries `reasons` (code, effect,
+`dataclasses.replace(POLICIES["warn"], pay_to_mismatch="block")`. A custom `PaymentGuardPolicy(...)` leaves
+`paid_url_unknown` at `"warn"` unless you set it: add `paid_url_unknown="block"` (as `POLICIES["strict"]` does) if an
+unknown paid URL should stop the payment. Every decision carries `reasons` (code, effect,
 rule, fact), `facts`, `policy_rule`, `dispute_url` and a `message`. Reason texts state facts only; seller text is
 never echoed except a parsed host name.
 
@@ -103,7 +104,7 @@ never echoed except a parsed host name.
 | `fail_open` | `True` | `False`: stop the payment when BotsRated can't be reached or the guard errors |
 | `retry_key` | `True` | Add a `payment-identifier` id where the seller advertises it |
 | `onchain` | default RPCs | RPC settings for `payment_state` (`rpcs`, `extra_rpc`, `margin_seconds`, `expiry_tag`, `confirm_tag`), or `False` |
-| `timeout` / `cache_ttl` | 1.5 s / 5 min | Hosted lookup timeout and per-host cache |
+| `timeout` / `cache_ttl` | 3 s / 5 min | Hosted lookup timeout and per-host cache |
 | `preflight` | hosted call | Your own lookup `(host) -> (found, body)` |
 | `on_decision` | none | Receives every decision (errors in it are ignored) |
 
@@ -163,7 +164,9 @@ There are three answers only:
   later block. With the default 60 s margin this is usually 1 to 3 minutes after expiry. Only then is a fresh
   payment free of a double-charge risk from the first one.
 
-Settings (`onchain={...}`): `margin_seconds` (default 60, minimum 30) is the safety margin after `validBefore`.
+Settings (`onchain={...}`): `margin_seconds` (default 60, minimum 30) is the extra wait after `validBefore`.
+It is clamped, not rejected: a value below 30 (including negative values and `-inf`) is raised to 30, a value above
+86,400 (1 day, including `inf`) is lowered to 1 day, and NaN or a non-number uses 60.
 `expiry_tag="finalized"` waits for a finalized block past expiry instead (more conservative, usually 20+ minutes).
 
 The guard never retries on `unknown`. botsrated.com is never asked; a tx hash the seller reports is only a hint
@@ -182,6 +185,9 @@ PaymentGuard(onchain={"rpcs": ["https://your-rpc-1", "https://your-rpc-2"]})
 # authorization used rules out expired_unsettled.
 PaymentGuard(onchain={"extra_rpc": "https://your-own-rpc"})
 ```
+
+At most 3 RPCs in total (`rpcs` plus `extra_rpc`): more is a configuration error (`ValueError`), raised when the
+guard is created and by `check_payment_state`, before any RPC is called.
 
 **Privacy of on-chain checks.** Each `payment_state()` call sends the payer address, the payment's nonce and your
 IP address to every RPC it uses. With the defaults those are Coinbase (`mainnet.base.org`) and Allnodes
@@ -207,7 +213,8 @@ receives these reads.
 
 The older, simpler guard (pre-payment check only). Since 0.2.0 it also sends only the host name and is
 advice-only on payTo by default; pass `policy=STRICT_GUARD_POLICY` (or `GuardPolicy(pay_to_mismatch="block")`) to
-stop those payments as before.
+stop those payments as before. Since 0.2.0 `STRICT_GUARD_POLICY` also sets `require_request_url=True`, so it stops a
+payment whose real request URL is unknown; use `wrap_get` or `x402_hook_for(url)` with it.
 
 ```python
 from x402 import x402ClientSync

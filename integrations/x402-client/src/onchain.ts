@@ -18,6 +18,18 @@ import { BASE_CHAIN_ID_HEX, BASE_MAINNET, BASE_USDC, cleanText, isAddress, isAto
 export const DEFAULT_BASE_RPCS: readonly string[] = Object.freeze(["https://mainnet.base.org", "https://base-rpc.publicnode.com"]);
 /** Minimum margin after `validBefore` before an unsettled authorization can be called expired. */
 export const MIN_MARGIN_SECONDS = 30;
+/** Upper bound for `marginSeconds` (1 day); larger or infinite values are clamped to it. */
+export const MAX_MARGIN_SECONDS = 86_400;
+/** Most RPCs a check can use (`rpcs` plus `extraRpc`). */
+export const MAX_RPCS = 3;
+
+/** `marginSeconds` as used: default 60; NaN or non-numbers give 60; below 30 (or -Infinity) is raised to 30; above 1 day (or Infinity) is lowered to 1 day. */
+export function marginOf(v: unknown): number {
+  if (v === undefined || v === null) return 60;
+  const n = typeof v === "number" ? v : Number.NaN;
+  if (Number.isNaN(n)) return 60;
+  return Math.ceil(Math.min(MAX_MARGIN_SECONDS, Math.max(MIN_MARGIN_SECONDS, n)));
+}
 
 /** keccak256("authorizationState(address,bytes32)")[0..4] */
 export const AUTHORIZATION_STATE_SELECTOR = "0xe94a0102";
@@ -63,7 +75,7 @@ export interface OnchainOptions {
   /** Block tag a "settled" answer must be visible at. Default "safe". */
   confirmTag?: "safe" | "finalized";
   /**
-   * Safety margin in seconds. "expired_unsettled" needs both the clock and the block read at `expiryTag` on the
+   * Margin in seconds (extra wait after validBefore). "expired_unsettled" needs both the clock and the block read at `expiryTag` on the
    * agreeing RPCs to be at or after validBefore + margin. Default 60, minimum 30.
    */
   marginSeconds?: number;
@@ -221,11 +233,14 @@ function validRecord(rec: PaymentRecord): string | undefined {
   return undefined;
 }
 
-/** The RPC URLs a check uses: `rpcs` (or the defaults) plus `extraRpc`, at most three. */
+/** The RPC URLs a check uses: `rpcs` (or the defaults) plus `extraRpc`. More than three is a configuration error. */
 export function rpcListOf(options: OnchainOptions = {}): string[] {
   const base = [...(options.rpcs ?? DEFAULT_BASE_RPCS)];
   if (typeof options.extraRpc === "string" && options.extraRpc) base.push(options.extraRpc);
-  return base.slice(0, 3);
+  if (base.length > MAX_RPCS) {
+    throw new RangeError(`onchain: at most ${MAX_RPCS} RPCs are supported (rpcs plus extraRpc), got ${base.length}. Pass two or three RPC URLs on different hosts.`);
+  }
+  return base;
 }
 
 async function viewsAt(rpcs: string[], rec: PaymentRecord, tag: string, o: OnchainOptions): Promise<RpcView[]> {
@@ -243,7 +258,7 @@ async function viewsAt(rpcs: string[], rec: PaymentRecord, tag: string, o: Oncha
  * - otherwise "unknown" with `waitUntil`; never retry or sign a new payment for the purchase on "unknown".
  */
 export async function checkPaymentState(rec: PaymentRecord, options: OnchainOptions = {}): Promise<PaymentState> {
-  const margin = Math.max(MIN_MARGIN_SECONDS, Number.isFinite(options.marginSeconds) ? Number(options.marginSeconds) : 60);
+  const margin = marginOf(options.marginSeconds);
   const waitUntil = Number.isSafeInteger(rec?.validBefore) ? rec.validBefore + margin : Number.NaN;
   const rpcs = rpcListOf(options);
   const hosts = rpcs.map((u) => tryHostOf(u) ?? "invalid");

@@ -17,7 +17,7 @@
  *   sends a payment header, and never asks a client to create a payment payload.
  * - The seller's 402 and the x402 contexts are treated as read-only.
  */
-import { checkPaymentState, type OnchainOptions, type PaymentRecord, type PaymentState } from "./onchain.js";
+import { checkPaymentState, rpcListOf, type OnchainOptions, type PaymentRecord, type PaymentState } from "./onchain.js";
 import {
   BOTSRATED_BASE_URL,
   DISPUTE_URL,
@@ -139,7 +139,7 @@ export interface PaymentGuardOptions {
   baseUrl?: string;
   /** Fetch used for the hosted preflight. Default global fetch. */
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
-  /** Hosted preflight timeout. Default 1500 ms. */
+  /** Hosted preflight timeout. Default 3000 ms. */
   timeoutMs?: number;
   /** Preflight cache per host. Default 300 000 ms. */
   cacheTtlMs?: number;
@@ -351,6 +351,7 @@ function randomId(): string {
 /** Creates a payment guard. Zero-config: advice only, hosted host-name lookup, fail-open, retry key where advertised. */
 export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGuard {
   const opts: PaymentGuardOptions = { ...options };
+  if (opts.onchain) rpcListOf(opts.onchain); // configuration errors (more than 3 RPCs) surface here, not mid-payment
   const policy: PaymentGuardPolicy = { ...policies.warn, ...(opts.policy ?? {}) };
   const dryRun = opts.dryRun === true;
   const hosted = opts.hosted !== false;
@@ -376,7 +377,7 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     if (hit && Date.now() - hit.at < ttl) return hit.value;
     const f = opts.fetch ?? ((i: string, init?: RequestInit) => fetch(i, init));
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 1500);
+    const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 3000);
     try {
       // Host name only: never the path, query, wallet, amount, tx hash or payment header.
       const res = await f(`${baseUrl}/v1/preflight?url=${encodeURIComponent(host)}`, {

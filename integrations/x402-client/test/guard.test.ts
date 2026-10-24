@@ -119,9 +119,17 @@ describe("createPrePaymentGuard", () => {
     expect(f.mock.calls[0][0]).toContain("/v1/preflight?url=");
   });
 
+  it("legacy strictGuardPolicy stops a payment whose request URL is unknown (R2-L4)", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
+    const out = await guard.beforePaymentCreation(ctx(SELLER_URL));
+    expect(out).toMatchObject({ abort: true });
+    expect((out as { reason: string }).reason).toMatch(/rule: no_request_url/);
+    expect(await guard.forRequest(SELLER_URL)(ctx(SELLER_URL))).toBeUndefined();
+  });
+
   it("aborts with a readable reason on a payTo mismatch", async () => {
     const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
-    const out = await guard.beforePaymentCreation(ctx(SELLER_URL, req({ payTo: "0x000000000000000000000000000000000000dEaD" })));
+    const out = await guard.forRequest(SELLER_URL)(ctx(SELLER_URL, req({ payTo: "0x000000000000000000000000000000000000dEaD" })));
     expect(out).toMatchObject({ abort: true });
     expect((out as { reason: string }).reason).toMatch(
       /^Payment stopped by your payment policy \(rule: payto_not_observed\)\. Fact: .*Receipt: https:\/\/botsrated\.com\/receipt\/.*This is a measurement, not a finding about the seller\. Dispute: https:\/\/botsrated\.com\/disputes$/,

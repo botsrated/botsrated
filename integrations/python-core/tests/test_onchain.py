@@ -207,6 +207,34 @@ def test_two_of_three_must_be_past_expiry():
     assert check_payment_state(rec(valid_before=VB), rpcs=THREE, transport=c, now=lambda: NOW).reason == "chain_not_past_expiry"
 
 
+def test_more_than_three_rpcs_is_a_clear_error():
+    """R2-L3: more than 3 RPCs raises ValueError before any call (also when the guard is built)."""
+    c = Chain({})
+    with pytest.raises(ValueError, match=r"at most 3 RPCs .*got 4"):
+        check_payment_state(rec(), rpcs=THREE, extra_rpc="https://rpc-four.example", transport=c, now=lambda: NOW)
+    with pytest.raises(ValueError, match="at most 3 RPCs"):
+        check_payment_state(rec(), rpcs=[*THREE, "https://rpc-four.example"], transport=c, now=lambda: NOW)
+    with pytest.raises(ValueError, match="at most 3 RPCs"):
+        PaymentGuard(hosted=False, onchain={"rpcs": [*THREE, "https://rpc-four.example"]})
+    assert c.methods == []
+
+
+@pytest.mark.parametrize(
+    ("given", "used"),
+    [(None, 60), (float("nan"), 60), ("90", 60), (True, 60), (0, 30), (-5, 30), (float("-inf"), 30), (90.2, 91), (10**12, 86_400), (float("inf"), 86_400)],
+)
+def test_margin_clamping(given, used):
+    """R2-L2: non-finite margins are clamped, never raise (inf used to raise OverflowError)."""
+    from botsrated.onchain import margin_of
+
+    assert margin_of(given) == used
+
+
+def test_infinite_margin_waits_one_day():
+    s = check_payment_state(rec(valid_before=NOW - 10), rpcs=RPCS, transport=Chain({}), now=lambda: NOW, margin_seconds=float("inf"))
+    assert s.state == "unknown" and s.wait_until == NOW - 10 + 86_400
+
+
 def test_three_rpcs_on_three_hosts_and_default_needs_both():
     c = Chain({})
     assert run(c, extra_rpc=RPCS[0] + "/v2").reason == "need_two_rpcs_on_different_hosts"

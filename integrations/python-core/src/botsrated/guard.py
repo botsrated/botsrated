@@ -91,8 +91,10 @@ class GuardPolicy:
     require_request_url: bool = False
 
 
-# The pre-0.2.0 behaviour as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
-STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block")
+# The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
+# Since 0.2.0 it also sets require_request_url, so a payment whose real request URL is unknown is stopped too
+# (use ``wrap_get`` or ``x402_hook_for``).
+STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block", require_request_url=True)
 
 
 def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "check"]) -> SellerFacts:

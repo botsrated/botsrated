@@ -6,6 +6,7 @@ import {
   DEFAULT_BASE_RPCS,
   TRANSFER_TOPIC,
   checkPaymentState,
+  marginOf,
   type PaymentRecord,
 } from "../src/onchain";
 import { _resetChainCache } from "../src/chain-cache";
@@ -272,6 +273,13 @@ describe("optional third RPC: 2-of-3", () => {
     expect(await checkPaymentState(rec(), { ...opts(f), extraRpc: RPCS[0] + "/v2" })).toMatchObject({ state: "unknown", reason: "need_two_rpcs_on_different_hosts" });
     expect(f).not.toHaveBeenCalled();
   });
+  it("more than three RPCs is rejected with a clear error (R2-L3), before any call", async () => {
+    const { f } = rpcFetch({});
+    await expect(checkPaymentState(rec(), { ...opts(f), rpcs: THREE, extraRpc: "https://rpc-four.example" })).rejects.toThrow(/at most 3 RPCs .*got 4/);
+    await expect(checkPaymentState(rec(), { ...opts(f), rpcs: [...THREE, "https://rpc-four.example"] })).rejects.toThrow(RangeError);
+    expect(() => createPaymentGuard({ hosted: false, onchain: { rpcs: [...THREE, "https://rpc-four.example"] } })).toThrow(/at most 3 RPCs/);
+    expect(f).not.toHaveBeenCalled();
+  });
   it("default stays the two public RPCs, both required", async () => {
     const { f } = rpcFetch({ [DEFAULT_BASE_RPCS[0]]: { used: { safe: true } }, [DEFAULT_BASE_RPCS[1]]: { fail: true } });
     expect(await checkPaymentState(rec(), { fetch: f, now: () => NOW })).toMatchObject({ state: "unknown", reason: "rpc_error", rpcHosts: ["mainnet.base.org", "base-rpc.publicnode.com"] });
@@ -284,5 +292,24 @@ describe("guard.paymentState uses the local record and the configured RPCs", () 
     const g = createPaymentGuard({ hosted: false, onchain: { rpcs: RPCS, fetch: f, now: () => NOW } });
     expect((await g.paymentState(rec())).state).toBe("settled");
     expect(urls.every((u) => RPCS.includes(u))).toBe(true);
+  });
+});
+
+describe("marginSeconds clamping (R2-L2)", () => {
+  it("clamps below 30 up to 30, above 1 day (or Infinity) down to 1 day; NaN or non-numbers give 60", () => {
+    expect(marginOf(undefined)).toBe(60);
+    expect(marginOf(Number.NaN)).toBe(60);
+    expect(marginOf("90")).toBe(60);
+    expect(marginOf(0)).toBe(30);
+    expect(marginOf(-5)).toBe(30);
+    expect(marginOf(Number.NEGATIVE_INFINITY)).toBe(30);
+    expect(marginOf(90.2)).toBe(91);
+    expect(marginOf(1e12)).toBe(86_400);
+    expect(marginOf(Number.POSITIVE_INFINITY)).toBe(86_400);
+  });
+  it("Infinity does not throw and waits one day past validBefore", async () => {
+    const { f } = rpcFetch({});
+    const s = await checkPaymentState(rec({ validBefore: NOW - 10 }), { ...opts(f), marginSeconds: Number.POSITIVE_INFINITY });
+    expect(s).toMatchObject({ state: "unknown", waitUntil: NOW - 10 + 86_400 });
   });
 });

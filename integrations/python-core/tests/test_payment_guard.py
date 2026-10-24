@@ -166,6 +166,12 @@ def test_no_lookup_says_no_seller_facts_were_checked(found):
     assert seen[1].message == "Payment guard for blockrun.ai: hosted checks are off (hosted=False); no seller facts were checked."
 
 
+def test_default_hosted_timeout_is_3s():
+    import inspect
+
+    assert inspect.signature(PaymentGuard).parameters["timeout"].default == 3.0
+
+
 def test_fail_open_and_fail_closed(found):
     pytest.importorskip("x402")
 
