@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { x402Client } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
-import { BASE_MAINNET, BASE_USDC, BOTSRATED_PAY_TO, BotsRatedClient, createPrePaymentGuard } from "../src/index";
+import { BASE_MAINNET, BASE_USDC, BOTSRATED_PAY_TO, BotsRatedClient, createPrePaymentGuard, strictGuardPolicy } from "../src/index";
 
 const FOUND = JSON.parse(readFileSync(new URL("../../fixtures/preflight-found.json", import.meta.url), "utf8"));
 const fetchStub = vi.fn(async () => new Response(JSON.stringify(FOUND), { status: 200 }));
@@ -15,7 +15,7 @@ function setup() {
   registerExactEvmScheme(client, { signer: privateKeyToAccount(generatePrivateKey()) });
   const created = vi.fn(async () => {});
   client.onAfterPaymentCreation(created);
-  const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }) });
+  const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }), policy: strictGuardPolicy });
   client.onBeforePaymentCreation(guard.beforePaymentCreation);
   return { client, created };
 }
@@ -37,7 +37,7 @@ describe("@x402/core x402Client.onBeforePaymentCreation", () => {
   it("aborts before signing when the payTo was never observed", async () => {
     const { client, created } = setup();
     await expect(client.createPaymentPayload(paymentRequired("0x000000000000000000000000000000000000dEaD") as any)).rejects.toThrow(
-      /Payment creation aborted: BotsRated pre-payment check blocked blockrun\.ai - payto_mismatch/,
+      /Payment creation aborted: Payment stopped by your payment policy \(rule: payto_not_observed\)/,
     );
     expect(created).not.toHaveBeenCalled();
   });
@@ -166,7 +166,7 @@ describe("@x402/core with guard.wrapFetch: the request URL, not resource.url, is
   it("aborts when a 402 copies another seller's resource.url", async () => {
     const client = new x402Client();
     registerExactEvmScheme(client, { signer: privateKeyToAccount(generatePrivateKey()) });
-    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: fetchStub }), policy: strictGuardPolicy });
     client.onBeforePaymentCreation(guard.beforePaymentCreation);
     const pay = guard.wrapFetch(async (input: string) => {
       await client.createPaymentPayload(paymentRequired(FOUND.latest_probe.live_payTo) as any);

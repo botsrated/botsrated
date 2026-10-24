@@ -14,6 +14,7 @@ import {
   mcpPaymentApprover,
   payingRequest,
   usdToAtomic,
+  strictGuardPolicy,
 } from "../src/index";
 
 const fx = (name: string) => readFileSync(new URL(`../../fixtures/${name}`, import.meta.url), "utf8");
@@ -62,10 +63,12 @@ describe("evaluatePayment (real preflight fixture)", () => {
     expect(evaluatePayment(facts, req(), SELLER_URL).action).toBe("allow");
   });
 
-  it("blocks an unseen payTo by default", () => {
+  it("warns (does not block) on an unseen payTo by default; blocks only with an explicit policy", () => {
     const d = evaluatePayment(facts, req({ payTo: "0x000000000000000000000000000000000000dEaD" }), SELLER_URL);
-    expect(d.action).toBe("block");
-    expect(d.reasons.map((r) => r.code)).toContain("payto_mismatch");
+    expect(d.action).toBe("allow");
+    expect(d.reasons.map((r) => r.code)).toContain("payto_not_observed");
+    expect(d.disputeUrl).toBe("https://botsrated.com/disputes");
+    expect(evaluatePayment(facts, req({ payTo: "0x000000000000000000000000000000000000dEaD" }), SELLER_URL, strictGuardPolicy).action).toBe("block");
   });
 
   it("payTo mismatch can be downgraded to a warning", () => {
@@ -77,7 +80,7 @@ describe("evaluatePayment (real preflight fixture)", () => {
   it("only compares payTo on the measured network", () => {
     const d = evaluatePayment(facts, req({ network: "eip155:84532", payTo: "0x000000000000000000000000000000000000dEaD" }), SELLER_URL);
     expect(d.action).toBe("allow");
-    expect(d.reasons[0].code).toBe("network_not_measured");
+    expect(d.reasons[0].code).toBe("network_not_observed");
   });
 
   it("warns (not blocks) on a price above the observed price for the same route", () => {
@@ -117,10 +120,12 @@ describe("createPrePaymentGuard", () => {
   });
 
   it("aborts with a readable reason on a payTo mismatch", async () => {
-    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
     const out = await guard.beforePaymentCreation(ctx(SELLER_URL, req({ payTo: "0x000000000000000000000000000000000000dEaD" })));
     expect(out).toMatchObject({ abort: true });
-    expect((out as { reason: string }).reason).toMatch(/payto_mismatch.*receipt: https:\/\/botsrated\.com\/receipt\//);
+    expect((out as { reason: string }).reason).toMatch(
+      /^Payment stopped by your payment policy \(rule: payto_not_observed\)\. Fact: .*Receipt: https:\/\/botsrated\.com\/receipt\/.*This is a measurement, not a finding about the seller\. Dispute: https:\/\/botsrated\.com\/disputes$/,
+    );
   });
 
   it("allows uncovered hosts by default and blocks them on request", async () => {
@@ -157,7 +162,7 @@ describe("createPrePaymentGuard", () => {
   });
 
   it("mcpPaymentApprover rejects when any option is blocked", async () => {
-    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
     const approve = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
     expect(await approve({ paymentRequired: { x402Version: 2, resource: { url: "mcp://tool/x" }, accepts: [req()] } })).toBe(true);
     expect(await approve({ paymentRequired: { x402Version: 2, accepts: [req(), req({ payTo: "0x000000000000000000000000000000000000dEaD" })] } })).toBe(false);
@@ -221,7 +226,7 @@ describe("paid routes (opt-in, budgeted)", () => {
     const listed = "0x1111111111111111111111111111111111111111";
     const facts = factsFrom({ ...FOUND, listing: { ...(FOUND.listing ?? {}), payTo: listed } }, "blockrun.ai", "preflight");
     expect(facts.knownPayTos).not.toContain(listed);
-    expect(evaluatePayment(facts, req({ payTo: listed }), SELLER_URL).action).toBe("block");
+    expect(evaluatePayment(facts, req({ payTo: listed }), SELLER_URL, strictGuardPolicy).action).toBe("block");
     const noProbe = factsFrom({ ...FOUND, latest_probe: null, measured: {}, listing: { payTo: listed } }, "blockrun.ai", "preflight");
     const d = evaluatePayment(noProbe, req({ payTo: listed }), SELLER_URL);
     expect(d.action).toBe("allow");
@@ -230,7 +235,7 @@ describe("paid routes (opt-in, budgeted)", () => {
 
   it("the guard lets the client's own reserved payment through", async () => {
     let client!: BotsRatedClient;
-    const r = { scheme: "exact", network: BASE_MAINNET, asset: BASE_USDC, payTo: BOTSRATED_PAY_TO, amount: "1000" };
+    const r = { scheme: "exact", network: BASE_MAINNET, asset: BASE_USDC, payTo: BOTSRATED_PAY_TO, amount: "1000", maxTimeoutSeconds: 300 };
     const pay = vi.fn(async () => {
       const verdict = await guard.beforePaymentCreation({ paymentRequired: { x402Version: 2, resource: { url: "https://botsrated.com/v1/check?host=blockrun.ai" }, accepts: [r] }, selectedRequirements: r });
       return verdict ? json({}, 402) : json(SAMPLE_CHECK);
@@ -446,7 +451,7 @@ describe("security follow-ups (0.1.4)", () => {
   });
 
   it("mcpPaymentApprover: odd resource.url spellings cannot skip the host comparison", async () => {
-    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
     const approve = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
     for (const u of ["  https://evil.example/x", "https:evil.example", "HTTPS://evil.example", "https://exa mple.com/"]) {
       expect(await approve(pr(u)), u).toBe(false);
@@ -457,7 +462,7 @@ describe("security follow-ups (0.1.4)", () => {
   });
 
   it("mcpPaymentApprover: strict by default, allowResourceHosts and resourceUrlMismatch: warn", async () => {
-    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }), policy: strictGuardPolicy });
     const strict = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
     expect(await strict(pr("https://api.example/x"))).toBe(false);
 

@@ -1,7 +1,7 @@
 {
   "name": "@botsrated/x402-preflight",
-  "version": "0.1.4",
-  "description": "Pre-payment check for x402 clients: asks BotsRated's free preflight about a seller before your agent signs a payment. Paid BotsRated lookups are opt-in and capped by a budget you set.",
+  "version": "0.2.0",
+  "description": "Payment guard for x402 clients: checks facts BotsRated measured about a seller before your agent signs (advice-only by default), adds a payment-identifier retry key where the seller supports it, and checks on chain, read-only, whether a payment settled once. Not affiliated with Coinbase or the x402 Foundation.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,7 +10,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./payment-guard": {
+      "types": "./dist/payment-guard.d.ts",
+      "import": "./dist/payment-guard.js"
+    },
+    "./onchain": {
+      "types": "./dist/onchain.d.ts",
+      "import": "./dist/onchain.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -18,17 +27,21 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [
     "x402",
     "botsrated",
+    "payment-guard",
     "preflight",
+    "payment-identifier",
     "agents",
     "payments",
     "mcp",
@@ -41,16 +54,17 @@
     "url": "git+https://github.com/botsrated/botsrated.git",
     "directory": "integrations/x402-client"
   },
+  "bugs": {
+    "url": "https://github.com/botsrated/botsrated/issues"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@x402/core": "^2.28.0",
     "@x402/evm": "^2.28.0",
+    "@x402/fetch": "^2.28.0",
     "typescript": "^5.6.0",
     "viem": "^2.57.11",
     "vitest": "^4.1.12"
-  },
-  "bugs": {
-    "url": "https://github.com/botsrated/botsrated/issues"
   },
   "publishConfig": {
     "access": "public"
