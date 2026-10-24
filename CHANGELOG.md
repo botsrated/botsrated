@@ -8,6 +8,11 @@ All notable changes to the packages in this repository. Each package has its own
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.
+- Release drafts: the release gate no longer needs signed tags. A run is a manual `workflow_dispatch` from main
+  whose `version` input must match the package manifest. Everything is built from the run's exact commit, and
+  publishing waits for Anton's approval in the `npm-publish` / `pypi-publish` environment. After a successful
+  publish, CI creates the `<package>-v<version>` tag itself. `verify-tag.sh` stays as an optional check. See
+  `docs/drafts/README.md`.
 - Release drafts (no package release; `docs/drafts/`, not installed): tag signatures are verified only against
   pinned keys (fresh GNUPGHOME, fingerprint allowlist `integrations/release-tools/signers.txt`, self-test
   `test-verify-tag.sh`); the published npm tarball is built with `npm ci --ignore-scripts` and must match the tested
@@ -128,6 +133,11 @@ Changed:
 
 ## langchain-botsrated (PyPI)
 
+### 0.1.3 (prepared, not released)
+- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
+- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
+  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
+
 ### 0.1.2
 - Depends on `botsrated>=0.1.5,<0.2`. Docstrings point to `x402_client=`.
 
@@ -139,6 +149,11 @@ Changed:
 
 ## llama-index-tools-botsrated (PyPI)
 
+### 0.1.3 (prepared, not released)
+- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
+- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
+  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
+
 ### 0.1.2
 - Depends on `botsrated>=0.1.5,<0.2`. Docstrings point to `x402_client=`.
 
@@ -149,6 +164,11 @@ Changed:
 - First release: `BotsRatedToolSpec`.
 
 ## agent-framework-botsrated (PyPI)
+
+### 0.1.3 (prepared, not released)
+- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
+- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
+  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
 
 ### 0.1.2
 - `__version__` comes from the installed package metadata.

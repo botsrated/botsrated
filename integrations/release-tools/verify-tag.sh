@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verifies a release tag before anything is built (used by docs/drafts/publish-*.yml).
+# Optional: verifies a signed release tag. The release workflows (docs/drafts/publish-*.yml) don't require it;
+# see docs/drafts/README.md. Kept for maintainers who can sign tags.
 #   usage: verify-tag.sh <tag> <expected-tag> <signers-dir> [<allowlist>]
 # - the tag is an annotated tag named exactly <expected-tag> (<package>-v<version> from the package manifest);
 # - its signature verifies against ONLY the signer keys in <signers-dir> (allowed_signers for SSH-signed tags and/or
