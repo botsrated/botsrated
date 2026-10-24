@@ -85,6 +85,18 @@ VS Code (`.vscode/mcp.json`):
 
 ## Changelog
 
+### 2026-10-23: security review follow-ups
+- `@botsrated/x402-preflight` 0.1.4: `mcpPaymentApprover(guard, serverUrl, { allowResourceHosts, resourceUrlMismatch: "block" | "warn", onDecision })`
+  (strict by default). `resource.url` is parsed with `new URL(url.trim())` and a protocol check, so `"  https://evil"`
+  or `"https:evil"` cannot skip the host comparison. Without AsyncLocalStorage, `currentRequestUrl()` is undefined
+  while more than one paid request is in flight (blocked with `requireRequestUrl`). `hostOf` drops trailing dots and
+  parses `https:host`.
+- `botsrated` 0.1.6: host checks normalize IDNA (punycode), case and trailing dots.
+- Both: the request-URL check tolerates an apex <-> www redirect (`example.com` vs `www.example.com`); any other host
+  is still blocked.
+- `agent-framework-botsrated` 0.1.2: `__version__` comes from the installed package metadata.
+- Version lines in the integration READMEs updated.
+
 ### 2026-10-23: SDK security fixes (security review M3, L4, L6, L7)
 - `botsrated` 0.1.5 and `@botsrated/x402-preflight` 0.1.3: the pre-payment guard can take the URL actually being
   requested and paid (`guard.wrap_get` / `paying_request` / `x402_hook_for` in Python; `guard.wrapFetch` /

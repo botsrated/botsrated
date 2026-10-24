@@ -3,7 +3,7 @@
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com) (beta). Use it as a pre-payment check
 before an agent pays an x402 seller.
 
-**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.0.**
+**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.2.**
 It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package. LlamaIndex no longer accepts new
 integration packages in its monorepo, so this package is published on its own.
 

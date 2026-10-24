@@ -109,11 +109,24 @@ def usd_to_atomic(usd: float | str | Decimal) -> int:
 
 
 def host_of(url_or_host: str) -> str:
+    """Lowercase ASCII host of a URL or bare host: IDNA (punycode) encoded, trailing dot removed."""
     s = url_or_host.strip()
-    host = urlsplit(s if "://" in s else f"https://{s}").hostname
+    try:
+        host = urlsplit(s if "://" in s else f"https://{s}").hostname
+    except ValueError:
+        host = None
+    host = (host or "").rstrip(".")
     if not host:
         raise BotsRatedError(f"not a URL or host: {url_or_host}", "invalid_host")
-    return host.lower()
+    try:
+        return host.encode("idna").decode("ascii").lower()
+    except UnicodeError as e:
+        raise BotsRatedError(f"not a valid host name: {url_or_host}", "invalid_host") from e
+
+
+def same_site_host(a: str, b: str) -> bool:
+    """True when two normalized hosts are equal or differ only by a leading ``www.`` (an apex <-> www redirect)."""
+    return a == b or a == f"www.{b}" or b == f"www.{a}"
 
 
 def _eq(a: str | None, b: str | None) -> bool:

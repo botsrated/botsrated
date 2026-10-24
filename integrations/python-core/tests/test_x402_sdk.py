@@ -204,3 +204,19 @@ def test_wrap_async_get_sets_request_url():
     g = PrePaymentGuard()
     assert asyncio.run(g.wrap_async_get(_async_ok)("https://seller.example/x")) == "https://seller.example/x"
     assert current_request_url() is None
+
+
+def test_wrap_get_tolerates_apex_to_www_redirect(found):
+    """wrap_get only knows the URL it was called with; a 402 served after an apex -> www redirect still pays."""
+    good = found["latest_probe"]["live_payTo"]
+    with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        m.get("/v1/preflight").respond(200, json=found)
+        guard = PrePaymentGuard()
+        client = _client(guard)
+        pr = _pr(found, good)
+        pr.resource.url = "https://www.blockrun.ai/api/v1/chat/completions"
+        get = guard.wrap_get(lambda url: client.create_payment_payload(pr))
+        assert get("https://blockrun.ai/api/v1/chat/completions").accepted.pay_to.lower() == good.lower()
+        pr.resource.url = "https://api.blockrun.ai/api/v1/chat/completions"
+        with pytest.raises(Exception, match="resource_url_mismatch"):
+            get("https://blockrun.ai/api/v1/chat/completions")

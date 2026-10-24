@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed. Hosts outside that set are allowed by default.
 
-**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.3).**
+**Status: published on npm as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.4).**
 
 ## Install
 
@@ -39,8 +39,12 @@ be. When the guard knows the request URL (`guard.wrapFetch(...)`, `payingRequest
 or `guard.decide(resourceUrl, req, requestUrl)`), it looks up that URL's host and blocks the payment with
 `resource_url_mismatch` if `resource.url` names a different host, even with `failOpen: true`. Without a request URL
 the host is still read from `resource.url` (as before 0.1.3); set `policy.requireRequestUrl: true` to block those
-payments instead. Concurrent requests are kept apart with `AsyncLocalStorage` where the runtime exposes it
-(Node 20.16+ / 22.3+); elsewhere the guard matches against the requests currently in flight.
+payments instead. Hosts are compared after punycode and trailing-dot normalization. The wrapper only sees the URL
+you called, not where redirects ended, so a `resource.url` that differs only by a leading `www.` (an apex <-> www
+redirect) is accepted (since 0.1.4); any other host is blocked. Concurrent requests are kept apart with
+`AsyncLocalStorage` where the runtime exposes it (Node 20.16+ / 22.3+). Elsewhere the URL is known only while exactly
+one paid request is in flight; with several, the guard falls back to `resource.url`, or blocks with
+`policy.requireRequestUrl: true` (since 0.1.4).
 
 ## Use with `@x402/mcp`
 
@@ -56,7 +60,15 @@ const mcp = createx402MCPClient({
 ```
 
 `mcpPaymentApprover` looks up the MCP server URL you pass, and since 0.1.3 refuses a payment whose http(s)
-`resource.url` names a different host.
+`resource.url` names a different host (apex/www twins excepted). Since 0.1.4 it takes options:
+
+```ts
+mcpPaymentApprover(guard, "https://seller.example/mcp", {
+  allowResourceHosts: ["api.seller.example"], // exact hosts the 402 resource.url may also name
+  resourceUrlMismatch: "block",              // default; "warn" approves on the server's facts and reports a warning
+  onDecision: (d) => console.log(d.reasons),
+});
+```
 
 ## What is checked (defaults)
 

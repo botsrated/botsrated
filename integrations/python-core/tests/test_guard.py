@@ -436,3 +436,41 @@ def test_paying_get_runs_inside_paying_request(check_402_b64):
         BotsRatedClient(budget_usd=1, paying_get=get).check("blockrun.ai")
     assert seen == ["https://botsrated.com/v1/check?host=blockrun.ai"]
     assert current_request_url() is None
+
+
+def test_host_of_normalizes_idna_and_trailing_dot():
+    assert host_of("https://Bücher.Example./x") == "xn--bcher-kva.example"
+    assert host_of("xn--bcher-kva.example") == "xn--bcher-kva.example"
+    assert host_of("blockrun.ai.") == "blockrun.ai"
+    for bad in ("https://./", "https://a..b/", "https://" + "a" * 64 + ".com/"):
+        with pytest.raises(BotsRatedError):
+            host_of(bad)
+
+
+def test_request_url_host_compare_is_normalized(mock_api, found):
+    g = PrePaymentGuard()
+    # Trailing dot / case / IDNA spellings of the same host are not a mismatch.
+    d = g.decide("https://BLOCKRUN.AI./api/v1/chat/completions", req(found), request_url=found["latest_probe"]["url"])
+    assert d.action == "allow"
+    d = g.decide("https://bücher.example/a", req(found), request_url="https://xn--bcher-kva.example/a")
+    assert not any(r.code == "resource_url_mismatch" for r in d.reasons)
+    # A look-alike IDNA host is a different host.
+    d = g.decide("https://blоckrun.ai/a", req(found), request_url=found["latest_probe"]["url"])  # Cyrillic o
+    assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch"
+
+
+def test_request_url_tolerates_apex_www_redirect_only(mock_api, found):
+    g = PrePaymentGuard()
+    paid = found["latest_probe"]["url"]
+    assert g.decide("https://www.blockrun.ai/api/v1/chat/completions", req(found), request_url=paid).action == "allow"
+    assert g.decide(paid, req(found), request_url="https://www.blockrun.ai/api/v1/chat/completions").action == "allow"
+    for other in ("https://api.blockrun.ai/x", "https://www.evil.example/x", "https://wwwblockrun.ai/x", "https://www.www.blockrun.ai/x"):
+        d = g.decide(other, req(found), request_url=paid)
+        assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch", other
+
+
+def test_resource_url_odd_spellings_cannot_skip_the_check(mock_api, found):
+    g = PrePaymentGuard()
+    for claimed in ("  https://evil.example/x", "https:evil.example", "https:///evil.example"):
+        d = g.decide(claimed, req(found), request_url=found["latest_probe"]["url"])
+        assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch", claimed

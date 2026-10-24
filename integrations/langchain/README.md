@@ -3,7 +3,7 @@
 LangChain tools for [BotsRated](https://botsrated.com) (beta). Use them as a pre-payment check before
 an agent pays an x402 seller.
 
-**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.0.**
+**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.2.**
 It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
 

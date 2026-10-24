@@ -1,5 +1,7 @@
 """BotsRated pre-payment checks for Microsoft Agent Framework (Python)."""
 
+from importlib.metadata import PackageNotFoundError, version
+
 from agent_framework_botsrated._middleware import (
     DECISION_METADATA_KEY,
     BotsRatedPaymentBlocked,
@@ -25,4 +27,7 @@ __all__ = [
     "decision_to_dict",
     "default_quote_extractor",
 ]
-__version__ = "0.1.0"
+try:
+    __version__ = version("agent-framework-botsrated")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0+unknown"

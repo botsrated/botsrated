@@ -181,3 +181,11 @@ def test_default_extractor_reads_camel_case() -> None:
 def test_needs_a_payment_tool() -> None:
     with pytest.raises(ValueError):
         BotsRatedPaymentMiddleware([])
+
+
+def test_version_comes_from_package_metadata() -> None:
+    from importlib.metadata import version
+
+    import agent_framework_botsrated
+
+    assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.2"

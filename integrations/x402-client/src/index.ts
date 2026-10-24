@@ -136,14 +136,26 @@ export function atomicToUsd(atomic: bigint): number {
   return Number(atomic) / 10 ** USDC_DECIMALS;
 }
 
-/** Returns the lowercase host of a URL or bare host string. */
+/**
+ * Returns the lowercase ASCII host of a URL or bare host string: punycode (IDNA) encoded by `URL`, trailing dot removed.
+ * `http:`/`https:` URLs are parsed as URLs even without `//` (so `https:evil.example` is `evil.example`).
+ */
 export function hostOf(urlOrHost: string): string {
   const s = urlOrHost.trim();
+  let host = "";
   try {
-    return new URL(s.includes("://") ? s : `https://${s}`).hostname.toLowerCase();
+    host = new URL(s.includes("://") || /^https?:/i.test(s) ? s : `https://${s}`).hostname;
   } catch {
-    throw new BotsRatedError(`not a URL or host: ${urlOrHost}`, "invalid_host");
+    host = "";
   }
+  host = host.replace(/\.+$/, "").toLowerCase();
+  if (!host) throw new BotsRatedError(`not a URL or host: ${urlOrHost}`, "invalid_host");
+  return host;
+}
+
+/** True when two normalized hosts are equal or differ only by a leading `www.` (an apex <-> www redirect). */
+export function sameSiteHost(a: string, b: string): boolean {
+  return a === b || a === `www.${b}` || b === `www.${a}`;
 }
 
 const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -237,26 +249,14 @@ export async function payingRequest<T>(url: string, fn: () => Promise<T>): Promi
 
 /**
  * The URL set by {@link payingRequest} for the current async context. Without AsyncLocalStorage (browsers, Node < 20.16)
- * this falls back to the requests in flight: with several, the one on `resourceUrl`'s host if there is one, otherwise
- * any other (which the guard then blocks as a mismatch).
+ * it is the one paid request in flight, or undefined when more than one is in flight (the guard can't tell them apart;
+ * set `policy.requireRequestUrl` to block those payments).
  */
-export function currentRequestUrl(resourceUrl?: string): string | undefined {
+export function currentRequestUrl(): string | undefined {
   if (requestUrlStore) return requestUrlStore.getStore();
-  const urls = [...inFlightRequestUrls.keys()];
-  if (urls.length <= 1) return urls[0];
-  let claimed: string | undefined;
-  try {
-    claimed = resourceUrl ? hostOf(resourceUrl) : undefined;
-  } catch {
-    claimed = undefined;
-  }
-  return urls.find((u) => {
-    try {
-      return hostOf(u) === claimed;
-    } catch {
-      return false;
-    }
-  }) ?? urls[0];
+  let total = 0;
+  for (const n of inFlightRequestUrls.values()) total += n;
+  return total === 1 ? [...inFlightRequestUrls.keys()][0] : undefined;
 }
 
 function requestUrlOf(input: unknown): string {
@@ -680,7 +680,8 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
         } catch {
           claimed = undefined;
         }
-        if (claimed !== paidHost) {
+        // An apex <-> www redirect is tolerated: the 402 then comes from the redirected host.
+        if (claimed === undefined || !sameSiteHost(claimed, paidHost)) {
           return {
             action: "block",
             host: paidHost,
@@ -757,7 +758,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
   return {
     client,
     decide,
-    beforePaymentCreation: (ctx) => hook(ctx, currentRequestUrl(ctx.paymentRequired.resource?.url)),
+    beforePaymentCreation: (ctx) => hook(ctx, currentRequestUrl()),
     forRequest: (requestUrl) => (ctx) => hook(ctx, requestUrl),
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
       return ((input: any, init?: any) => payingRequest(requestUrlOf(input), () => fetchWithPayment(input, init))) as F;
@@ -765,17 +766,69 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
   };
 }
 
+export interface McpPaymentApproverOptions {
+  /**
+   * Hosts (exact, after normalization) the 402 `resource.url` may name besides the MCP server's own host (and its
+   * apex/www twin). Use for a server whose paid resources live on another host you trust. Default none.
+   */
+  allowResourceHosts?: string[];
+  /** What to do when `resource.url` names any other host. Default "block"; "warn" approves on the server's facts. */
+  resourceUrlMismatch?: "block" | "warn";
+  /** Receives every decision, including the mismatch warning. */
+  onDecision?: (decision: Decision, req: PaymentRequirementsLike) => void;
+}
+
+/** `url` if it parses (after trimming) as an http(s) URL; the raw string if it only looks like one; else undefined. */
+function httpResourceUrl(url: unknown): string | undefined {
+  if (typeof url !== "string" || !url.trim()) return undefined;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
+  } catch {
+    // Looks like http(s) but does not parse: keep it so the host comparison fails closed.
+    return /^\s*https?:/i.test(url) ? url : undefined;
+  }
+}
+
 /**
- * Adapter for `@x402/mcp`'s `onPaymentRequested` option. Approves a paid MCP tool call only if
- * every offered payment option passes the guard. `serverUrl` (the MCP server actually being paid) is the host
- * looked up; an http(s) `resource.url` in the 402 that names a different host is refused.
+ * Adapter for `@x402/mcp`'s `onPaymentRequested` option. Approves a paid MCP tool call only if every offered payment
+ * option passes the guard. `serverUrl` (the MCP server actually being paid) is the host looked up. By default an
+ * http(s) `resource.url` in the 402 that names a different host (other than an apex/www twin) is refused; see
+ * {@link McpPaymentApproverOptions} to allow specific hosts or only warn.
  */
-export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string) {
+export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string, options: McpPaymentApproverOptions = {}) {
+  const allowed = new Set((options.allowResourceHosts ?? []).map((h) => hostOf(h)));
   return async (ctx: { paymentRequired: PaymentRequiredLike }): Promise<boolean> => {
-    const url = ctx.paymentRequired.resource?.url;
-    const resourceUrl = url && /^https?:\/\//i.test(url) ? url : undefined;
+    let resourceUrl = httpResourceUrl(ctx.paymentRequired.resource?.url);
+    let note: Reason | undefined;
+    if (resourceUrl) {
+      let claimed: string | undefined;
+      let paid: string | undefined;
+      try {
+        claimed = hostOf(resourceUrl);
+        paid = hostOf(serverUrl);
+      } catch {
+        claimed = undefined;
+      }
+      if (claimed && paid && !sameSiteHost(claimed, paid)) {
+        if (allowed.has(claimed)) {
+          note = { code: "resource_host_allowed", detail: `resource.url host ${claimed} is in allowResourceHosts`, effect: "info" };
+          resourceUrl = undefined;
+        } else if (options.resourceUrlMismatch === "warn") {
+          note = {
+            code: "resource_url_mismatch",
+            detail: `the 402's resource.url (${resourceUrl}) names ${claimed}, not the MCP server ${paid}; allowed because resourceUrlMismatch is "warn"`,
+            effect: "warn",
+          };
+          resourceUrl = undefined;
+        }
+      }
+    }
     for (const req of ctx.paymentRequired.accepts ?? []) {
-      if ((await guard.decide(resourceUrl, req, serverUrl)).action === "block") return false;
+      const d = await guard.decide(resourceUrl, req, serverUrl);
+      if (note) d.reasons.push(note);
+      options.onDecision?.(d, req);
+      if (d.action === "block") return false;
     }
     return true;
   };

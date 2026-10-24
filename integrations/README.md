@@ -4,11 +4,11 @@ These are small client packages that check an x402 seller with BotsRated before 
 preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 100 free per day) is opt-in and stays within a budget
 the user sets.
 
-**Status: published.** PyPI: [`botsrated`](https://pypi.org/project/botsrated/) (0.1.4),
-[`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) (0.1.1),
-[`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) (0.1.1),
-[`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) (0.1.0).
-npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.2),
+**Status: published.** PyPI: [`botsrated`](https://pypi.org/project/botsrated/) (0.1.6),
+[`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) (0.1.2),
+[`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) (0.1.2),
+[`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) (0.1.2).
+npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.4),
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields

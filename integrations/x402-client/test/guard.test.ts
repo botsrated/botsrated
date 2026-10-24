@@ -418,3 +418,118 @@ describe("request URL vs the seller's resource.url", () => {
     expect(c.signableTerms(terms)).toBeUndefined();
   });
 });
+
+describe("security follow-ups (0.1.4)", () => {
+  const ctx = (url: string, r = req()) => ({ paymentRequired: { x402Version: 2, resource: { url }, accepts: [r] }, selectedRequirements: r });
+  const pr = (url: string | undefined, accepts = [req()]) => ({ paymentRequired: { x402Version: 2, resource: url === undefined ? undefined : { url }, accepts } });
+
+  it("hostOf normalizes IDNA, case, trailing dots and scheme-without-slashes", () => {
+    expect(hostOf("https://Bücher.Example./x")).toBe("xn--bcher-kva.example");
+    expect(hostOf("blockrun.ai.")).toBe("blockrun.ai");
+    expect(hostOf("https:evil.example")).toBe("evil.example");
+    expect(hostOf("  https://evil.example/x")).toBe("evil.example");
+    expect(() => hostOf("https://")).toThrow();
+  });
+
+  it("tolerates only an apex <-> www difference between request and resource.url", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    expect((await guard.decide("https://www.blockrun.ai/api/v1/chat/completions", req(), SELLER_URL)).action).toBe("allow");
+    expect((await guard.decide(SELLER_URL, req(), "https://www.blockrun.ai/api/v1/chat/completions")).action).toBe("allow");
+    expect((await guard.decide("https://BLOCKRUN.AI./x", req(), SELLER_URL)).action).toBe("allow");
+    for (const other of ["https://api.blockrun.ai/x", "https://wwwblockrun.ai/x", "https://www.www.blockrun.ai/x", "https:evil.example", "  https://evil.example"]) {
+      const d = await guard.decide(other, req(), SELLER_URL);
+      expect(d.reasons[0]?.code, other).toBe("resource_url_mismatch");
+    }
+    // wrapFetch after an apex -> www redirect: the 402 names www.blockrun.ai.
+    const paying = guard.wrapFetch(async () => json({ out: (await guard.beforePaymentCreation(ctx("https://www.blockrun.ai/api/v1/chat/completions"))) ?? null }));
+    expect((await (await paying(SELLER_URL)).json()).out).toBeNull();
+  });
+
+  it("mcpPaymentApprover: odd resource.url spellings cannot skip the host comparison", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const approve = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
+    for (const u of ["  https://evil.example/x", "https:evil.example", "HTTPS://evil.example", "https://exa mple.com/"]) {
+      expect(await approve(pr(u)), u).toBe(false);
+    }
+    expect(await approve(pr("mcp://tool/x"))).toBe(true);
+    expect(await approve(pr(undefined))).toBe(true);
+    expect(await approve(pr("https://www.blockrun.ai/x"))).toBe(true);
+  });
+
+  it("mcpPaymentApprover: strict by default, allowResourceHosts and resourceUrlMismatch: warn", async () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    const strict = mcpPaymentApprover(guard, "https://blockrun.ai/mcp");
+    expect(await strict(pr("https://api.example/x"))).toBe(false);
+
+    const seen: string[] = [];
+    const allow = mcpPaymentApprover(guard, "https://blockrun.ai/mcp", { allowResourceHosts: ["API.example."], onDecision: (d) => seen.push(...d.reasons.map((r) => r.code)) });
+    expect(await allow(pr("https://api.example/x"))).toBe(true);
+    expect(seen).toContain("resource_host_allowed");
+    expect(await allow(pr("https://other.example/x"))).toBe(false);
+    // The server's own facts still decide: a bad payTo is blocked even for an allowed resource host.
+    expect(await allow(pr("https://api.example/x", [req({ payTo: "0x000000000000000000000000000000000000dEaD" })]))).toBe(false);
+
+    const warned: Array<{ code: string; effect: string }> = [];
+    const warn = mcpPaymentApprover(guard, "https://blockrun.ai/mcp", { resourceUrlMismatch: "warn", onDecision: (d) => warned.push(...d.reasons) });
+    expect(await warn(pr("https://other.example/x"))).toBe(true);
+    expect(warned).toContainEqual(expect.objectContaining({ code: "resource_url_mismatch", effect: "warn" }));
+    expect(await warn(pr("https://other.example/x", [req({ payTo: "0x000000000000000000000000000000000000dEaD" })]))).toBe(false);
+  });
+
+  it("without AsyncLocalStorage, several paid requests in flight give no request URL", async () => {
+    const proc = process as unknown as { getBuiltinModule?: unknown };
+    const orig = proc.getBuiltinModule;
+    vi.resetModules();
+    proc.getBuiltinModule = undefined;
+    try {
+      const m = await import("../src/index");
+      const guard = m.createPrePaymentGuard({ client: new m.BotsRatedClient({ fetch: botsratedFetch() }) });
+      const strict = m.createPrePaymentGuard({ client: new m.BotsRatedClient({ fetch: botsratedFetch() }), policy: { requireRequestUrl: true } });
+      // Both callbacks wait until both requests are in flight, then read before either finishes.
+      let started = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const tick = async () => {
+        if (++started === 2) release();
+        await gate;
+      };
+      const reset = () => {
+        started = 0;
+      };
+      // One in flight: it is the request URL.
+      expect(await m.payingRequest("https://evil.example/x", () => guard.beforePaymentCreation(ctx(SELLER_URL)))).toMatchObject({ abort: true });
+      // Several in flight (even the same URL twice): unknown.
+      const seen = await Promise.all([
+        m.payingRequest("https://evil.example/x", async () => (await tick(), m.currentRequestUrl())),
+        m.payingRequest(SELLER_URL, async () => (await tick(), m.currentRequestUrl())),
+      ]);
+      expect(seen).toEqual([undefined, undefined]);
+      reset();
+      let release2!: () => void;
+      const gate2 = new Promise<void>((r) => (release2 = r));
+      const tick2 = async () => {
+        if (++started === 2) release2();
+        await gate2;
+      };
+      const same = await Promise.all([1, 2].map(() => m.payingRequest(SELLER_URL, async () => (await tick2(), m.currentRequestUrl()))));
+      expect(same).toEqual([undefined, undefined]);
+      reset();
+      let release3!: () => void;
+      const gate3 = new Promise<void>((r) => (release3 = r));
+      const tick3 = async () => {
+        if (++started === 2) release3();
+        await gate3;
+      };
+      const [a, b] = await Promise.all([
+        m.payingRequest("https://evil.example/x", async () => (await tick3(), strict.beforePaymentCreation(ctx(SELLER_URL)))),
+        m.payingRequest(SELLER_URL, async () => (await tick3(), guard.beforePaymentCreation(ctx(SELLER_URL)))),
+      ]);
+      expect(a).toMatchObject({ abort: true, reason: expect.stringMatching(/no_request_url/) });
+      expect(b).toBeUndefined(); // default policy falls back to resource.url
+      expect(m.currentRequestUrl()).toBeUndefined();
+    } finally {
+      proc.getBuiltinModule = orig;
+      vi.resetModules();
+    }
+  });
+});

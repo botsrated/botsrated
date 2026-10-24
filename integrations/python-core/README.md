@@ -8,7 +8,7 @@ BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken fro
 Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
 receipt is signed.
 
-**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.5.**
+**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.6.**
 
 ```bash
 pip install botsrated            # free preflight + guard
@@ -39,7 +39,9 @@ The 402's `resource.url` is chosen by the seller, so on its own it only says whi
 *claims* to be. When the guard knows the request URL (`guard.wrap_get(...)`, `guard.wrap_async_get(...)`,
 `with paying_request(url):`, `guard.x402_hook_for(url)`, or `guard.decide(..., request_url=url)`), it looks
 up that URL's host and blocks the payment with `resource_url_mismatch` if `resource.url` names a different
-host. That block applies even with `fail_open=True`. Without a request URL the host is still read from
+host. That block applies even with `fail_open=True`. Hosts are compared after IDNA (punycode) and trailing-dot
+normalization. The wrappers only see the URL you called, not where redirects ended, so a `resource.url` that
+differs only by a leading `www.` (an apex <-> www redirect) is accepted (since 0.1.6); any other host is blocked. Without a request URL the host is still read from
 `resource.url` (as before 0.1.5); set `GuardPolicy(require_request_url=True)` to block those payments instead.
 
 Defaults:

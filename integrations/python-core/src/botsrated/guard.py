@@ -15,6 +15,7 @@ from botsrated.client import (
     host_of,
     is_atomic_amount,
     paying_request,
+    same_site_host,
     usd_to_atomic,
 )
 
@@ -204,7 +205,8 @@ class PrePaymentGuard:
             requirements: The payment option about to be signed.
             request_url: The URL actually being requested and paid. When given, BotsRated looks up this
                 URL's host, and the payment is blocked (even with ``fail_open``) if ``resource_url`` names
-                a different host.
+                a different host. Hosts are compared after IDNA/trailing-dot normalization, and an apex <-> www
+                difference (a redirect between the two) is tolerated.
         """
         req = as_requirements(requirements)
         if request_url:
@@ -217,7 +219,8 @@ class PrePaymentGuard:
                     claimed: str | None = host_of(resource_url)
                 except BotsRatedError:
                     claimed = None
-                if claimed != host:
+                # An apex <-> www redirect is tolerated: the 402 then comes from the redirected host.
+                if claimed is None or not same_site_host(claimed, host):
                     return Decision(
                         "block",
                         host,
