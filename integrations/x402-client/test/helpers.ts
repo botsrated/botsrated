@@ -58,4 +58,4 @@ export function deepFreeze<T>(o: T): T {
 }
 
 /** Strings no decision, message or doc may contain (Legal M2). */
-export const BANNED = /\b(safe|unsafe|suspicious|scam|scams|fraud|fraudulent|trusted|untrusted)\b|verified seller/i;
+export const BANNED = /\b(safe|unsafe|suspicious|scam|scams|fraud|fraudulent|trusted|untrusted|prevent\w*|guarantee\w*)\b|verified seller/i;

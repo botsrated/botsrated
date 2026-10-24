@@ -28,7 +28,7 @@ from botsrated.payment_guard import evaluate_facts, guard_facts_from
 BASE = "eip155:8453"
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 DEAD = "0x000000000000000000000000000000000000dEaD"
-BANNED = re.compile(r"\b(safe|unsafe|suspicious|scam|scams|fraud|fraudulent|trusted|untrusted)\b|verified seller", re.IGNORECASE)
+BANNED = re.compile(r"\b(safe|unsafe|suspicious|scam|scams|fraud|fraudulent|trusted|untrusted|prevent\w*|guarantee\w*)\b|verified seller", re.IGNORECASE)
 PI_DECL = {"info": {"required": False}, "schema": {"type": "object", "properties": {"required": {"type": "boolean"}, "id": {"type": "string"}}, "required": ["required"]}}
 
 
@@ -375,7 +375,7 @@ def test_readme_and_source_have_no_banned_words_outside_code():
     for f in (root / "README.md", root / "src/botsrated/payment_guard.py"):
         text = re.sub(r"```[\s\S]*?```", "", f.read_text())
         text = re.sub(r"`[^`]*`", "", text)
-        lines = [line for line in text.splitlines() if BANNED.search(line) and not line.startswith("**What this does and doesn't do.**")]
+        lines = [line for line in text.splitlines() if BANNED.search(line)]  # the disclaimer is checked too
         assert lines == [], f
 
 

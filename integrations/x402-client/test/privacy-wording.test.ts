@@ -114,14 +114,8 @@ describe("wording: fact-only, no banned words", () => {
   });
 
   it("README and guard sources use no banned word outside code", () => {
-    // Code is excluded, and so is Legal's required disclaimer paragraph, which says the package "can't guarantee that a payment is safe".
-    const strip = (t: string) =>
-      t
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/`[^`]*`/g, "")
-        .split("\n")
-        .filter((l) => !l.startsWith("**What this does and doesn't do.**"))
-        .join("\n");
+    // Only code is excluded. The disclaimer paragraph is checked too (it no longer uses a banned word).
+    const strip = (t: string) => t.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
     for (const f of ["../README.md", "../src/payment-guard.ts"]) {
       const text = strip(readFileSync(new URL(f, import.meta.url), "utf8"));
       const lines = text.split("\n").filter((l) => BANNED.test(l));

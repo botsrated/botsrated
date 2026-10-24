@@ -8,10 +8,6 @@ All notable changes to the packages in this repository. Each package has its own
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.
-- `@botsrated/x402-preflight`: `mcpPaymentApprover` throws `invalid_host` when an `allowResourceHosts` entry contains
-  `*` (wildcards were never supported; such an entry used to be compared as a literal host and never matched).
-- `botsrated` (Python): `host_of` reads backslashes as forward slashes before parsing, as WHATWG URL parsers do, so it
-  returns the same host as the TypeScript `hostOf` for inputs such as `https://evil.example\@good.example`.
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
 
@@ -20,30 +16,44 @@ All notable changes to the packages in this repository. Each package has its own
 `@botsrated/x402-preflight` 0.2.0 and `botsrated` 0.2.0 add the **payment guard** and change existing decision
 logic. Read the items marked **Decision logic** before upgrading.
 
-Why: agents that resend a payment after an ambiguous error can pay twice (examples: AgentKit
-[#1547](https://github.com/coinbase/agentkit/issues/1547) and [#1483](https://github.com/coinbase/agentkit/issues/1483),
-LangChain [#40688](https://github.com/langchain-ai/langchain/issues/40688)). The guard reduces that risk; it does not
-prevent it.
+Why: agents that resend a payment after an ambiguous error can pay twice (AgentKit
+[#1547](https://github.com/coinbase/agentkit/issues/1547) measured it; [#1483](https://github.com/coinbase/agentkit/issues/1483)
+describes a possible case from a code read; LangChain [#40688](https://github.com/langchain-ai/langchain/issues/40688)
+shows a tool retried three times). The guard lowers that risk; it can't rule it out.
 
 Added (both):
 - Payment guard (`createPaymentGuard` / `PaymentGuard`), advice-only by default (`policies.warn` /
   `POLICIES["warn"]`); payments are stopped only by a policy you choose (`policies.strict`). `dryRun` / `dry_run` is
   the recommended first setting. `hosted: false` / `hosted=False` sends nothing to botsrated.com.
 - `payment-identifier` retry key (`pay_` + 128 random bits), added through x402's extension mechanism only when the
-  seller's 402 advertises the extension (81 of 3,739 seller hosts, 2.2%, in BotsRated's Oct 24, 2026 probes; 6
-  required it). Never reused across sellers, payTo addresses or routes.
+  seller's 402 advertises the extension (about 2.2%: 81 of 3,739 seller hosts in our probe database, Oct 24, 2026;
+  6 required it). Never reused across sellers, payTo addresses or routes.
 - Read-only on-chain payment state with three answers: `settled` (two RPCs on different hosts, `safe` tag, chain id
-  8453, pinned USDC, exact receipt), `unknown` (`payment_state_unknown`, never retried) and `expired_unsettled`.
-  Default RPCs: `https://mainnet.base.org`, `https://base-rpc.publicnode.com` (configurable).
+  8453, pinned USDC, exact receipt), `unknown` (`payment_state_unknown`, never retried) and `expired_unsettled`
+  (only when the block read on both RPCs, `safe` by default, has a timestamp at or after `validBefore` + margin;
+  otherwise `unknown` with reason `chain_not_past_expiry`). Settings: `marginSeconds` / `margin_seconds` (default
+  60, minimum 30), `expiryTag` / `expiry_tag` (`"safe"` or `"finalized"`). The state is read at the exact block
+  number whose timestamp was checked. Default RPCs: `https://mainnet.base.org`, `https://base-rpc.publicnode.com`
+  (configurable; both must agree). Optional third RPC of your own (`extraRpc` / `extra_rpc`, or three `rpcs`):
+  2 of 3 must answer and agree, and any RPC reporting the authorization used rules out `expired_unsettled`.
+- Payment guard rule `paidUrlUnknown` / `paid_url_unknown` (reason `paid_url_unknown`): warn by default, **block** in
+  `policies.strict` / `POLICIES["strict"]`, when the URL being paid is unknown (no `wrapFetch` / `guard.request`).
+  The "payment to BotsRated" note applies only when the real request host is botsrated.com, never because of the
+  402's own `resource.url`.
 - CI tests that the guard can't sign, send or resend a payment (`test/c1-no-repay.test.ts`,
-  `tests/test_c1_no_repay.py`), never sends a path or query, and never uses judgement words in its messages.
+  `tests/test_c1_no_repay.py`), never sends a path or query, and never uses judgment words in its messages. The source scan also forbids dynamic module loaders
+  (`createRequire`, `require(`, `getBuiltinModule` other than the one `node:async_hooks` call).
 - Every decision has a `disputeUrl` / `dispute_url` (https://botsrated.com/disputes); messages state facts only.
 - `User-Agent: botsrated-x402-preflight/<version>` / `botsrated-python/<version>`.
+- READMEs: hosted lookups stay on by default and send only the seller's host name (`hosted: false` / `hosted=False`
+  turns them off); a privacy note on on-chain checks (the RPC operators, Coinbase for `mainnet.base.org` and Allnodes
+  for `base-rpc.publicnode.com`, see the payer address, nonce and IP; bring your own RPCs); a warning that another
+  hook returning `recovered` (yours or another library's) makes x402 pay again.
 
 Changed:
 - **Decision logic:** the pre-payment guard's default for a payTo BotsRated's probes did not record is now **warn**
   (was block). Use `strictGuardPolicy` / `STRICT_GUARD_POLICY` (or `payToMismatch: "block"`) to keep the old
-  behaviour.
+  behavior.
 - **Decision logic:** reason codes renamed to fact-only names: `payto_not_observed`, `payto_invalid`,
   `network_not_observed`, `data_stale`, `botsrated_unreachable`, `hook_error`, `invalid_resource_url`.
 - **Decision logic:** a malformed `resource.url` or an internal error no longer throws; it follows `failOpen` /
@@ -56,6 +66,17 @@ Changed:
 - `@botsrated/x402-preflight`: zero runtime dependencies, requires Node 20+, new subpath exports
   `./payment-guard` and `./onchain`; `dist/` is built on `npm test` and `npm pack`.
 - `botsrated`: dependency ranges have upper bounds (`httpx>=0.27,<1`, `x402[httpx,evm]>=2.25,<3`).
+- `botsrated`: `import botsrated` and `from botsrated import PaymentGuard` no longer load `botsrated.client` (the
+  signing client); `BotsRatedClient` and the legacy guard load on first use. Public names are unchanged.
+- `@botsrated/x402-preflight`: `_resetChainCache` (a test helper) is no longer exported from `./onchain` or the
+  package root.
+- `best()` without paid lookups no longer mentions a free daily quota (`/v1/best` has none); the Python message names
+  `x402_client`.
+- When no BotsRated lookup happened, the decision message says no seller facts were checked.
+- `@botsrated/x402-preflight`: `mcpPaymentApprover` throws `invalid_host` when an `allowResourceHosts` entry contains
+  `*` (wildcards were never supported; such an entry used to be compared as a literal host and never matched).
+- `botsrated` (Python): `host_of` reads backslashes as forward slashes before parsing, as WHATWG URL parsers do, so it
+  returns the same host as the TypeScript `hostOf` for inputs such as `https://evil.example\@good.example`.
 
 ## botsrated (PyPI)
 

@@ -9,16 +9,16 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 - **After**, it keeps a local record (never the signature) and can read the blockchain, read-only, to see whether
   the payment settled once.
 
-It reduces the chance of paying the wrong address or paying twice. It does not prevent either, and it guarantees
-nothing.
+It reduces the chance of paying the wrong address or paying twice. It lowers the chance of either; it can't rule
+them out.
 
 **Status: 0.2.0 is not released yet. The latest version on npm is
 [`@botsrated/x402-preflight` 0.1.4](https://www.npmjs.com/package/@botsrated/x402-preflight), which does not
 include the payment guard.**
 
-**What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't guarantee that a payment is safe, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT licence, "as is", without warranty.
+**What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
-**Hosted checks.** By default this package calls BotsRated's free API (`https://botsrated.com/v1/preflight`). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT licence. You can turn hosted checks off with `hosted: false` (only local retry-key and on-chain checks then run).
+**Hosted checks.** By default (`hosted: true`) this package calls BotsRated's free API (`https://botsrated.com/v1/preflight`) and sends it **only the seller's host name** (never the path, query, wallet, amount, nonce, payment header or request body). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT license. `hosted: false` turns hosted checks off: nothing is then sent to botsrated.com, and only the local checks, the retry key and the on-chain check (which goes only to the RPCs you set) run.
 
 ## Install
 
@@ -29,7 +29,7 @@ npm install @botsrated/x402-preflight @x402/core @x402/evm @x402/fetch
 The package has no runtime dependencies. `@x402/*` are yours; the guard only uses the hook and extension points
 of the x402 client you pass in.
 
-## Payment guard: start with dry-run
+## Payment Guard: Start With Dry-Run
 
 ```ts
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
@@ -47,6 +47,13 @@ const paidFetch = guard.wrapFetch(wrapFetchWithPayment(fetch, client)); // tells
 await paidFetch("https://seller.example/api");
 ```
 
+Import from `@botsrated/x402-preflight/payment-guard` (or `/onchain`) for the guard only: those entry points load
+no signing code. The package root also exports `BotsRatedClient`, which can sign BotsRated's own paid lookups.
+
+Always wrap the paying fetch with `guard.wrapFetch`. Without it the guard only knows the host the seller's 402
+*claims* (`resource.url`), so it reports `paid_url_unknown` (a warning by default; `policies.strict` stops the
+payment).
+
 When the log looks right, drop `dryRun`. The zero-config setting (`createPaymentGuard()`) is advice only: it
 reports facts and never stops a payment. To stop payments, choose a policy yourself:
 
@@ -58,15 +65,16 @@ const guard = createPaymentGuard({ policy: policies.strict }); // your choice
 
 A stopped payment throws `Payment creation aborted:` with text like:
 
-> Payment stopped by your payment policy (rule: payToMismatch). Fact: the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for seller.example on eip155:8453. Receipt: https://botsrated.com/receipt/…. This is a measurement, not a finding about the seller. Dispute: https://botsrated.com/disputes
+> Payment stopped by your payment policy (rule: payToMismatch). Fact: the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for seller.example on eip155:8453. Receipt: https://botsrated.com/receipt/<id>. This is a measurement, not a finding about the seller. Dispute: https://botsrated.com/disputes
 
-### Rules and defaults
+### Rules And Defaults
 
 | Rule (`policy.…`) | Reason code | `policies.warn` (default) | `policies.strict` |
 |---|---|---|---|
 | `payToMismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
 | `payToInvalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
 | `resourceHostMismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
+| `paidUrlUnknown`: the URL being paid is unknown (no `guard.wrapFetch`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |
 | `priceAboveObserved`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
 | `notCovered`: BotsRated has no probe record for the host | `not_covered` | info | info |
 | `stale`: BotsRated's latest probe is older than 24 h | `data_stale` | info | info |
@@ -86,12 +94,12 @@ Reason texts state facts only; seller text is never echoed except a parsed host 
 | `hosted` | `true` | `false`: nothing is sent to botsrated.com |
 | `failOpen` | `true` | `false`: stop the payment when BotsRated can't be reached or the guard errors |
 | `retryKey` | `true` | Add a `payment-identifier` id where the seller advertises it |
-| `onchain` | default RPCs | RPC settings for `paymentState`, or `false` |
+| `onchain` | default RPCs | RPC settings for `paymentState` (`rpcs`, `extraRpc`, `marginSeconds`, `expiryTag`, `confirmTag`), or `false` |
 | `timeoutMs` / `cacheTtlMs` | 1500 ms / 5 min | Hosted lookup timeout and per-host cache |
 | `preflight` | hosted call | Your own lookup `(host) => …`, e.g. to share a `BotsRatedClient` cache |
 | `onDecision` | none | Receives every decision (errors in it are ignored) |
 
-### Fail-open or fail-closed
+### Fail-Open Or Fail-Closed
 
 - **Fail-open (default):** if botsrated.com is down or slow, or the guard itself hits an error, the payment goes
   ahead and the decision says `botsrated_unreachable` (or `hook_error`). Our outage never stops your agent, but
@@ -100,30 +108,32 @@ Reason texts state facts only; seller text is never echoed except a parsed host 
   for you than a missed call.
 - Local checks (`resource_host_mismatch`, `payto_invalid`) and the on-chain check never depend on botsrated.com.
 
-### What the guard sends, and to whom
+### What The Guard Sends, And To Whom
 
 - **botsrated.com:** `GET /v1/preflight?url=<host name>` with `User-Agent: botsrated-x402-preflight/<version>`.
   Never the path, query, wallet, amount, nonce, tx hash, payment header or request body. No install id. Covered by
   the [Terms](https://botsrated.com/terms) and [Privacy Policy](https://botsrated.com/privacy). Turn it off with
   `hosted: false`.
-- **Base RPCs (only when you call `paymentState`):** JSON-RPC reads that include the payer address and nonce; the
-  RPC operator also sees your IP. Use your own RPCs if that matters.
-- No remote configuration, feature flags or auto-update: behaviour changes only with a new package version.
+- **Base RPCs (only when you call `paymentState`; nothing calls them automatically):** JSON-RPC reads that include
+  the payer address and the payment's nonce, sent straight from your machine to the RPCs, never to BotsRated.
+  See the privacy note under "Did It Settle Once?".
+- No remote configuration, feature flags or auto-update: behavior changes only with a new package version.
 
-### Retry key (`payment-identifier`)
+### Retry Key (`payment-identifier`)
 
 If the seller's 402 advertises the x402 `payment-identifier` extension, the guard adds a random id
 (`pay_` + 128 random bits) through x402's extension mechanism. Nothing else in the payload changes, and the
 seller's 402 is never modified. Ids are never reused across sellers, payTo addresses or routes. Inside
 `guard.operation(key, fn)` a retry of the same logical operation (same payTo, host and path) reuses the id, so a
-seller that honours the extension can answer a retry from its cache (or refuse a different payload with 409)
+seller that honors the extension can answer a retry from its cache (or refuse a different payload with 409)
 instead of charging again.
 
 A retry key only stops a second charge if the seller supports it. In BotsRated's own probes on Oct 24, 2026,
-81 of 3,739 seller hosts (2.2%) advertised `payment-identifier` in their 402, and 6 of them required it.
+about 2.2% of seller hosts (81 of 3,739 in our probe database) advertised `payment-identifier` in their 402, and 6
+of them required it.
 Elsewhere the guard adds nothing.
 
-### Did it settle once? (read-only)
+### Did It Settle Once? (Read-Only)
 
 ```ts
 const rec = guard.records().at(-1);          // payTo, amount, nonce, validBefore, host; never the signature
@@ -132,19 +142,26 @@ const state = await guard.paymentState(rec); // reads the chain; never pays, sig
 
 There are three answers only:
 
-- `settled`: two RPCs on different hosts both show the EIP-3009 authorization used at Base's `safe` block tag,
+- `settled`: two RPCs on different hosts (or two of three, see below) show the EIP-3009 authorization used at Base's `safe` block tag,
   the chain id is 8453, and the transaction receipt has `AuthorizationUsed(from, nonce)` and
   `Transfer(from, payTo, amount)` emitted by the pinned USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
-- `unknown` (`payment_state_unknown`) with `waitUntil`: not settled yet, the RPCs disagree or failed, or the
-  record can't be checked. **Do not sign a new payment for that purchase before `waitUntil`** (the signed
-  authorization stays valid until its `validBefore`, plus a margin of at least 30 s).
-- `expired_unsettled`: `validBefore` plus the margin has passed and both RPCs show it unused at the `finalized`
-  tag. Only then is a fresh payment free of a double-charge risk from the first one.
+- `unknown` (`payment_state_unknown`) with `waitUntil`: not settled yet, the RPCs disagree or failed, the blocks
+  they read are not yet past `validBefore` plus the margin (`chain_not_past_expiry`), or the record can't be
+  checked. **Do not sign a new payment for that purchase before `waitUntil`** (the signed authorization stays
+  valid until its `validBefore`, plus a margin of at least 30 s).
+- `expired_unsettled`: `validBefore` plus the margin has passed on the clock **and** in the chain: both RPCs show
+  the authorization unused at a block (Base's `safe` tag by default) whose timestamp is at or after `validBefore`
+  plus the margin. USDC accepts an authorization in any block before `validBefore`, so "unused" only counts in a
+  later block. With the default 60 s margin this is usually 1 to 3 minutes after expiry. Only then is a fresh
+  payment free of a double-charge risk from the first one.
+
+Settings (`onchain: { ... }`): `marginSeconds` (default 60, minimum 30) is the safety margin after `validBefore`.
+`expiryTag: "finalized"` waits for a finalized block past expiry instead (more conservative, usually 20+ minutes).
 
 The guard never retries on `unknown`. botsrated.com is never asked; a tx hash the seller reports is only a hint
 that is verified on chain.
 
-**Default RPCs** (two operators; please confirm or replace):
+**Default RPCs** (two operators; both must answer and agree):
 
 | RPC | Operator |
 |---|---|
@@ -152,10 +169,19 @@ that is verified on chain.
 | `https://base-rpc.publicnode.com` | Allnodes (PublicNode) |
 
 ```ts
-createPaymentGuard({ onchain: { rpcs: ["https://your-rpc-1", "https://your-rpc-2"], confirmTag: "finalized" } });
+createPaymentGuard({ onchain: { rpcs: ["https://your-rpc-1", "https://your-rpc-2"] } });
+// Optional third RPC of your own: then 2 of the 3 must answer and agree, and any RPC that sees the
+// authorization used rules out expired_unsettled.
+createPaymentGuard({ onchain: { extraRpc: "https://your-own-rpc" } });
 ```
 
-### What the guard can't do (by design)
+**Privacy of on-chain checks.** Each `paymentState()` call sends the payer address, the payment's nonce and your IP
+address to every RPC it uses. With the defaults those are Coinbase (`mainnet.base.org`) and Allnodes
+(`base-rpc.publicnode.com`); anyone holding the nonce can match it to the on-chain transaction and the seller.
+Treat both operators as logging. Pass your own RPCs (`rpcs`, `extraRpc`) if that matters to you. BotsRated never
+receives these reads.
+
+### What The Guard Can't Do (By Design)
 
 - It never signs, never sends or resends a payment, never builds a payment header and never imports a signer.
 - Every hook is wrapped so its return value is discarded. The after-payment and response hooks always resolve to
@@ -164,9 +190,13 @@ createPaymentGuard({ onchain: { rpcs: ["https://your-rpc-1", "https://your-rpc-2
 - These limits are enforced by tests in CI: `test/c1-no-repay.test.ts` (fuzzed hook contexts, a grep of the guard's
   source and `dist/` for signing, payment-header and retry code, and a real `@x402/fetch` run where the seller fails
   after payment and exactly one payload is created).
+- **Other hooks can still pay again.** If your own code or another library registers an `onPaymentResponse` or
+  `onPaymentCreationFailure` hook on the same x402 client that returns `{ recovered: true }`, x402 signs and sends
+  a fresh payment. The guard can't stop that, because it happens outside this package. Don't return `recovered`
+  from your own hooks unless a new payment is what you want.
 - MCP paid tools (`@x402/mcp`) get the pre-payment check only (`mcpPaymentApprover` below).
 
-## The pre-payment guard (`createPrePaymentGuard`)
+## The Pre-Payment Guard (`createPrePaymentGuard`)
 
 The older, simpler guard (pre-payment check only). Since 0.2.0 it also sends only the host name and is
 advice-only on payTo by default; pass `policy: strictGuardPolicy` (or `{ payToMismatch: "block" }`) to stop
@@ -200,7 +230,7 @@ redirect) is accepted (since 0.1.4); any other host is blocked. Concurrent reque
 one paid request is in flight; with several, the guard falls back to `resource.url`, or blocks with
 `policy.requireRequestUrl: true` (since 0.1.4).
 
-## Use with `@x402/mcp`
+## Use With `@x402/mcp`
 
 ```ts
 import { createx402MCPClient } from "@x402/mcp";
@@ -224,7 +254,7 @@ mcpPaymentApprover(guard, "https://seller.example/mcp", {
 });
 ```
 
-## What is checked (defaults)
+## What Is Checked (Defaults)
 
 | Check | Default | Option |
 |---|---|---|
@@ -238,7 +268,7 @@ mcpPaymentApprover(guard, "https://seller.example/mcp", {
 Only the host name is sent to BotsRated. Preflight answers are cached for 5 minutes per host (`cacheTtlMs`). `onDecision(decision, requirements)`
 receives every decision, including warnings and receipt URLs.
 
-## Opt-in paid BotsRated lookups, with a budget
+## Opt-In Paid BotsRated Lookups, With A Budget
 
 This is the only part of the package that signs anything: with `paid` set, `BotsRatedClient` asks **your**
 `x402Client` to sign BotsRated's own quote for a paid lookup you requested. The payment guard
