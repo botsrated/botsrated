@@ -1,0 +1,281 @@
+name: Publish PyPI package (Trusted Publishing)
+
+# Manual only: workflow_dispatch from refs/heads/main. Any other event or ref fails in the first job. Nothing runs on
+# push, tag or schedule. Dry run (build + checks only) is the default. Publishes one package from integrations/ to
+# PyPI with Trusted Publishing (OIDC): no PyPI token is stored in this repo or its secrets. PEP 740 attestations are
+# uploaded by gh-action-pypi-publish.
+#
+# Release gate (no signed tags needed; works from the GitHub iPhone app):
+#   1. Someone with write access dispatches this workflow on main with the package and its version.
+#   2. gate checks: event and ref, the version input equals pyproject.toml's version at the run's commit, the tag
+#      <project>-v<version> doesn't exist yet and the version isn't on PyPI yet. Every later job checks out exactly
+#      that commit (github.sha, the main commit the run started on), never a branch name.
+#   3. review writes "What you are approving" to the run's Summary page: project and version, the commit, a compare
+#      link and commit list since the last version published on PyPI (the tag of PyPI's latest version, not the
+#      newest tag; tags whose version isn't on PyPI are flagged), and the sha256 of each file to be uploaded.
+#   4. A real upload waits in the "pypi-publish" environment until a required reviewer (Anton) approves it. GitHub
+#      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
+#      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
+#      account. Dry runs stop after review and need no approval.
+#   5. After a successful upload, the tag job creates the annotated tag <project>-v<version> on that commit with
+#      the GITHUB_TOKEN. It fails if the tag already exists. Only that job has contents: write.
+# The optional signed-tag check (integrations/release-tools/verify-tag.sh and test-verify-tag.sh) stays in the repo
+# and isn't used here.
+#
+# Jobs (least privilege):
+#   gate    - the checks above (contents: read; GITHUB_TOKEN used read-only to look the tag up).
+#   test    - runs the tests with pinned test dependencies (release-tools/constraints-test.txt).
+#   build   - builds the sdist and wheel with hash-pinned tools only (release-tools/requirements-release.txt,
+#             pip --require-hashes; hatchling pinned in [build-system] and used with --no-isolation, so nothing is
+#             resolved from PyPI at build time). No test dependencies are installed in this job.
+#   review  - the approval summary (no credentials, no checkout).
+#   publish - real uploads only, in the reviewer-gated "pypi-publish" environment with id-token: write; checks the
+#             files' sha256 against the approval summary and uploads the built files only.
+#   tag     - after a real upload only: creates the release tag (contents: write, no checkout, no id-token).
+#
+# Before the first real run (repo owner): see docs/drafts/README.md ("What Anton sets up").
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package directory under integrations/"
+        required: true
+        type: choice
+        options: [python-core, langchain, llamaindex, microsoft-agent-framework]
+      version:
+        description: "Version to release; must equal pyproject.toml's version on main, e.g. 0.2.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Only build and check, don't upload"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Release gate (main, version ${{ inputs.version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+      tag: ${{ steps.check.outputs.tag }}
+      compare_url: ${{ steps.changes.outputs.compare_url }}
+      commits: ${{ steps.changes.outputs.commits }}
+    steps:
+      - name: Only workflow_dispatch from refs/heads/main
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT" != "workflow_dispatch" ] || [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::releases run only by workflow_dispatch from refs/heads/main (got $EVENT on $REF)"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0     # full history and tags for the compare link and commit list
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - id: check
+        env:
+          PKG: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}   # read-only here (contents: read): looks the tag up
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$ ]]; then echo "::error::'$VERSION' is not a version like 1.2.3"; exit 1; fi
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "::error::checkout is not the run's commit $SHA"; exit 1; }
+          cd "integrations/$PKG"
+          name=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
+          ver=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$ver" != "$VERSION" ]; then echo "::error::version input $VERSION does not match pyproject.toml ($ver) at $SHA"; exit 1; fi
+          tag="$name-v$ver"
+          if gh api "repos/$REPO/git/matching-refs/tags/$tag" --jq '.[].ref' | grep -qxF "refs/tags/$tag"; then
+            echo "::error::tag $tag already exists; bump the version first"; exit 1
+          fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
+          if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
+          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=$name"; echo "name=$name"; } >> "$GITHUB_OUTPUT"
+          echo "Releasing $name $ver from main at $SHA; tag after upload: $tag" >> "$GITHUB_STEP_SUMMARY"
+      - name: Changes since the last release (for the approver)
+        id: changes
+        env:
+          PREFIX: ${{ steps.check.outputs.prefix }}
+          NAME: ${{ steps.check.outputs.name }}
+          PKG: ${{ inputs.package }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" pypi "$NAME" >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Test ${{ inputs.package }} ${{ inputs.version }}
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Test (pinned test dependencies)
+        env:
+          PKG: ${{ inputs.package }}
+        run: |
+          python -m venv /tmp/testenv && . /tmp/testenv/bin/activate
+          pip install -c ../release-tools/constraints-test.txt pytest respx pytest-asyncio
+          if [ "$PKG" = "langchain" ]; then pip install -c ../release-tools/constraints-test.txt "langchain-tests==1.1.9"; fi
+          pip install -c ../release-tools/constraints-test.txt -e "../python-core[x402]" -e .
+          python -m pytest -q -m "not live" tests
+
+  build:
+    name: Build ${{ inputs.package }} ${{ inputs.version }}
+    needs: [gate, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # no id-token here
+    outputs:
+      sha256_b64: ${{ steps.sums.outputs.sha256_b64 }}
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Hash-pinned build tools only
+        run: |
+          python -m venv /tmp/buildenv
+          /tmp/buildenv/bin/python -m pip install --no-deps --require-hashes --only-binary :all: -r ../release-tools/requirements-release.txt
+          # The [build-system] hatchling pin must equal the hash-pinned one (no build-time resolution from PyPI).
+          want=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires'])")
+          have=$(/tmp/buildenv/bin/python -c "import importlib.metadata as m;print(['hatchling=='+m.version('hatchling')])")
+          [ "$want" = "$have" ] || { echo "::error::[build-system] requires $want but the pinned tools have $have"; exit 1; }
+      - name: Build sdist and wheel
+        run: rm -rf dist && /tmp/buildenv/bin/python -m build --no-isolation && /tmp/buildenv/bin/twine check --strict dist/* && sha256sum dist/* | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Version not yet on PyPI
+        run: |
+          name=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
+          ver=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "$name==$ver"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
+          if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
+      - name: Checksums for the approval summary
+        id: sums
+        run: echo "sha256_b64=$(cd dist && sha256sum -- * | base64 -w0)" >> "$GITHUB_OUTPUT"   # one line, any file names
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: integrations/${{ inputs.package }}/dist/
+          if-no-files-found: error
+
+  review:
+    name: What you are approving (${{ inputs.package }} ${{ inputs.version }})
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Approval summary
+        env:
+          PKG: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          TAG: ${{ needs.gate.outputs.tag }}
+          COMPARE_URL: ${{ needs.gate.outputs.compare_url }}
+          COMMITS: ${{ needs.gate.outputs.commits }}
+          SHA256_B64: ${{ needs.build.outputs.sha256_b64 }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          {
+            echo "## What you are approving"
+            echo
+            if [ "$DRY_RUN" = "true" ]; then echo "**Dry run: nothing is uploaded and no approval is needed.**"; else echo "**Real upload to PyPI**, then tag \`$TAG\`."; fi
+            echo
+            echo "- Package: \`integrations/$PKG\` version \`$VERSION\`"
+            echo "- Commit (main): [\`$SHA\`]($SERVER/$REPO/commit/$SHA)"
+            echo "- Started by: \`$TRIGGERING_ACTOR\` (actor \`$ACTOR\`)"
+            echo "- Changes since the last release: $COMPARE_URL ($COMMITS commits; the list is in the gate job's summary)"
+            echo "- Files and sha256 (built with the hash-pinned tools):"
+            echo
+            echo '```'
+            base64 -d <<<"$SHA256_B64"
+            echo '```'
+            echo
+            echo "Approve only if the commit is the merge you expect and the changes are what you meant to release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Upload ${{ inputs.package }} ${{ inputs.version }} to PyPI
+    needs: [gate, build, review]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: pypi-publish   # required reviewer configured on the environment; real uploads only
+    permissions:
+      id-token: write   # OIDC token for PyPI Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - name: Files are the ones in the approval summary
+        env:
+          SHA256_B64: ${{ needs.build.outputs.sha256_b64 }}
+        run: |
+          got=$(cd dist && sha256sum -- * | base64 -w0)
+          if [ "$got" != "$SHA256_B64" ]; then echo "::error::dist/ differs from the approval summary"; exit 1; fi
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  tag:
+    name: Create release tag ${{ needs.gate.outputs.tag }}
+    needs: [gate, publish]
+    if: ${{ !inputs.dry_run && needs.publish.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only this job: creates the tag object and ref through the API (no checkout)
+    steps:
+      - name: Create annotated tag on the published commit (fails if it exists)
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPO/git/matching-refs/tags/$TAG" --jq '.[].ref' | grep -qxF "refs/tags/$TAG"; then
+            echo "::error::tag $TAG already exists"; exit 1
+          fi
+          obj=$(gh api "repos/$REPO/git/tags" -f tag="$TAG" -f object="$SHA" -f type=commit \
+                -f message="$TAG: published to PyPI by $RUN_URL" --jq .sha)
+          # Creating a ref that already exists returns 422, so a race cannot move an existing tag.
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$obj" --jq .ref
+          echo "Tagged $TAG -> $SHA" >> "$GITHUB_STEP_SUMMARY"
