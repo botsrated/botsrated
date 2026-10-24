@@ -8,6 +8,14 @@ All notable changes to the packages in this repository. Each package has its own
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.
+- Release drafts, after Security's review of the phone gate:
+  - Before approval, the run's Summary shows "What you are approving": who started it, the commit, a compare link
+    and commit list since the last `<package>-v*` tag (or the first commit), and the sha256 of every file to be
+    published. The publish job re-checks those checksums (new `integrations/release-tools/release-summary.sh`).
+  - npm dry runs no longer use the `npm-publish` environment (no approval, no id-token, no `--provenance`).
+  - `docs/drafts/README.md` no longer overstates 2FA: it's checked at sign-in, and an API approval with a token
+    needs none. The setup is described for both a shared and a separate bot account, with admin bypass and the
+    "Allow GitHub Actions to create and approve pull requests" setting.
 - Release drafts: the release gate no longer needs signed tags. A run is a manual `workflow_dispatch` from main
   whose `version` input must match the package manifest. Everything is built from the run's exact commit, and
   publishing waits for Anton's approval in the `npm-publish` / `pypi-publish` environment. After a successful
@@ -134,9 +142,11 @@ Changed:
 ## langchain-botsrated (PyPI)
 
 ### 0.1.3 (prepared, not released)
-- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
-- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
-  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
+- Allows `botsrated` 0.2.x and requires 0.1.6+ (IDNA, case and trailing-dot host normalization):
+  `botsrated>=0.1.6,<0.3`.
+- Keeps blocking a payTo BotsRated's probes never recorded, with any supported botsrated version: the package now
+  passes `GuardPolicy(pay_to_mismatch="block")` explicitly, because botsrated 0.2 made that advice-only by default.
+  The reason code is `payto_not_observed` with botsrated 0.2 (`payto_mismatch` with 0.1.x).
 
 ### 0.1.2
 - Depends on `botsrated>=0.1.5,<0.2`. Docstrings point to `x402_client=`.
@@ -150,9 +160,11 @@ Changed:
 ## llama-index-tools-botsrated (PyPI)
 
 ### 0.1.3 (prepared, not released)
-- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
-- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
-  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
+- Allows `botsrated` 0.2.x and requires 0.1.6+ (IDNA, case and trailing-dot host normalization):
+  `botsrated>=0.1.6,<0.3`.
+- Keeps blocking a payTo BotsRated's probes never recorded, with any supported botsrated version: the package now
+  passes `GuardPolicy(pay_to_mismatch="block")` explicitly, because botsrated 0.2 made that advice-only by default.
+  The reason code is `payto_not_observed` with botsrated 0.2 (`payto_mismatch` with 0.1.x).
 
 ### 0.1.2
 - Depends on `botsrated>=0.1.5,<0.2`. Docstrings point to `x402_client=`.
@@ -166,9 +178,11 @@ Changed:
 ## agent-framework-botsrated (PyPI)
 
 ### 0.1.3 (prepared, not released)
-- Allows `botsrated` 0.2.x: depends on `botsrated>=0.1.5,<0.3`.
-- With botsrated 0.2, a payTo BotsRated never observed is a warning (`payto_not_observed`), not a block
-  (`payto_mismatch`), unless the policy blocks it. Tests and README updated.
+- Allows `botsrated` 0.2.x and requires 0.1.6+ (IDNA, case and trailing-dot host normalization):
+  `botsrated>=0.1.6,<0.3`.
+- Keeps blocking a payTo BotsRated's probes never recorded, with any supported botsrated version: the package now
+  passes `GuardPolicy(pay_to_mismatch="block")` explicitly, because botsrated 0.2 made that advice-only by default.
+  The reason code is `payto_not_observed` with botsrated 0.2 (`payto_mismatch` with 0.1.x).
 
 ### 0.1.2
 - `__version__` comes from the installed package metadata.

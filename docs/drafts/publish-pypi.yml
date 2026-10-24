@@ -10,9 +10,13 @@ name: Publish PyPI package (Trusted Publishing)
 #   2. gate checks: event and ref, the version input equals pyproject.toml's version at the run's commit, the tag
 #      <project>-v<version> doesn't exist yet and the version isn't on PyPI yet. Every later job checks out exactly
 #      that commit (github.sha, the main commit the run started on), never a branch name.
-#   3. publish waits in the "pypi-publish" environment until Anton approves it (required reviewer; approving needs
-#      his GitHub sign-in with 2FA).
-#   4. After a successful upload, the tag job creates the annotated tag <project>-v<version> on that commit with
+#   3. review writes "What you are approving" to the run's Summary page: project and version, the commit, a compare
+#      link and commit list since the last release tag, and the sha256 of each file that will be uploaded.
+#   4. A real upload waits in the "pypi-publish" environment until a required reviewer (Anton) approves it. GitHub
+#      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
+#      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
+#      account. Dry runs stop after review and need no approval.
+#   5. After a successful upload, the tag job creates the annotated tag <project>-v<version> on that commit with
 #      the GITHUB_TOKEN. It fails if the tag already exists. Only that job has contents: write.
 # The optional signed-tag check (integrations/release-tools/verify-tag.sh and test-verify-tag.sh) stays in the repo
 # and isn't used here.
@@ -23,7 +27,9 @@ name: Publish PyPI package (Trusted Publishing)
 #   build   - builds the sdist and wheel with hash-pinned tools only (release-tools/requirements-release.txt,
 #             pip --require-hashes; hatchling pinned in [build-system] and used with --no-isolation, so nothing is
 #             resolved from PyPI at build time). No test dependencies are installed in this job.
-#   publish - in the reviewer-gated "pypi-publish" environment with id-token: write; uploads the built files only.
+#   review  - the approval summary (no credentials, no checkout).
+#   publish - real uploads only, in the reviewer-gated "pypi-publish" environment with id-token: write; checks the
+#             files' sha256 against the approval summary and uploads the built files only.
 #   tag     - after a real upload only: creates the release tag (contents: write, no checkout, no id-token).
 #
 # Before the first real run (repo owner): see docs/drafts/README.md ("What Anton sets up").
@@ -62,6 +68,8 @@ jobs:
     outputs:
       sha: ${{ steps.check.outputs.sha }}
       tag: ${{ steps.check.outputs.tag }}
+      compare_url: ${{ steps.changes.outputs.compare_url }}
+      commits: ${{ steps.changes.outputs.commits }}
     steps:
       - name: Only workflow_dispatch from refs/heads/main
         env:
@@ -74,6 +82,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0     # full history and tags for the compare link and commit list
+          fetch-tags: true
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -98,8 +108,17 @@ jobs:
           fi
           code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
           if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=$name"; } >> "$GITHUB_OUTPUT"
           echo "Releasing $name $ver from main at $SHA; tag after upload: $tag" >> "$GITHUB_STEP_SUMMARY"
+      - name: Changes since the last release (for the approver)
+        id: changes
+        env:
+          PREFIX: ${{ steps.check.outputs.prefix }}
+          PKG: ${{ inputs.package }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Test ${{ inputs.package }} ${{ inputs.version }}
@@ -134,6 +153,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read   # no id-token here
+    outputs:
+      sha256_b64: ${{ steps.sums.outputs.sha256_b64 }}
     defaults:
       run:
         working-directory: integrations/${{ inputs.package }}
@@ -162,18 +183,61 @@ jobs:
           echo "$name==$ver"
           code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
           if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
+      - name: Checksums for the approval summary
+        id: sums
+        run: echo "sha256_b64=$(cd dist && sha256sum -- * | base64 -w0)" >> "$GITHUB_OUTPUT"   # one line, any file names
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: integrations/${{ inputs.package }}/dist/
           if-no-files-found: error
 
-  publish:
-    name: Upload ${{ inputs.package }} to PyPI
+  review:
+    name: What you are approving (${{ inputs.package }} ${{ inputs.version }})
     needs: [gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Approval summary
+        env:
+          PKG: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          TAG: ${{ needs.gate.outputs.tag }}
+          COMPARE_URL: ${{ needs.gate.outputs.compare_url }}
+          COMMITS: ${{ needs.gate.outputs.commits }}
+          SHA256_B64: ${{ needs.build.outputs.sha256_b64 }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          {
+            echo "## What you are approving"
+            echo
+            if [ "$DRY_RUN" = "true" ]; then echo "**Dry run: nothing is uploaded and no approval is needed.**"; else echo "**Real upload to PyPI**, then tag \`$TAG\`."; fi
+            echo
+            echo "- Package: \`integrations/$PKG\` version \`$VERSION\`"
+            echo "- Commit (main): [\`$SHA\`]($SERVER/$REPO/commit/$SHA)"
+            echo "- Started by: \`$TRIGGERING_ACTOR\` (actor \`$ACTOR\`)"
+            echo "- Changes since the last release: $COMPARE_URL ($COMMITS commits; the list is in the gate job's summary)"
+            echo "- Files and sha256 (built with the hash-pinned tools):"
+            echo
+            echo '```'
+            base64 -d <<<"$SHA256_B64"
+            echo '```'
+            echo
+            echo "Approve only if the commit is the merge you expect and the changes are what you meant to release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Upload ${{ inputs.package }} ${{ inputs.version }} to PyPI
+    needs: [gate, build, review]
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.dry_run }}
     runs-on: ubuntu-latest
-    environment: pypi-publish   # required reviewer configured on the environment
+    environment: pypi-publish   # required reviewer configured on the environment; real uploads only
     permissions:
       id-token: write   # OIDC token for PyPI Trusted Publishing
     steps:
@@ -181,6 +245,12 @@ jobs:
         with:
           name: dist
           path: dist/
+      - name: Files are the ones in the approval summary
+        env:
+          SHA256_B64: ${{ needs.build.outputs.sha256_b64 }}
+        run: |
+          got=$(cd dist && sha256sum -- * | base64 -w0)
+          if [ "$got" != "$SHA256_B64" ]; then echo "::error::dist/ differs from the approval summary"; exit 1; fi
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   tag:

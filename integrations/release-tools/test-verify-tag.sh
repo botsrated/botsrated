@@ -19,7 +19,7 @@ K3SUB=$(gpg --with-colons --fingerprint --with-subkey-fingerprints "$K3" 2>/dev/
 mkdir -p "$t/signers" "$t/signers-k2" "$t/signers-none"
 gpg --armor --export "$K1" > "$t/signers/k1.asc"; gpg --armor --export "$K3" > "$t/signers/k3.asc"
 gpg --armor --export "$K2" > "$t/signers-k2/k2.asc"; gpg --armor --export "$K1" > "$t/signers-k2/k1.asc"
-printf '# pinned\n%s\n%s\n' "$K1" "$(sed 's/.\{4\}/& /g' <<<"$K3")" > "$t/allow.txt"
+printf '# pinned\n%s\n%s\n' "$K1" "$(fold -w4 <<<"$K3" | paste -sd' ')" > "$t/allow.txt"
 : > "$t/empty.txt"; echo "# comments only" > "$t/comments.txt"
 
 # Repo: main with one commit, a side commit not on main.
