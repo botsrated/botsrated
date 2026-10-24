@@ -27,3 +27,21 @@ Changes after the security re-review of Oct 24, 2026:
   hatchling 1.32.4) and `python -m build --no-isolation`, in a job that installs no test dependencies. Each
   package's `[build-system]` pins `hatchling==1.32.4`, and the job fails if the two differ. Tests run in a separate
   job with pinned test dependencies (`integrations/release-tools/constraints-test.txt`, including `x402==2.25.0`).
+
+Changes after Security's recheck 2 (Oct 24, 2026):
+
+- **R2-M1: GPG verification is pinned.** `verify-tag.sh` runs GPG with a fresh, empty `GNUPGHOME`, imports only
+  the keys in `.github/release-signers/`, and then requires the fingerprint of the key that made the signature
+  (from `git verify-tag --raw`: GPG `VALIDSIG`, signing subkey or primary key; SSH `SHA256:` fingerprint) to be
+  listed in `integrations/release-tools/signers.txt` on main. A valid signature from any other key is rejected,
+  including one whose key is already on the runner or sits in the signers folder without being pinned.
+  `signers.txt` is committed empty, so releases fail closed until the owner adds a fingerprint there and the
+  public key to `.github/release-signers/`. `integrations/release-tools/test-verify-tag.sh` is the self-test
+  (throwaway keys and repo; the SSH cases run where `ssh-keygen` exists); the verify job runs it first.
+- **R2-M2: the published tarball is built without install scripts.** A `pack` job builds from a fresh checkout
+  with `npm ci --ignore-scripts`, compiles `dist/` by calling the lockfile's TypeScript compiler directly and runs
+  `npm pack --ignore-scripts`. The `test` job (normal `npm ci`, typecheck, tests) packs a reference tarball, and a
+  `compare` job requires the two to be byte-identical (sha256) before `publish` can run.
+- **R2-L5: npm CLI integrity.** Every npm job installs npm 12.2.1 only from the registry tarball after checking its
+  sha512 against `NPM_CLI_INTEGRITY` (the registry's `dist.integrity`), with `--ignore-scripts`. Bumping npm means
+  updating both `NPM_CLI_VERSION` and `NPM_CLI_INTEGRITY`.

@@ -11,10 +11,16 @@ name: Publish npm package (trusted publishing)
 #
 # Jobs (least privilege):
 #   verify  - checks the tag (no credentials).
-#   build   - npm ci, typecheck, tests and npm pack at the tag; uploads the .tgz. No id-token, no environment: a
-#             compromised dev dependency running here never sees a publish credential.
-#   publish - in the reviewer-gated "npm-publish" environment with id-token: write; downloads the .tgz and runs
+#   test    - npm ci (with install scripts), typecheck and tests at the tag, then packs a reference .tgz. Nothing
+#             it builds is published.
+#   pack    - the tarball that is published: a fresh checkout, npm ci --ignore-scripts (no dependency install
+#             script runs), dist/ built by calling the pinned TypeScript compiler directly, npm pack --ignore-scripts.
+#   compare - the pack .tgz must be byte-identical (sha256) to the test job's reference .tgz, so a dependency that
+#             changed the build output in either job stops the release.
+#   publish - in the reviewer-gated "npm-publish" environment with id-token: write; downloads the pack .tgz and runs
 #             npm publish on it. No checkout, no npm ci, no project scripts.
+# No job above publish has id-token or an environment. Every job installs the npm CLI only from a tarball whose
+# sha512 matches NPM_CLI_INTEGRITY below (same value as the registry's dist.integrity for that version).
 #
 # Before the first real run (repo owner):
 # 1. GitHub -> Settings -> Environments -> "npm-publish": add Anton as a required reviewer, allow only the main branch.
@@ -23,7 +29,8 @@ name: Publish npm package (trusted publishing)
 #    and allow "npm publish" (configs created after 2026-09-03 default to "npm stage publish" only). A new
 #    trusted-publisher config must complete its first successful publish within 2 days.
 # 3. Then set the package's publishing access to "Require two-factor authentication and disallow tokens".
-# 4. Commit the release signer public key(s) to .github/release-signers/ on main, and sign release tags
+# 4. Commit the release signer public key(s) to .github/release-signers/ on main, add their fingerprints to
+#    integrations/release-tools/signers.txt (on main; empty = every release fails closed), and sign release tags
 #    (git tag -s <package>-v<version>).
 # Publish order: x402-client first, then vercel-ai-sdk (it depends on @botsrated/x402-preflight from npm).
 # Provenance note: npm provenance names the workflow run (main); the job summary records the tag and its commit.
@@ -48,6 +55,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  NPM_CLI_VERSION: "12.2.1"   # trusted publishing needs >= 11.5.1
+  NPM_CLI_INTEGRITY: "sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ=="
 
 concurrency:
   group: publish-npm
@@ -77,14 +88,15 @@ jobs:
           # Expected tag name from the package manifest AT THE TAG: <name without @botsrated/>-v<version>
           name=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).name.replace(/^@botsrated\//, '')")
           ver=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")
-          # verify-tag.sh and the signer keys come from main (this checkout), never from the tag.
-          bash integrations/release-tools/verify-tag.sh "$TAG" "$name-v$ver" .github/release-signers
+          # verify-tag.sh, its self-test, signers.txt and the signer keys come from main (this checkout), never from the tag.
+          bash integrations/release-tools/test-verify-tag.sh   # throwaway keys; proves the runner's gpg rejects unpinned keys
+          bash integrations/release-tools/verify-tag.sh "$TAG" "$name-v$ver" .github/release-signers integrations/release-tools/signers.txt
           sha=$(git rev-parse "refs/tags/$TAG^{commit}")
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Building $TAG at $sha" >> "$GITHUB_STEP_SUMMARY"
 
-  build:
-    name: Build and test ${{ inputs.package }} at ${{ inputs.tag }}
+  test:
+    name: Test ${{ inputs.package }} at ${{ inputs.tag }}
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -101,19 +113,65 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false   # no caches in release builds
-      - name: Pinned npm CLI
-        run: npm install -g npm@12.2.1 && npm --version
+      - name: Pinned npm CLI (checksum-verified tarball)
+        run: |
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/npm-cli.tgz" "https://registry.npmjs.org/npm/-/npm-$NPM_CLI_VERSION.tgz"
+          got="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/npm-cli.tgz" | base64 -w0)"
+          if [ "$got" != "$NPM_CLI_INTEGRITY" ]; then echo "::error::npm CLI tarball checksum mismatch"; exit 1; fi
+          npm install -g --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/npm-cli.tgz"
+          test "$(npm --version)" = "$NPM_CLI_VERSION"
       - run: npm ci
       - run: npm run typecheck
       - run: npm test   # builds dist/ first (pretest) and runs the C1 no-resend tests against it
+      - name: Reference tarball (not published; compared with the pack job's)
+        run: |
+          mkdir -p ../../ref && npm pack --ignore-scripts --pack-destination ../../ref
+          sha256sum ../../ref/*.tgz
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-tarball-reference
+          path: ref/*.tgz
+          if-no-files-found: error
+
+  pack:
+    name: Pack ${{ inputs.package }} at ${{ inputs.tag }} (no install scripts)
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # no id-token here
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Pinned npm CLI (checksum-verified tarball)
+        run: |
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/npm-cli.tgz" "https://registry.npmjs.org/npm/-/npm-$NPM_CLI_VERSION.tgz"
+          got="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/npm-cli.tgz" | base64 -w0)"
+          if [ "$got" != "$NPM_CLI_INTEGRITY" ]; then echo "::error::npm CLI tarball checksum mismatch"; exit 1; fi
+          npm install -g --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/npm-cli.tgz"
+          test "$(npm --version)" = "$NPM_CLI_VERSION"
+      - name: npm ci --ignore-scripts (no dependency install scripts run)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build dist/ with the lockfile's TypeScript compiler (no npm scripts)
+        run: |
+          rm -rf dist
+          node node_modules/typescript/bin/tsc -p tsconfig.json
       - name: Version not yet on npm
         run: |
           name=$(node -p "require('./package.json').name"); ver=$(node -p "require('./package.json').version")
           echo "$name@$ver"
           if npm view "$name@$ver" version >/dev/null 2>&1; then echo "::error::$name@$ver is already published; bump the version first"; exit 1; fi
-      - name: npm pack (prepack builds dist/)
+      - name: npm pack --ignore-scripts (dist/ was built above; prepack does not run)
         run: |
-          mkdir -p ../../pack && npm pack --pack-destination ../../pack
+          mkdir -p ../../pack && npm pack --ignore-scripts --pack-destination ../../pack
           ls -l ../../pack && sha256sum ../../pack/*.tgz | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -121,9 +179,29 @@ jobs:
           path: pack/*.tgz
           if-no-files-found: error
 
+  compare:
+    name: Tarballs from the test and pack jobs are identical
+    needs: [test, pack]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball
+          path: pack/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball-reference
+          path: ref/
+      - run: |
+          a=$(cd pack && sha256sum *.tgz); b=$(cd ref && sha256sum *.tgz)
+          echo "pack: $a"; echo "test: $b"
+          if [ "$a" != "$b" ]; then echo "::error::the published tarball differs from the tested build"; exit 1; fi
+
   publish:
     name: Publish ${{ inputs.package }}${{ inputs.dry_run && ' (dry run)' || '' }}
-    needs: [verify, build]
+    needs: [verify, test, pack, compare]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: npm-publish   # required reviewer configured on the environment
@@ -140,8 +218,13 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      - name: Pinned npm CLI (trusted publishing needs >= 11.5.1)
-        run: npm install -g npm@12.2.1 && npm --version
+      - name: Pinned npm CLI (checksum-verified tarball)
+        run: |
+          curl -fsSL --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/npm-cli.tgz" "https://registry.npmjs.org/npm/-/npm-$NPM_CLI_VERSION.tgz"
+          got="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/npm-cli.tgz" | base64 -w0)"
+          if [ "$got" != "$NPM_CLI_INTEGRITY" ]; then echo "::error::npm CLI tarball checksum mismatch"; exit 1; fi
+          npm install -g --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP/npm-cli.tgz"
+          test "$(npm --version)" = "$NPM_CLI_VERSION"
       - name: npm publish --dry-run
         if: inputs.dry_run
         run: npm publish ./pack/*.tgz --dry-run --provenance --access public --ignore-scripts

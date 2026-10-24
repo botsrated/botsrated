@@ -21,7 +21,8 @@ name: Publish PyPI package (Trusted Publishing)
 # 2. pypi.org -> project -> Publishing -> add a trusted publisher (GitHub):
 #      owner: botsrated   repository: botsrated   workflow: publish-pypi.yml   environment: pypi-publish
 # 3. Then remove any API tokens for the project.
-# 4. Commit the release signer public key(s) to .github/release-signers/ on main, and sign release tags
+# 4. Commit the release signer public key(s) to .github/release-signers/ on main, add their fingerprints to
+#    integrations/release-tools/signers.txt (on main; empty = every release fails closed), and sign release tags
 #    (git tag -s <project>-v<version>).
 
 on:
@@ -75,8 +76,9 @@ jobs:
           git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG" "refs/heads/main:refs/remotes/origin/main"
           # Expected tag name from pyproject.toml AT THE TAG: <project name>-v<version>
           expected=$(git show "refs/tags/$TAG:integrations/$PKG/pyproject.toml" | python -c "import sys,tomllib;p=tomllib.loads(sys.stdin.read())['project'];print(p['name']+'-v'+p['version'])")
-          # verify-tag.sh and the signer keys come from main (this checkout), never from the tag.
-          bash integrations/release-tools/verify-tag.sh "$TAG" "$expected" .github/release-signers
+          # verify-tag.sh, its self-test, signers.txt and the signer keys come from main (this checkout), never from the tag.
+          bash integrations/release-tools/test-verify-tag.sh   # throwaway keys; proves the runner's gpg rejects unpinned keys
+          bash integrations/release-tools/verify-tag.sh "$TAG" "$expected" .github/release-signers integrations/release-tools/signers.txt
           sha=$(git rev-parse "refs/tags/$TAG^{commit}")
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "Building $TAG at $sha" >> "$GITHUB_STEP_SUMMARY"

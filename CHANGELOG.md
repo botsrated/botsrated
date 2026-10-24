@@ -8,6 +8,10 @@ All notable changes to the packages in this repository. Each package has its own
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.
+- Release drafts (no package release; `docs/drafts/`, not installed): tag signatures are verified only against
+  pinned keys (fresh GNUPGHOME, fingerprint allowlist `integrations/release-tools/signers.txt`, self-test
+  `test-verify-tag.sh`); the published npm tarball is built with `npm ci --ignore-scripts` and must match the tested
+  build byte for byte; the npm CLI is installed only from a checksum-verified tarball.
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
 
