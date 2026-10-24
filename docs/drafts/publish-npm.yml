@@ -10,7 +10,8 @@ name: Publish npm package (trusted publishing)
 #      <name>-v<version> doesn't exist yet and the version isn't on npm yet. Every later job checks out exactly that
 #      commit (github.sha, the main commit the run started on), never a branch name.
 #   3. review writes "What you are approving" to the run's Summary page: package@version, the commit, a compare link
-#      and commit list since the last release tag, and the sha256 of the tarball that will be published.
+#      and commit list since the commit of the last version published on npm (its gitHead or provenance commit, not
+#      the newest tag; tags whose version isn't on npm are flagged), and the sha256 of the tarball to be published.
 #   4. A real publish waits in the "npm-publish" environment until a required reviewer (Anton) approves it. GitHub
 #      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
 #      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
@@ -115,17 +116,18 @@ jobs:
             echo "::error::tag $tag already exists; bump the version first"; exit 1
           fi
           if npm view "$name@$ver" version >/dev/null 2>&1; then echo "::error::$name@$ver is already published; bump the version first"; exit 1; fi
-          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=${name#@botsrated/}"; } >> "$GITHUB_OUTPUT"
+          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=${name#@botsrated/}"; echo "name=$name"; } >> "$GITHUB_OUTPUT"
           echo "Releasing $name@$ver from main at $SHA; tag after publish: $tag" >> "$GITHUB_STEP_SUMMARY"
       - name: Changes since the last release (for the approver)
         id: changes
         env:
           PREFIX: ${{ steps.check.outputs.prefix }}
+          NAME: ${{ steps.check.outputs.name }}
           PKG: ${{ inputs.package }}
           SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
           SERVER: ${{ github.server_url }}
-        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" >> "$GITHUB_STEP_SUMMARY"
+        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" npm "$NAME" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Test ${{ inputs.package }} ${{ inputs.version }}

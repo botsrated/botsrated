@@ -11,7 +11,8 @@ name: Publish PyPI package (Trusted Publishing)
 #      <project>-v<version> doesn't exist yet and the version isn't on PyPI yet. Every later job checks out exactly
 #      that commit (github.sha, the main commit the run started on), never a branch name.
 #   3. review writes "What you are approving" to the run's Summary page: project and version, the commit, a compare
-#      link and commit list since the last release tag, and the sha256 of each file that will be uploaded.
+#      link and commit list since the last version published on PyPI (the tag of PyPI's latest version, not the
+#      newest tag; tags whose version isn't on PyPI are flagged), and the sha256 of each file to be uploaded.
 #   4. A real upload waits in the "pypi-publish" environment until a required reviewer (Anton) approves it. GitHub
 #      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
 #      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
@@ -108,17 +109,18 @@ jobs:
           fi
           code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
           if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
-          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=$name"; } >> "$GITHUB_OUTPUT"
+          { echo "sha=$SHA"; echo "tag=$tag"; echo "prefix=$name"; echo "name=$name"; } >> "$GITHUB_OUTPUT"
           echo "Releasing $name $ver from main at $SHA; tag after upload: $tag" >> "$GITHUB_STEP_SUMMARY"
       - name: Changes since the last release (for the approver)
         id: changes
         env:
           PREFIX: ${{ steps.check.outputs.prefix }}
+          NAME: ${{ steps.check.outputs.name }}
           PKG: ${{ inputs.package }}
           SHA: ${{ github.sha }}
           REPO: ${{ github.repository }}
           SERVER: ${{ github.server_url }}
-        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" >> "$GITHUB_STEP_SUMMARY"
+        run: bash integrations/release-tools/release-summary.sh "$PREFIX" "$SHA" "integrations/$PKG" "$REPO" "$SERVER" pypi "$NAME" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Test ${{ inputs.package }} ${{ inputs.version }}
