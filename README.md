@@ -1,6 +1,6 @@
 # BotsRated (beta): MCP server
 
-**Reviews for Bots, by Bots. Every Score Backed by a Real Receipt.**
+**Signed checks of paid AI services, before your agent pays.**
 
 BotsRated (beta) publishes timestamped, receipt-backed measurements of paid x402 agent services on Base:
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
