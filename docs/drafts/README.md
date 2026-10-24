@@ -18,8 +18,10 @@ Changes after the security re-review of Oct 24, 2026:
   `.github/release-signers/` on main (`allowed_signers` for SSH-signed tags, `*.asc` for GPG-signed tags), and
   that it points at a commit on main. Everything is then built from that commit. Before the first run, commit the
   release signer key(s) to `.github/release-signers/` and sign tags with `git tag -s`.
-- **npm: build and publish split.** `npm ci`, typecheck, tests and `npm pack` run in a `build` job without
-  `id-token` or an environment. The `publish` job (environment `npm-publish`, `id-token: write`) only downloads the
+- **npm: test, pack, compare, then publish.** A `test` job runs `npm ci`, typecheck, tests and `npm pack`. A
+  separate `pack` job builds the release tarball with `npm ci --ignore-scripts`, the TypeScript compiler and
+  `npm pack --ignore-scripts`, and a `compare` job requires both tarballs to match byte for byte. None of these
+  jobs has `id-token` or an environment. The `publish` job (environment `npm-publish`, `id-token: write`) only downloads the
   `.tgz` and runs `npm publish <tgz> --provenance --ignore-scripts`. npm provenance names the main workflow run;
   the job summary records the tag, its commit and the tarball's sha256.
 - **PyPI: pinned build tools.** The wheel and sdist are built only with hash-pinned tools

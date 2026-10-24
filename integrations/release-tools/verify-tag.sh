@@ -4,7 +4,7 @@
 # - the tag is an annotated tag named exactly <expected-tag> (<package>-v<version> from the package manifest);
 # - its signature verifies against ONLY the signer keys in <signers-dir> (allowed_signers for SSH-signed tags and/or
 #   *.asc public keys for GPG-signed tags), which the workflow takes from main, never from the tag itself. GPG runs
-#   with a fresh, empty GNUPGHOME, so keys already on the runner are never trusted;
+#   with a fresh, empty GNUPGHOME, so keys already on the runner are never accepted;
 # - the fingerprint of the key that made the signature is listed in <allowlist> (default: signers.txt next to this
 #   script, also from main). A valid signature by a key that is not listed is rejected;
 # - the tagged commit is on main (so only reviewed code is released).
