@@ -17,7 +17,7 @@ import { abortOnly, createPaymentGuard, observeOnly, policies } from "../src/pay
 import { FOUND, OTHER_PAYTO, PAYMENT_IDENTIFIER_DECL, SELLER_URL, json, pr, req } from "./helpers";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const GUARD_MODULES = ["payment-guard", "onchain", "util"];
+const GUARD_MODULES = ["payment-guard", "onchain", "util", "chain-cache"];
 const FORBIDDEN: Array<[string, RegExp]> = [
   ["createPaymentPayload", /createPaymentPayload/],
   ["recovered", /recovered/i],
@@ -122,7 +122,7 @@ describe("C1: source and dist of the guard contain no signing, resend or retry c
       const text = read(f);
       for (const [name, re] of FORBIDDEN) expect(re.test(text), `${f} contains ${name}`).toBe(false);
       const imports = [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]);
-      for (const i of imports) expect(["./onchain.js", "./util.js"], `${f} imports ${i}`).toContain(i);
+      for (const i of imports) expect(["./onchain.js", "./util.js", "./chain-cache.js"], `${f} imports ${i}`).toContain(i);
     }
   });
 

@@ -62,6 +62,10 @@ def _reset():
     _reset_chain_cache()
 
 
+BLOCK_OF = {"safe": "0xc8", "finalized": "0xb4", "latest": "0xd2"}
+TAG_OF = {v: k for k, v in BLOCK_OF.items()}
+
+
 class Chain:
     def __init__(self, views):
         self.views = views
@@ -78,11 +82,13 @@ class Chain:
         if m == "eth_chainId":
             res = v.get("chain", "0x2105")
         elif m == "eth_getBlockByNumber":
-            res = {"number": "0xc8", "timestamp": hex(NOW)}
+            res = {"number": BLOCK_OF[p[0]], "timestamp": hex(v.get("ts", {}).get(p[0], NOW))}
         elif m == "eth_call":
             assert p[0]["to"] == USDC
             assert p[0]["data"] == AUTHORIZATION_STATE_SELECTOR + pad(FROM)[2:] + NONCE[2:]
-            res = word(1 if v.get("used", {}).get(p[1]) else 0)
+            tag = TAG_OF.get(p[1])  # the state is read at the pinned block number, never at the moving tag
+            assert tag is not None, "eth_call must use a pinned block number"
+            res = word(1 if v.get("used", {}).get(tag) else 0)
         elif m == "eth_getLogs":
             res = v.get("logs", [{"transactionHash": TX}])
         elif m == "eth_getTransactionReceipt":
@@ -117,11 +123,105 @@ def test_unknown_before_valid_before_plus_margin():
     assert "Do not sign a new payment for this purchase before" in s.message
 
 
-def test_expired_unsettled_only_after_margin_at_finalized():
+def test_expired_unsettled_only_after_margin_at_a_safe_block_past_expiry():
     c = Chain({RPCS[0]: {}, RPCS[1]: {}})
     s = run(c, rec(valid_before=NOW - 100))
     assert s.state == "expired_unsettled"
+    assert c.methods.count("eth_call") == 2  # safe on both (default expiry_tag)
+
+
+# H2-R1: "expired_unsettled" needs the blocks read to be at or after validBefore + margin on the agreeing RPCs.
+VB = NOW - 100
+
+
+def test_lagging_blocks_before_valid_before_are_unknown():
+    s = run(Chain({RPCS[0]: {"ts": {"safe": VB - 43}}, RPCS[1]: {"ts": {"safe": VB - 10}}}), rec(valid_before=VB))
+    assert (s.state, s.code, s.reason) == ("unknown", "payment_state_unknown", "chain_not_past_expiry")
+    assert s.wait_until == NOW + (NOW - (VB - 43))
+
+
+def test_block_inside_the_margin_is_not_enough():
+    v = {"ts": {"safe": VB + 30}}
+    assert run(Chain({RPCS[0]: v, RPCS[1]: v}), rec(valid_before=VB)).reason == "chain_not_past_expiry"
+
+
+def test_one_rpc_lagging_is_unknown():
+    s = run(Chain({RPCS[0]: {"ts": {"safe": NOW}}, RPCS[1]: {"ts": {"safe": VB - 104}}}), rec(valid_before=VB))
+    assert (s.state, s.reason) == ("unknown", "chain_not_past_expiry")
+
+
+def test_both_rpcs_past_expiry_is_expired_unsettled():
+    s = run(Chain({RPCS[0]: {"ts": {"safe": VB + 60}}, RPCS[1]: {"ts": {"safe": VB + 80}}}), rec(valid_before=VB))
+    assert (s.state, s.valid_before) == ("expired_unsettled", VB)
+
+
+def test_margin_is_configurable_and_applies_to_the_block():
+    v = {"ts": {"safe": VB + 80}}
+    assert run(Chain({RPCS[0]: v, RPCS[1]: v}), rec(valid_before=VB - 200), margin_seconds=120).state == "expired_unsettled"
+    s = check_payment_state(rec(valid_before=VB), rpcs=RPCS, transport=Chain({RPCS[0]: v, RPCS[1]: v}), now=lambda: NOW + 200, margin_seconds=120)
+    assert s.reason == "chain_not_past_expiry"
+
+
+def test_expiry_tag_finalized():
+    lag = {"ts": {"safe": NOW, "finalized": NOW - 1400}}
+    c = Chain({RPCS[0]: lag, RPCS[1]: lag})
+    assert run(c, rec(valid_before=VB), expiry_tag="finalized").reason == "chain_not_past_expiry"
     assert c.methods.count("eth_call") == 4
+    ok = {"ts": {"finalized": NOW}}
+    assert run(Chain({RPCS[0]: ok, RPCS[1]: ok}), rec(valid_before=VB), expiry_tag="finalized").state == "expired_unsettled"
+
+
+@pytest.mark.parametrize("expiry_tag", ["safe", "finalized"])
+def test_old_blind_spot_is_closed(expiry_tag):
+    v = {"ts": {"safe": NOW - 104, "finalized": NOW - 1400}}
+    assert run(Chain({RPCS[0]: v, RPCS[1]: v}), rec(valid_before=NOW - 61), expiry_tag=expiry_tag).state == "unknown"
+
+
+THREE = [*RPCS, "https://rpc-three.example"]
+
+
+def test_extra_rpc_two_of_three_settled_with_one_failing():
+    c = Chain({THREE[0]: {"used": {"safe": True}}, THREE[1]: {"fail": True}, THREE[2]: {"used": {"safe": True}}})
+    s = run(c, extra_rpc=THREE[2])
+    assert (s.state, s.tx_hash, s.rpc_hosts) == ("settled", TX, ["rpc-one.example", "rpc-two.example", "rpc-three.example"])
+
+
+def test_two_of_three_past_expiry_outvotes_a_lagging_third():
+    c = Chain({THREE[0]: {}, THREE[1]: {"ts": {"safe": NOW - 900}}, THREE[2]: {}})
+    assert check_payment_state(rec(valid_before=VB), rpcs=THREE, transport=c, now=lambda: NOW).state == "expired_unsettled"
+
+
+def test_any_rpc_reporting_used_rules_out_expired():
+    c = Chain({THREE[0]: {}, THREE[1]: {"used": {"safe": True}, "receipt": receipt(logs=[])}, THREE[2]: {}})
+    assert check_payment_state(rec(valid_before=VB), rpcs=THREE, transport=c, now=lambda: NOW).reason == "rpcs_disagree"
+
+
+def test_one_of_three_answering_is_unknown():
+    c = Chain({THREE[0]: {}, THREE[1]: {"fail": True}, THREE[2]: {"fail": True}})
+    assert check_payment_state(rec(valid_before=VB), rpcs=THREE, transport=c, now=lambda: NOW).reason == "rpc_error"
+
+
+def test_two_of_three_must_be_past_expiry():
+    lag = {"ts": {"safe": NOW - 900}}
+    c = Chain({THREE[0]: {}, THREE[1]: lag, THREE[2]: lag})
+    assert check_payment_state(rec(valid_before=VB), rpcs=THREE, transport=c, now=lambda: NOW).reason == "chain_not_past_expiry"
+
+
+def test_three_rpcs_on_three_hosts_and_default_needs_both():
+    c = Chain({})
+    assert run(c, extra_rpc=RPCS[0] + "/v2").reason == "need_two_rpcs_on_different_hosts"
+    assert c.methods == []
+    d = Chain({DEFAULT_BASE_RPCS[0]: {"used": {"safe": True}}, DEFAULT_BASE_RPCS[1]: {"fail": True}})
+    s = check_payment_state(rec(), transport=d, now=lambda: NOW)
+    assert (s.reason, s.rpc_hosts) == ("rpc_error", ["mainnet.base.org", "base-rpc.publicnode.com"])
+
+
+def test_no_assert_guards_the_read_only_rpc():
+    import inspect
+
+    from botsrated import onchain
+
+    assert "assert " not in inspect.getsource(onchain)
 
 
 def test_margin_at_least_30s():

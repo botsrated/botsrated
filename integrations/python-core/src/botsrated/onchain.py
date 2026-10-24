@@ -3,8 +3,10 @@
 - Reads only: eth_chainId, eth_call (authorizationState), eth_getBlockByNumber, eth_getLogs,
   eth_getTransactionReceipt.
 - Never signs, never sends a transaction, never resends a payment, never calls botsrated.com.
-- Three answers only: "settled", "unknown" (until validBefore + margin, or when the RPCs fail or disagree) and
-  "expired_unsettled". There is no "not paid" answer before the authorization has expired.
+- Three answers only: "settled", "unknown" (until validBefore + margin, or when the RPCs fail, disagree or lag) and
+  "expired_unsettled". There is no "not paid" answer before the authorization has expired, and "expired_unsettled"
+  needs the block read on the RPCs to be at or after validBefore + margin (USDC accepts an authorization in any
+  block with timestamp < validBefore, so "unused" is final only in a later block).
 """
 
 from __future__ import annotations
@@ -124,7 +126,8 @@ def _default_transport(timeout: float) -> Transport:
 
 
 def _rpc(transport: Transport, url: str, method: str, params: list[Any]) -> Any:
-    assert method in _READ_METHODS  # read-only by construction
+    if method not in _READ_METHODS:  # read-only by construction (explicit: asserts are stripped under -O)
+        raise _RpcError("method not allowed")
     try:
         body = transport(url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
     except _RpcError:
@@ -176,6 +179,7 @@ def receipt_proves_payment(receipt: Any, rec: PaymentRecord, max_block: int) -> 
 @dataclass
 class _View:
     used: bool
+    block_ts: int = 0  # timestamp of the block the state was read at
     tx: tuple[str, int] | None = None
     window_exceeded: bool = False
 
@@ -189,14 +193,17 @@ def _view_at(transport: Transport, url: str, rec: PaymentRecord, tag: str, max_l
     if not isinstance(block, dict) or not isinstance(block.get("number"), str):
         raise _RpcError("no block at tag")
     tag_block = int(block["number"], 16)
-    tag_ts = int(block.get("timestamp") or "0x0", 16)
+    if not isinstance(block.get("timestamp"), str):
+        raise _RpcError("no block timestamp")
+    tag_ts = int(block["timestamp"], 16)
     data = AUTHORIZATION_STATE_SELECTOR + _pad32(rec.from_)[2:] + rec.nonce.lower()[2:]
-    out = _rpc(transport, url, "eth_call", [{"to": BASE_USDC, "data": data}, tag])
+    # Read the state at exactly the block whose timestamp we hold, not at the moving tag.
+    out = _rpc(transport, url, "eth_call", [{"to": BASE_USDC, "data": data}, hex(tag_block)])
     if not isinstance(out, str) or not out.startswith("0x"):
         raise _RpcError("bad eth_call result")
     used = int(out, 16) != 0 if out != "0x" else False
     if not used:
-        return _View(False)
+        return _View(False, tag_ts)
     candidates: list[str] = [rec.tx_hash_hint.lower()] if is_tx_hash(rec.tx_hash_hint) else []
     exceeded = False
     if not candidates:
@@ -218,8 +225,8 @@ def _view_at(transport: Transport, url: str, rec: PaymentRecord, tag: str, max_l
     for h in candidates[:3]:
         receipt = _rpc(transport, url, "eth_getTransactionReceipt", [h])
         if receipt_proves_payment(receipt, rec, tag_block):
-            return _View(True, (h, int(receipt["blockNumber"], 16)))
-    return _View(True, None, exceeded)
+            return _View(True, tag_ts, (h, int(receipt["blockNumber"], 16)))
+    return _View(True, tag_ts, None, exceeded)
 
 
 def _bad_record(rec: Any) -> str | None:
@@ -234,58 +241,95 @@ def _bad_record(rec: Any) -> str | None:
     return None
 
 
+def rpc_list_of(rpcs: Sequence[str] = DEFAULT_BASE_RPCS, extra_rpc: str | None = None) -> list[str]:
+    """The RPC URLs a check uses: ``rpcs`` (or the defaults) plus ``extra_rpc``, at most three."""
+    urls = list(rpcs)
+    if isinstance(extra_rpc, str) and extra_rpc:
+        urls.append(extra_rpc)
+    return urls[:3]
+
+
+def _views_at(t: Transport, urls: list[str], rec: PaymentRecord, tag: str, max_log_blocks: int) -> list[_View]:
+    out: list[_View] = []
+    for u in urls:
+        try:
+            out.append(_view_at(t, u, rec, tag, max_log_blocks))
+        except _RpcError:
+            continue
+    return out
+
+
 def check_payment_state(
     rec: PaymentRecord,
     *,
     rpcs: Sequence[str] = DEFAULT_BASE_RPCS,
+    extra_rpc: str | None = None,
     confirm_tag: Literal["safe", "finalized"] = "safe",
+    expiry_tag: Literal["safe", "finalized"] = "safe",
     margin_seconds: int = 60,
     max_log_blocks: int = 9000,
     timeout: float = 5.0,
     transport: Transport | None = None,
     now: Callable[[], float] | None = None,
 ) -> PaymentState:
-    """Read-only check of whether one EIP-3009 payment settled. Two RPCs on different hosts must agree.
+    """Read-only check of whether one EIP-3009 payment settled. Two (or three) RPCs on different hosts.
 
-    - "settled": both RPCs show the authorization used at ``confirm_tag`` and a receipt with
+    Quorum: both of two, or two of three (with ``extra_rpc`` or three ``rpcs``), must answer and agree.
+
+    - "settled": a quorum shows the authorization used at ``confirm_tag`` and the same receipt with
       AuthorizationUsed(from, nonce) plus Transfer(from, payTo, amount) from the pinned USDC contract.
-    - "expired_unsettled": now > validBefore + margin and both RPCs show it unused at "finalized".
+    - "expired_unsettled": now > validBefore + margin, no answering RPC shows it used, and a quorum shows it unused
+      at a block (at ``expiry_tag``, default "safe") whose timestamp is >= validBefore + margin. ``margin_seconds``
+      (default 60, minimum 30) is the safety margin; ``expiry_tag="finalized"`` is more conservative (20+ min).
     - otherwise "unknown" with ``wait_until``. Never retry or sign a new payment for the purchase on "unknown".
     """
-    margin = max(MIN_MARGIN_SECONDS, int(margin_seconds))
+    try:
+        margin = max(MIN_MARGIN_SECONDS, int(margin_seconds))
+    except (TypeError, ValueError):
+        margin = 60
     vb = getattr(rec, "valid_before", None)
     wait_until = vb + margin if type(vb) is int else None
-    urls = list(rpcs)[:2]
+    urls = rpc_list_of(rpcs, extra_rpc)
     hosts = [try_host_of(u) or "invalid" for u in urls]
     t = transport or _default_transport(timeout)
     try:
         bad = _bad_record(rec)
         if bad:
             return _unknown(bad, wait_until, hosts)
-        if len(urls) < 2 or "invalid" in hosts or hosts[0] == hosts[1]:
+        if wait_until is None:
+            return _unknown("invalid_record", wait_until, hosts)
+        if len(urls) < 2 or "invalid" in hosts or len(set(hosts)) != len(hosts):
             return _unknown("need_two_rpcs_on_different_hosts", wait_until, hosts)
-        try:
-            views = [_view_at(t, u, rec, confirm_tag, max_log_blocks) for u in urls]
-        except _RpcError:
+        quorum = 2
+        views = _views_at(t, urls, rec, confirm_tag, max_log_blocks)
+        if len(views) < quorum:
             return _unknown("rpc_error", wait_until, hosts)
-        a, b = views
-        if a.used != b.used:
-            return _unknown("rpcs_disagree", wait_until, hosts)
-        if a.used:
-            if a.tx and b.tx and a.tx[0] == b.tx[0]:
-                return PaymentState("settled", hosts, tx_hash=a.tx[0], block_number=min(a.tx[1], b.tx[1]), tag=confirm_tag)
-            return _unknown("log_window_exceeded_pass_tx_hash" if a.window_exceeded or b.window_exceeded else "used_but_transfer_not_matched", wait_until, hosts)
+        used = [v for v in views if v.used]
+        if used:
+            by_hash: dict[str, list[int]] = {}
+            for v in used:
+                if v.tx:
+                    by_hash.setdefault(v.tx[0], []).append(v.tx[1])
+            for h, blocks in by_hash.items():
+                if len(blocks) >= quorum:
+                    return PaymentState("settled", hosts, tx_hash=h, block_number=min(blocks), tag=confirm_tag)
+            if len(used) != len(views):
+                return _unknown("rpcs_disagree", wait_until, hosts)
+            return _unknown("log_window_exceeded_pass_tx_hash" if any(v.window_exceeded for v in used) else "used_but_transfer_not_matched", wait_until, hosts)
         current = (now or time.time)()
-        assert wait_until is not None
         if current <= wait_until:
             return _unknown("not_settled_yet", wait_until, hosts)
-        try:
-            fin = views if confirm_tag == "finalized" else [_view_at(t, u, rec, "finalized", max_log_blocks) for u in urls]
-        except _RpcError:
+        exp = views if expiry_tag == confirm_tag else _views_at(t, urls, rec, expiry_tag, max_log_blocks)
+        if len(exp) < quorum:
             return _unknown("rpc_error", wait_until, hosts)
-        if not fin[0].used and not fin[1].used:
+        if any(v.used for v in exp):
+            return _unknown("used_but_not_confirmed" if all(v.used for v in exp) else "rpcs_disagree", wait_until, hosts)
+        past = [v for v in exp if v.block_ts >= wait_until]
+        if len(past) >= quorum:
             return PaymentState("expired_unsettled", hosts, valid_before=rec.valid_before)
-        return _unknown("rpcs_disagree" if fin[0].used != fin[1].used else "used_but_not_confirmed", wait_until, hosts)
+        # The blocks read are not yet past validBefore + margin: a late settlement could still be invisible to them.
+        lag = max([0.0] + [current - v.block_ts for v in exp])
+        return _unknown("chain_not_past_expiry", int(max(wait_until, current) + math.ceil(min(lag, 86_400))), hosts)
     except Exception:  # noqa: BLE001
         return _unknown("check_error", wait_until, hosts)
 

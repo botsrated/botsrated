@@ -5,10 +5,10 @@ import {
   AUTHORIZATION_USED_TOPIC,
   DEFAULT_BASE_RPCS,
   TRANSFER_TOPIC,
-  _resetChainCache,
   checkPaymentState,
   type PaymentRecord,
 } from "../src/onchain";
+import { _resetChainCache } from "../src/chain-cache";
 import { createPaymentGuard } from "../src/payment-guard";
 import { USDC } from "./helpers";
 
@@ -50,7 +50,12 @@ interface View {
   receipt?: unknown;
   logs?: unknown[];
   fail?: boolean;
+  /** Block timestamp per tag (default NOW). */
+  ts?: Record<string, number>;
 }
+
+const BLOCK_OF: Record<string, string> = { safe: "0xc8", finalized: "0xb4", latest: "0xd2" };
+const TAG_OF: Record<string, string> = Object.fromEntries(Object.entries(BLOCK_OF).map(([t, n]) => [n, t]));
 
 function rpcFetch(views: Record<string, View>) {
   const methods: string[] = [];
@@ -66,11 +71,14 @@ function rpcFetch(views: Record<string, View>) {
         case "eth_chainId":
           return v.chainId ?? "0x2105";
         case "eth_getBlockByNumber":
-          return { number: "0xc8", timestamp: toHex(NOW) };
+          return { number: BLOCK_OF[body.params[0]], timestamp: toHex(v.ts?.[body.params[0]] ?? NOW) };
         case "eth_call": {
           expect(body.params[0].to).toBe(USDC);
           expect(body.params[0].data).toBe(AUTHORIZATION_STATE_SELECTOR + pad(FROM).slice(2) + NONCE.slice(2));
-          return (v.used?.[body.params[1]] ?? false) ? toHex(1n, { size: 32 }) : toHex(0n, { size: 32 });
+          // The state is read at the exact block number returned for the tag, never at the moving tag.
+          const tag = TAG_OF[body.params[1]];
+          expect(tag, "eth_call must use a pinned block number").toBeDefined();
+          return (v.used?.[tag] ?? false) ? toHex(1n, { size: 32 }) : toHex(0n, { size: 32 });
         }
         case "eth_getLogs":
           return v.logs ?? [{ transactionHash: TX }];
@@ -115,11 +123,11 @@ describe("checkPaymentState: three answers only", () => {
     expect((s as any).message).toMatch(/Do not sign a new payment for this purchase before/);
   });
 
-  it("expired_unsettled only after validBefore + margin and unused at finalized on both RPCs", async () => {
+  it("expired_unsettled only after validBefore + margin and unused at a safe block past expiry on both RPCs", async () => {
     const { f, methods } = rpcFetch({ [RPCS[0]]: {}, [RPCS[1]]: {} });
     const s = await checkPaymentState(rec({ validBefore: NOW - 100 }), opts(f));
     expect(s).toMatchObject({ state: "expired_unsettled" });
-    expect(methods.filter((m) => m === "eth_call").length).toBe(4); // safe + finalized on both
+    expect(methods.filter((m) => m === "eth_call").length).toBe(2); // safe on both (default expiryTag)
   });
 
   it("the margin is at least 30 s", async () => {
@@ -182,6 +190,91 @@ describe("checkPaymentState: three answers only", () => {
     const other = goodReceipt({ logs: [] });
     const { f } = rpcFetch({ [RPCS[0]]: { used: { safe: true }, receipt: other }, [RPCS[1]]: { used: { safe: true }, receipt: other } });
     expect((await checkPaymentState(rec({ txHashHint: TX }), opts(f))).state).toBe("unknown");
+  });
+});
+
+describe("H2-R1: expired_unsettled needs the blocks read to be past validBefore + margin", () => {
+  const VB = NOW - 100; // clock is past validBefore + 60
+  it("both RPCs' safe blocks before validBefore -> unknown (chain_not_past_expiry), never expired_unsettled", async () => {
+    const { f } = rpcFetch({ [RPCS[0]]: { ts: { safe: VB - 43 } }, [RPCS[1]]: { ts: { safe: VB - 10 } } });
+    const s = await checkPaymentState(rec({ validBefore: VB }), opts(f));
+    expect(s).toMatchObject({ state: "unknown", code: "payment_state_unknown", reason: "chain_not_past_expiry" });
+    expect((s as any).waitUntil).toBeGreaterThan(NOW);
+    expect((s as any).waitUntil).toBe(NOW + (NOW - (VB - 43)));
+  });
+
+  it("a block past validBefore but inside the margin is not enough", async () => {
+    const { f } = rpcFetch({ [RPCS[0]]: { ts: { safe: VB + 30 } }, [RPCS[1]]: { ts: { safe: VB + 30 } } });
+    expect(await checkPaymentState(rec({ validBefore: VB }), opts(f))).toMatchObject({ state: "unknown", reason: "chain_not_past_expiry" });
+  });
+
+  it("one RPC lagging behind validBefore -> unknown", async () => {
+    const { f } = rpcFetch({ [RPCS[0]]: { ts: { safe: NOW } }, [RPCS[1]]: { ts: { safe: VB - 104 } } });
+    expect(await checkPaymentState(rec({ validBefore: VB }), opts(f))).toMatchObject({ state: "unknown", reason: "chain_not_past_expiry" });
+  });
+
+  it("both RPCs past validBefore + margin -> expired_unsettled", async () => {
+    const { f } = rpcFetch({ [RPCS[0]]: { ts: { safe: VB + 60 } }, [RPCS[1]]: { ts: { safe: VB + 80 } } });
+    expect(await checkPaymentState(rec({ validBefore: VB }), opts(f))).toMatchObject({ state: "expired_unsettled", validBefore: VB });
+  });
+
+  it("the margin is configurable and applies to the block timestamp", async () => {
+    const { f } = rpcFetch({ [RPCS[0]]: { ts: { safe: VB + 80 } }, [RPCS[1]]: { ts: { safe: VB + 80 } } });
+    expect(await checkPaymentState(rec({ validBefore: VB - 200 }), { ...opts(f), marginSeconds: 120 })).toMatchObject({ state: "expired_unsettled" });
+    expect(await checkPaymentState(rec({ validBefore: VB }), { ...opts(f, NOW + 200), marginSeconds: 120 })).toMatchObject({ state: "unknown", reason: "chain_not_past_expiry" });
+  });
+
+  it("expiryTag 'finalized': a finalized head older than validBefore gives unknown even when safe is past", async () => {
+    const lagging = { ts: { safe: NOW, finalized: NOW - 1400 } };
+    const { f, methods } = rpcFetch({ [RPCS[0]]: lagging, [RPCS[1]]: lagging });
+    const s = await checkPaymentState(rec({ validBefore: VB }), { ...opts(f), expiryTag: "finalized" });
+    expect(s).toMatchObject({ state: "unknown", reason: "chain_not_past_expiry" });
+    expect(methods.filter((m) => m === "eth_call").length).toBe(4); // safe + finalized on both
+    const { f: f2 } = rpcFetch({ [RPCS[0]]: { ts: { finalized: NOW } }, [RPCS[1]]: { ts: { finalized: NOW } } });
+    expect(await checkPaymentState(rec({ validBefore: VB }), { ...opts(f2), expiryTag: "finalized" })).toMatchObject({ state: "expired_unsettled" });
+  });
+
+  it("the old blind spot (finalized 1,400 s old, validBefore 61 s ago) is no longer expired_unsettled", async () => {
+    const v = { ts: { safe: NOW - 104, finalized: NOW - 1400 } };
+    const { f } = rpcFetch({ [RPCS[0]]: v, [RPCS[1]]: v });
+    for (const expiryTag of ["safe", "finalized"] as const) {
+      expect((await checkPaymentState(rec({ validBefore: NOW - 61 }), { ...opts(f), expiryTag })).state).toBe("unknown");
+    }
+  });
+});
+
+describe("optional third RPC: 2-of-3", () => {
+  const THREE = [...RPCS, "https://rpc-three.example"];
+  it("extraRpc adds a third RPC; one of three failing still allows an answer", async () => {
+    const { f } = rpcFetch({ [THREE[0]]: { used: { safe: true } }, [THREE[1]]: { fail: true }, [THREE[2]]: { used: { safe: true } } });
+    const s = await checkPaymentState(rec(), { ...opts(f), extraRpc: THREE[2] });
+    expect(s).toMatchObject({ state: "settled", txHash: TX, rpcHosts: ["rpc-one.example", "rpc-two.example", "rpc-three.example"] });
+  });
+  it("2 of 3 past expiry and unused -> expired_unsettled; a lagging third is outvoted", async () => {
+    const { f } = rpcFetch({ [THREE[0]]: {}, [THREE[1]]: { ts: { safe: NOW - 900 } }, [THREE[2]]: {} });
+    expect(await checkPaymentState(rec({ validBefore: NOW - 100 }), { ...opts(f), rpcs: THREE })).toMatchObject({ state: "expired_unsettled" });
+  });
+  it("any RPC reporting the authorization used rules out expired_unsettled", async () => {
+    const { f } = rpcFetch({ [THREE[0]]: {}, [THREE[1]]: { used: { safe: true }, receipt: goodReceipt({ logs: [] }) }, [THREE[2]]: {} });
+    expect(await checkPaymentState(rec({ validBefore: NOW - 100 }), { ...opts(f), rpcs: THREE })).toMatchObject({ state: "unknown", reason: "rpcs_disagree" });
+  });
+  it("only one of three answering -> unknown", async () => {
+    const { f } = rpcFetch({ [THREE[0]]: {}, [THREE[1]]: { fail: true }, [THREE[2]]: { fail: true } });
+    expect(await checkPaymentState(rec({ validBefore: NOW - 100 }), { ...opts(f), rpcs: THREE })).toMatchObject({ state: "unknown", reason: "rpc_error" });
+  });
+  it("two of three past expiry needed: one past, two lagging -> unknown", async () => {
+    const lag = { ts: { safe: NOW - 900 } };
+    const { f } = rpcFetch({ [THREE[0]]: {}, [THREE[1]]: lag, [THREE[2]]: lag });
+    expect(await checkPaymentState(rec({ validBefore: NOW - 100 }), { ...opts(f), rpcs: THREE })).toMatchObject({ state: "unknown", reason: "chain_not_past_expiry" });
+  });
+  it("three RPCs must be on three different hosts", async () => {
+    const { f } = rpcFetch({});
+    expect(await checkPaymentState(rec(), { ...opts(f), extraRpc: RPCS[0] + "/v2" })).toMatchObject({ state: "unknown", reason: "need_two_rpcs_on_different_hosts" });
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("default stays the two public RPCs, both required", async () => {
+    const { f } = rpcFetch({ [DEFAULT_BASE_RPCS[0]]: { used: { safe: true } }, [DEFAULT_BASE_RPCS[1]]: { fail: true } });
+    expect(await checkPaymentState(rec(), { fetch: f, now: () => NOW })).toMatchObject({ state: "unknown", reason: "rpc_error", rpcHosts: ["mainnet.base.org", "base-rpc.publicnode.com"] });
   });
 });
 
