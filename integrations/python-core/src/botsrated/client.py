@@ -109,8 +109,12 @@ def usd_to_atomic(usd: float | str | Decimal) -> int:
 
 
 def host_of(url_or_host: str) -> str:
-    """Lowercase ASCII host of a URL or bare host: IDNA (punycode) encoded, trailing dot removed."""
-    s = url_or_host.strip()
+    """Lowercase ASCII host of a URL or bare host: IDNA (punycode) encoded, trailing dot removed.
+
+    Backslashes are read as forward slashes first, the way WHATWG URL parsers (browsers, Node, the TypeScript
+    package) treat them in http(s) URLs, so ``https://evil.example\\@good.example`` is ``evil.example`` here too.
+    """
+    s = url_or_host.strip().replace("\\", "/")
     try:
         host = urlsplit(s if "://" in s else f"https://{s}").hostname
     except ValueError:

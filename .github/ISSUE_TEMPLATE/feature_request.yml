@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an integration, a tool or a change to an existing package.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you need?
+      description: The problem you are trying to solve, and the framework or client you use.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Optional. How you would like it to work.

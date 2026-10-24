@@ -447,6 +447,13 @@ def test_host_of_normalizes_idna_and_trailing_dot():
             host_of(bad)
 
 
+def test_host_of_reads_backslashes_as_slashes_like_whatwg():
+    # Same answers as the TypeScript hostOf (WHATWG URL): a backslash ends the authority in http(s) URLs.
+    assert host_of("https://evil.example\\@good.example/x") == "evil.example"
+    assert host_of("https://evil.example\\path") == "evil.example"
+    assert host_of("evil.example\\@good.example") == "evil.example"
+
+
 def test_request_url_host_compare_is_normalized(mock_api, found):
     g = PrePaymentGuard()
     # Trailing dot / case / IDNA spellings of the same host are not a mismatch.

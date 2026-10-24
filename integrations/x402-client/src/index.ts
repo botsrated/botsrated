@@ -770,6 +770,7 @@ export interface McpPaymentApproverOptions {
   /**
    * Hosts (exact, after normalization) the 402 `resource.url` may name besides the MCP server's own host (and its
    * apex/www twin). Use for a server whose paid resources live on another host you trust. Default none.
+   * Exact host names only: an entry containing `*` throws (`invalid_host`).
    */
   allowResourceHosts?: string[];
   /** What to do when `resource.url` names any other host. Default "block"; "warn" approves on the server's facts. */
@@ -797,6 +798,11 @@ function httpResourceUrl(url: unknown): string | undefined {
  * {@link McpPaymentApproverOptions} to allow specific hosts or only warn.
  */
 export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string, options: McpPaymentApproverOptions = {}) {
+  for (const h of options.allowResourceHosts ?? []) {
+    if (typeof h !== "string" || h.includes("*")) {
+      throw new BotsRatedError(`allowResourceHosts takes exact host names; wildcards are not supported: ${String(h)}`, "invalid_host");
+    }
+  }
   const allowed = new Set((options.allowResourceHosts ?? []).map((h) => hostOf(h)));
   return async (ctx: { paymentRequired: PaymentRequiredLike }): Promise<boolean> => {
     let resourceUrl = httpResourceUrl(ctx.paymentRequired.resource?.url);

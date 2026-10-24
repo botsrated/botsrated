@@ -476,6 +476,19 @@ describe("security follow-ups (0.1.4)", () => {
     expect(await warn(pr("https://other.example/x", [req({ payTo: "0x000000000000000000000000000000000000dEaD" })]))).toBe(false);
   });
 
+  it("mcpPaymentApprover: allowResourceHosts rejects wildcard entries", () => {
+    const guard = createPrePaymentGuard({ client: new BotsRatedClient({ fetch: botsratedFetch() }) });
+    for (const bad of ["*.example", "*", "api.*.example"]) {
+      expect(() => mcpPaymentApprover(guard, "https://blockrun.ai/mcp", { allowResourceHosts: [bad] })).toThrow(/wildcards are not supported/);
+    }
+    expect(() => mcpPaymentApprover(guard, "https://blockrun.ai/mcp", { allowResourceHosts: ["api.example"] })).not.toThrow();
+  });
+
+  it("hostOf reads backslashes as slashes (WHATWG), like the Python host_of", () => {
+    expect(hostOf("https://evil.example\\@good.example/x")).toBe("evil.example");
+    expect(hostOf("https://evil.example\\path")).toBe("evil.example");
+  });
+
   it("without AsyncLocalStorage, several paid requests in flight give no request URL", async () => {
     const proc = process as unknown as { getBuiltinModule?: unknown };
     const orig = proc.getBuiltinModule;

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in a BotsRated package, the MCP server or the API does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issue? Do not file it here. See SECURITY.md (botsrated@gmail.com, subject "Security").
+        Wrong data about a seller or MCP server? Use https://botsrated.com/disputes instead.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - botsrated (Python)
+        - langchain-botsrated
+        - llama-index-tools-botsrated
+        - agent-framework-botsrated
+        - "@botsrated/x402-preflight"
+        - "@botsrated/ai-sdk"
+        - Remote MCP server (https://botsrated.com/mcp)
+        - HTTP API (botsrated.com/v1/...)
+        - Receipt spec / verifier
+        - Docs
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version, or "live" for the hosted service.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Steps to reproduce, what you expected and what you got. Remove any private keys or tokens.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Python or Node version, framework version, OS.
