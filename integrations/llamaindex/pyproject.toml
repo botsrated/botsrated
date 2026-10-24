@@ -22,7 +22,7 @@ BotsRatedToolSpec = "botsrated"
 dev = ["pytest>=8", "respx>=0.21"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

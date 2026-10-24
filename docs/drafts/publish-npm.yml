@@ -4,6 +4,18 @@ name: Publish npm package (trusted publishing)
 # Publishes one package from integrations/ to npm with OIDC trusted publishing and --provenance: no npm token is
 # stored in this repo or its secrets.
 #
+# What gets published: the code at a SIGNED release tag (input "tag", e.g. x402-preflight-v0.2.0), never main HEAD.
+# The workflow itself runs from main; the tag is verified against signer keys taken from main
+# (.github/release-signers/: allowed_signers for SSH-signed tags and/or *.asc for GPG-signed tags) and must point
+# at a commit on main.
+#
+# Jobs (least privilege):
+#   verify  - checks the tag (no credentials).
+#   build   - npm ci, typecheck, tests and npm pack at the tag; uploads the .tgz. No id-token, no environment: a
+#             compromised dev dependency running here never sees a publish credential.
+#   publish - in the reviewer-gated "npm-publish" environment with id-token: write; downloads the .tgz and runs
+#             npm publish on it. No checkout, no npm ci, no project scripts.
+#
 # Before the first real run (repo owner):
 # 1. GitHub -> Settings -> Environments -> "npm-publish": add Anton as a required reviewer, allow only the main branch.
 # 2. npmjs.com -> package settings -> Trusted publishing -> GitHub Actions, for each package:
@@ -11,7 +23,10 @@ name: Publish npm package (trusted publishing)
 #    and allow "npm publish" (configs created after 2026-09-03 default to "npm stage publish" only). A new
 #    trusted-publisher config must complete its first successful publish within 2 days.
 # 3. Then set the package's publishing access to "Require two-factor authentication and disallow tokens".
+# 4. Commit the release signer public key(s) to .github/release-signers/ on main, and sign release tags
+#    (git tag -s <package>-v<version>).
 # Publish order: x402-client first, then vercel-ai-sdk (it depends on @botsrated/x402-preflight from npm).
+# Provenance note: npm provenance names the workflow run (main); the job summary records the tag and its commit.
 
 on:
   workflow_dispatch:
@@ -21,6 +36,10 @@ on:
         required: true
         type: choice
         options: [x402-client, vercel-ai-sdk]
+      tag:
+        description: "Signed release tag to build, e.g. x402-preflight-v0.2.0"
+        required: true
+        type: string
       dry_run:
         description: "Only run npm publish --dry-run"
         required: true
@@ -35,40 +54,97 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish ${{ inputs.package }}${{ inputs.dry_run && ' (dry run)' || '' }}
+  verify:
+    name: Verify signed tag ${{ inputs.tag }}
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: npm-publish   # required reviewer configured on the environment
     permissions:
       contents: read
-      id-token: write   # OIDC token for npm trusted publishing and provenance
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        env:
+          TAG: ${{ inputs.tag }}
+          PKG: ${{ inputs.package }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG" "refs/heads/main:refs/remotes/origin/main"
+          # Expected tag name from the package manifest AT THE TAG: <name without @botsrated/>-v<version>
+          name=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).name.replace(/^@botsrated\//, '')")
+          ver=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")
+          # verify-tag.sh and the signer keys come from main (this checkout), never from the tag.
+          bash integrations/release-tools/verify-tag.sh "$TAG" "$name-v$ver" .github/release-signers
+          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Building $TAG at $sha" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build and test ${{ inputs.package }} at ${{ inputs.tag }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # no id-token here
     defaults:
       run:
         working-directory: integrations/${{ inputs.package }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.verify.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false   # no caches in release builds
-      - name: Pinned npm CLI (trusted publishing needs >= 11.5.1)
+      - name: Pinned npm CLI
         run: npm install -g npm@12.2.1 && npm --version
       - run: npm ci
       - run: npm run typecheck
       - run: npm test   # builds dist/ first (pretest) and runs the C1 no-resend tests against it
-      - run: npm run build
       - name: Version not yet on npm
         run: |
           name=$(node -p "require('./package.json').name"); ver=$(node -p "require('./package.json').version")
           echo "$name@$ver"
           if npm view "$name@$ver" version >/dev/null 2>&1; then echo "::error::$name@$ver is already published; bump the version first"; exit 1; fi
+      - name: npm pack (prepack builds dist/)
+        run: |
+          mkdir -p ../../pack && npm pack --pack-destination ../../pack
+          ls -l ../../pack && sha256sum ../../pack/*.tgz | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-tarball
+          path: pack/*.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publish ${{ inputs.package }}${{ inputs.dry_run && ' (dry run)' || '' }}
+    needs: [verify, build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: npm-publish   # required reviewer configured on the environment
+    permissions:
+      contents: read
+      id-token: write   # OIDC token for npm trusted publishing and provenance; only this job has it
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-tarball
+          path: pack/
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Pinned npm CLI (trusted publishing needs >= 11.5.1)
+        run: npm install -g npm@12.2.1 && npm --version
       - name: npm publish --dry-run
         if: inputs.dry_run
-        run: npm publish --dry-run --provenance --access public
+        run: npm publish ./pack/*.tgz --dry-run --provenance --access public --ignore-scripts
       - name: npm publish
         if: ${{ !inputs.dry_run }}
-        run: npm publish --provenance --access public
+        run: npm publish ./pack/*.tgz --provenance --access public --ignore-scripts

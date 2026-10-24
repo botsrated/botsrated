@@ -15,7 +15,7 @@ Repository = "https://github.com/botsrated/botsrated"
 test = ["pytest>=8", "respx>=0.21", "langchain-tests>=0.3"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
