@@ -44,6 +44,11 @@ export interface PaymentGuardPolicy {
   priceAboveObserved?: RuleEffect;
   /** The 402's resource.url names a different host than the URL being paid (checked locally). Default "warn". */
   resourceHostMismatch?: RuleEffect;
+  /**
+   * The URL being paid is unknown to the guard (the paying fetch is not wrapped with `wrapFetch`), so the host
+   * comes only from the seller's own 402. Default "warn"; `policies.strict` blocks.
+   */
+  paidUrlUnknown?: RuleEffect;
   /** BotsRated has no record of the host. Default "allow" (reported as info). */
   notCovered?: RuleEffect;
   /** BotsRated's data for the host is older than 24 h. Default "allow" (reported as info). */
@@ -58,15 +63,20 @@ export const policies = Object.freeze({
     payToInvalid: "warn",
     priceAboveObserved: "warn",
     resourceHostMismatch: "warn",
+    paidUrlUnknown: "warn",
     notCovered: "allow",
     stale: "allow",
   }),
-  /** Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, or the 402 names another host. */
+  /**
+   * Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, the 402 names another
+   * host, or the URL being paid is unknown (use `wrapFetch`).
+   */
   strict: Object.freeze<Required<PaymentGuardPolicy>>({
     payToMismatch: "block",
     payToInvalid: "block",
     priceAboveObserved: "warn",
     resourceHostMismatch: "block",
+    paidUrlUnknown: "block",
     notCovered: "allow",
     stale: "allow",
   }),
@@ -430,6 +440,16 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
           : `the 402's resource.url is not an http(s) URL; the host being paid is ${requestHost}.`,
       });
     }
+    if (!requestHost) {
+      // M4-R1: without the real request URL the only host is the seller's own claim in the 402, so it never
+      // decides which checks are skipped.
+      reasons.push({
+        code: "paid_url_unknown",
+        effect: RULE_TO_EFFECT(policy.paidUrlUnknown, "warn"),
+        rule: "paidUrlUnknown",
+        fact: "the URL being paid is unknown to the guard (the paying fetch is not wrapped with guard.wrapFetch); the host named in the 402 is only the seller's claim.",
+      });
+    }
     if (!isAddress(req?.payTo)) {
       reasons.push({ code: "payto_invalid", effect: RULE_TO_EFFECT(policy.payToInvalid, "warn"), rule: "payToInvalid", fact: "the payTo in this payment request is not a 20-byte hex address." });
     }
@@ -440,7 +460,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     let facts: GuardFacts | undefined;
     if (!host) {
       reasons.push({ code: "no_host", effect: "info", fact: "the payment request names no http(s) host to look up." });
-    } else if (host === ownHost || sameSiteHost(host, ownHost)) {
+    } else if (requestHost && (requestHost === ownHost || sameSiteHost(requestHost, ownHost))) {
+      // Only the real request host can mark a payment as one to BotsRated, never the 402's own fields.
       reasons.push({ code: "botsrated_payment", effect: "info", fact: "this is a payment to BotsRated; use createPrePaymentGuard with BotsRatedClient for those." });
     } else if (!hosted) {
       reasons.push({ code: "hosted_off", effect: "info", fact: "hosted checks are off (hosted: false); only local checks ran." });

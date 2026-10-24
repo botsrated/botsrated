@@ -68,6 +68,9 @@ class PaymentGuardPolicy:
     pay_to_invalid: RuleEffect = "warn"  # payTo not a 20-byte hex address
     price_above_observed: RuleEffect = "warn"  # same route, amount above the last one recorded
     resource_host_mismatch: RuleEffect = "warn"  # 402 resource.url names another host (checked locally)
+    # The URL being paid is unknown to the guard (no ``guard.request(url)`` / ``wrap_get``), so the host comes only
+    # from the seller's own 402. Advice by default; POLICIES["strict"] blocks.
+    paid_url_unknown: RuleEffect = "warn"
     not_covered: RuleEffect = "allow"  # reported as info
     stale: RuleEffect = "allow"  # reported as info
 
@@ -75,8 +78,9 @@ class PaymentGuardPolicy:
 POLICIES: dict[str, PaymentGuardPolicy] = {
     # Advice only: never stops a payment. The default.
     "warn": PaymentGuardPolicy(),
-    # Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, or the 402 names another host.
-    "strict": PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", resource_host_mismatch="block"),
+    # Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, the 402 names another
+    # host, or the URL being paid is unknown (use guard.request(url) or wrap_get).
+    "strict": PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", resource_host_mismatch="block", paid_url_unknown="block"),
 }
 
 _RULE_NAMES = {
@@ -84,6 +88,7 @@ _RULE_NAMES = {
     "pay_to_invalid": "payToInvalid",
     "price_above_observed": "priceAboveObserved",
     "resource_host_mismatch": "resourceHostMismatch",
+    "paid_url_unknown": "paidUrlUnknown",
     "not_covered": "notCovered",
     "stale": "stale",
 }
@@ -477,6 +482,17 @@ class PaymentGuard:
                 else f"the 402's resource.url is not an http(s) URL; the host being paid is {request_host}."
             )
             reasons.append(GuardReason("resource_host_mismatch", _effect(p.resource_host_mismatch, "warn"), fact, "resourceHostMismatch"))
+        if not request_host:
+            # M4-R1: without the real request URL the only host is the seller's own claim in the 402, so it never
+            # decides which checks are skipped.
+            reasons.append(
+                GuardReason(
+                    "paid_url_unknown",
+                    _effect(p.paid_url_unknown, "warn"),
+                    "the URL being paid is unknown to the guard (the paying request is not wrapped with guard.request(url) or wrap_get); the host named in the 402 is only the seller's claim.",
+                    "paidUrlUnknown",
+                )
+            )
         if not is_address(_get(req, "payTo", "pay_to")):
             reasons.append(GuardReason("payto_invalid", _effect(p.pay_to_invalid, "warn"), "the payment request's payTo is not a 20-byte hex address.", "payToInvalid"))
         t = _get(req, "maxTimeoutSeconds", "max_timeout_seconds")
@@ -487,7 +503,8 @@ class PaymentGuard:
         lookup: str | None = None
         if not host:
             reasons.append(GuardReason("no_host", "info", "the payment request names no http(s) host to look up."))
-        elif same_site_host(host, self._own_host):
+        elif request_host and same_site_host(request_host, self._own_host):
+            # Only the real request host can mark a payment as one to BotsRated, never the 402's own fields.
             reasons.append(GuardReason("botsrated_payment", "info", "this is a payment to BotsRated; use PrePaymentGuard with BotsRatedClient for those."))
         elif not self.hosted:
             reasons.append(GuardReason("hosted_off", "info", "hosted checks are off (hosted=False); only local checks ran."))

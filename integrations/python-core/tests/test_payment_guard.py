@@ -69,7 +69,8 @@ def guard_with(found, answer=None, **kw):
 def test_zero_config_is_advice_only(found):
     seen = []
     g, _ = guard_with(found, on_decision=seen.append)
-    assert g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD))) is None
+    with g.request(found["latest_probe"]["url"]):
+        assert g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD))) is None
     d = seen[0]
     assert d.action == "allow" and not d.would_block
     assert [r.code for r in d.reasons if r.effect == "warn"] == ["payto_not_observed"]
@@ -79,7 +80,8 @@ def test_zero_config_is_advice_only(found):
 def test_strict_stops_with_legal_wording(found):
     pytest.importorskip("x402")
     g, _ = guard_with(found, policy=POLICIES["strict"])
-    out = g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD)))
+    with g.request(found["latest_probe"]["url"]):
+        out = g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD)))
     assert out is not None and type(out).__name__ == "AbortResult"
     assert out.reason == (
         "Payment stopped by your payment policy (rule: payToMismatch). Fact: the payTo in this payment request is not among the payTo addresses "
@@ -91,9 +93,62 @@ def test_strict_stops_with_legal_wording(found):
 def test_dry_run_stops_nothing(found):
     seen = []
     g, _ = guard_with(found, policy=POLICIES["strict"], dry_run=True, on_decision=seen.append)
-    assert g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD))) is None
+    with g.request(found["latest_probe"]["url"]):
+        assert g.before_payment_creation(ctx(found["latest_probe"]["url"], req(found, payTo=DEAD))) is None
     assert seen[0].would_block and seen[0].action == "allow" and seen[0].policy_rule == "payToMismatch"
     assert seen[0].message.startswith("Dry run: your payment policy would stop this payment for blockrun.ai (rule: payToMismatch)")
+
+
+# -- M4-R1: strict needs the real request URL; the 402's own fields never skip a check -------------------------
+
+BR = "https://botsrated.com/x"
+
+
+def test_strict_without_request_url_blocks_paid_url_unknown(found):
+    pytest.importorskip("x402")
+    no_resource = {"payment_required": {"x402Version": 2, "accepts": [req(found, payTo=DEAD)]}, "selected_requirements": req(found, payTo=DEAD)}
+    for c in (ctx(found["latest_probe"]["url"], req(found, payTo=DEAD)), ctx(BR, req(found, payTo=DEAD)), no_resource):
+        seen = []
+        g, _ = guard_with(found, policy=POLICIES["strict"], on_decision=seen.append)
+        out = g.before_payment_creation(c)
+        assert out is not None and type(out).__name__ == "AbortResult"
+        assert seen[0].action == "block" and seen[0].policy_rule == "paidUrlUnknown"
+        assert "botsrated_payment" not in [r.code for r in seen[0].reasons]
+
+
+def test_warn_without_request_url_only_warns(found):
+    seen = []
+    g, _ = guard_with(found, on_decision=seen.append)
+    assert g.before_payment_creation(ctx(BR, req(found, payTo=DEAD))) is None
+    d = seen[0]
+    assert d.action == "allow"
+    assert any(r.code == "paid_url_unknown" and r.effect == "warn" and r.rule == "paidUrlUnknown" for r in d.reasons)
+    assert "botsrated_payment" not in [r.code for r in d.reasons]
+
+
+def test_botsrated_claim_in_402_does_not_skip_the_seller_check(found):
+    pytest.importorskip("x402")
+    seen = []
+    g, rec = guard_with(found, policy=POLICIES["strict"], on_decision=seen.append)
+    with g.request(found["latest_probe"]["url"]):
+        assert g.before_payment_creation(ctx(BR, req(found, payTo=DEAD))) is not None
+    codes = [r.code for r in seen[0].reasons]
+    assert "resource_host_mismatch" in codes and "payto_not_observed" in codes and "botsrated_payment" not in codes
+    assert any("url=blockrun.ai" in str(r.url) for r in rec.requests)
+
+
+def test_botsrated_note_only_for_real_botsrated_request(found):
+    seen = []
+    g, rec = guard_with(found, policy=POLICIES["strict"], on_decision=seen.append)
+    with g.request(BR):
+        assert g.before_payment_creation(ctx(BR, req(found))) is None
+    assert "botsrated_payment" in [r.code for r in seen[0].reasons]
+    assert rec.requests == []
+
+
+def test_policies_expose_paid_url_unknown():
+    assert POLICIES["warn"].paid_url_unknown == "warn"
+    assert POLICIES["strict"].paid_url_unknown == "block"
 
 
 def test_fail_open_and_fail_closed(found):

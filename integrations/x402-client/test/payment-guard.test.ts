@@ -7,6 +7,16 @@ const ctx = (resourceUrl: unknown, r = req(), extensions?: Record<string, unknow
   return { paymentRequired: p, selectedRequirements: r };
 };
 
+/** Runs the pre-payment hook inside guard.wrapFetch, so the guard knows the URL being paid (as in real use). */
+async function beforeFor(g: ReturnType<typeof createPaymentGuard>, paidUrl: string, c: unknown) {
+  let out: unknown;
+  await g.wrapFetch(async () => {
+    out = await g.hooks.beforePaymentCreation(c);
+    return new Response("");
+  })(paidUrl);
+  return out as void | { abort: true; reason: string };
+}
+
 function collect() {
   const decisions: GuardDecision[] = [];
   return { decisions, onDecision: (d: GuardDecision) => decisions.push(d) };
@@ -28,7 +38,7 @@ describe("payment guard: defaults are advice-only", () => {
   it("policies.strict stops an unseen payTo with Legal's wording and the dispute link", async () => {
     const { f } = recordingFetch();
     const g = createPaymentGuard({ fetch: f, policy: policies.strict });
-    const out = await g.hooks.beforePaymentCreation(ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })));
+    const out = await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })));
     expect(out).toEqual({ abort: true, reason: expect.any(String) });
     const reason = (out as { reason: string }).reason;
     expect(reason).toBe(
@@ -41,7 +51,7 @@ describe("payment guard: defaults are advice-only", () => {
     const { f } = recordingFetch();
     const { decisions, onDecision } = collect();
     const g = createPaymentGuard({ fetch: f, policy: policies.strict, dryRun: true, onDecision });
-    expect(await g.hooks.beforePaymentCreation(ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
     expect(decisions[0]).toMatchObject({ action: "allow", wouldBlock: true, dryRun: true, policyRule: "payToMismatch" });
     expect(decisions[0].message).toMatch(/^Dry run: your payment policy would stop this payment for blockrun\.ai \(rule: payToMismatch\)/);
   });
@@ -50,7 +60,7 @@ describe("payment guard: defaults are advice-only", () => {
     const { f } = recordingFetch();
     const { decisions, onDecision } = collect();
     const g = createPaymentGuard({ fetch: f, policy: policies.strict, onDecision });
-    expect(await g.hooks.beforePaymentCreation(ctx(SELLER_URL))).toBeUndefined();
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL))).toBeUndefined();
     expect(decisions[0].reasons.filter((r) => r.effect !== "info")).toEqual([]);
   });
 
@@ -61,7 +71,7 @@ describe("payment guard: defaults are advice-only", () => {
     const { decisions, onDecision } = collect();
     const open = createPaymentGuard({ fetch: down, onDecision });
     expect(await open.hooks.beforePaymentCreation(ctx(SELLER_URL))).toBeUndefined();
-    expect(decisions[0].reasons[0]).toMatchObject({ code: "botsrated_unreachable", effect: "info" });
+    expect(decisions[0].reasons.find((r) => r.code === "botsrated_unreachable")).toMatchObject({ code: "botsrated_unreachable", effect: "info" });
     expect(decisions[0].message).not.toContain("ECONNRESET");
     const closed = createPaymentGuard({ fetch: down, failOpen: false });
     expect(await closed.hooks.beforePaymentCreation(ctx(SELLER_URL))).toMatchObject({ abort: true });
@@ -101,6 +111,55 @@ describe("payment guard: defaults are advice-only", () => {
     await g.hooks.beforePaymentCreation(ctx(SELLER_URL));
     await g.hooks.beforePaymentCreation(ctx("https://blockrun.ai/other?x=1"));
     expect(f).toHaveBeenCalledOnce();
+  });
+});
+
+describe("M4-R1: strict needs the real request URL; the 402's own fields never skip a check", () => {
+  const BR = "https://botsrated.com/x";
+  it("strict, no wrapFetch: blocks with paid_url_unknown (normal, botsrated.com-claimed and missing resource.url)", async () => {
+    for (const c of [ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })), ctx(BR, req({ payTo: OTHER_PAYTO })), { paymentRequired: { x402Version: 2, accepts: [req({ payTo: OTHER_PAYTO })] }, selectedRequirements: req({ payTo: OTHER_PAYTO }) }]) {
+      const { f } = recordingFetch();
+      const { decisions, onDecision } = collect();
+      const g = createPaymentGuard({ fetch: f, policy: policies.strict, onDecision });
+      expect(await g.hooks.beforePaymentCreation(c)).toMatchObject({ abort: true });
+      expect(decisions[0]).toMatchObject({ action: "block", policyRule: "paidUrlUnknown" });
+      expect(decisions[0].reasons.map((r) => r.code)).not.toContain("botsrated_payment");
+      expect(decisions[0].message).toContain("rule: paidUrlUnknown");
+    }
+  });
+
+  it("warn (default), no wrapFetch: only warns, never stops", async () => {
+    const { f } = recordingFetch();
+    const { decisions, onDecision } = collect();
+    const g = createPaymentGuard({ fetch: f, onDecision });
+    expect(await g.hooks.beforePaymentCreation(ctx(BR, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
+    expect(decisions[0].reasons).toContainEqual(expect.objectContaining({ code: "paid_url_unknown", effect: "warn", rule: "paidUrlUnknown" }));
+    expect(decisions[0].reasons.map((r) => r.code)).not.toContain("botsrated_payment");
+    expect(decisions[0].action).toBe("allow");
+  });
+
+  it("a 402 claiming botsrated.com while the real request goes to the seller: checked as the seller, and blocked in strict", async () => {
+    const { f, calls } = recordingFetch();
+    const { decisions, onDecision } = collect();
+    const g = createPaymentGuard({ fetch: f, policy: policies.strict, onDecision });
+    expect(await beforeFor(g, SELLER_URL, ctx(BR, req({ payTo: OTHER_PAYTO })))).toMatchObject({ abort: true });
+    expect(decisions[0].reasons.map((r) => r.code)).toEqual(expect.arrayContaining(["resource_host_mismatch", "payto_not_observed"]));
+    expect(decisions[0].reasons.map((r) => r.code)).not.toContain("botsrated_payment");
+    expect(calls.some((c) => c.url.includes("url=blockrun.ai"))).toBe(true);
+  });
+
+  it("the botsrated.com note applies only when the real request host is botsrated.com", async () => {
+    const { f } = recordingFetch();
+    const { decisions, onDecision } = collect();
+    const g = createPaymentGuard({ fetch: f, policy: policies.strict, onDecision });
+    expect(await beforeFor(g, BR, ctx(BR))).toBeUndefined();
+    expect(decisions[0].reasons.map((r) => r.code)).toContain("botsrated_payment");
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("policies expose the rule: warn warns, strict blocks", () => {
+    expect(policies.warn.paidUrlUnknown).toBe("warn");
+    expect(policies.strict.paidUrlUnknown).toBe("block");
   });
 });
 
