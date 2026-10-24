@@ -1,0 +1,74 @@
+name: Publish npm package (trusted publishing)
+
+# Manual only (workflow_dispatch); nothing runs on push, tag or schedule. Dry run is the default.
+# Publishes one package from integrations/ to npm with OIDC trusted publishing and --provenance: no npm token is
+# stored in this repo or its secrets.
+#
+# Before the first real run (repo owner):
+# 1. GitHub -> Settings -> Environments -> "npm-publish": add Anton as a required reviewer, allow only the main branch.
+# 2. npmjs.com -> package settings -> Trusted publishing -> GitHub Actions, for each package:
+#      organization/user: botsrated   repository: botsrated   workflow filename: publish-npm.yml   environment: npm-publish
+#    and allow "npm publish" (configs created after 2026-09-03 default to "npm stage publish" only). A new
+#    trusted-publisher config must complete its first successful publish within 2 days.
+# 3. Then set the package's publishing access to "Require two-factor authentication and disallow tokens".
+# Publish order: x402-client first, then vercel-ai-sdk (it depends on @botsrated/x402-preflight from npm).
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package directory under integrations/"
+        required: true
+        type: choice
+        options: [x402-client, vercel-ai-sdk]
+      dry_run:
+        description: "Only run npm publish --dry-run"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.package }}${{ inputs.dry_run && ' (dry run)' || '' }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: npm-publish   # required reviewer configured on the environment
+    permissions:
+      contents: read
+      id-token: write   # OIDC token for npm trusted publishing and provenance
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false   # no caches in release builds
+      - name: Pinned npm CLI (trusted publishing needs >= 11.5.1)
+        run: npm install -g npm@12.2.1 && npm --version
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test   # builds dist/ first (pretest) and runs the C1 no-resend tests against it
+      - run: npm run build
+      - name: Version not yet on npm
+        run: |
+          name=$(node -p "require('./package.json').name"); ver=$(node -p "require('./package.json').version")
+          echo "$name@$ver"
+          if npm view "$name@$ver" version >/dev/null 2>&1; then echo "::error::$name@$ver is already published; bump the version first"; exit 1; fi
+      - name: npm publish --dry-run
+        if: inputs.dry_run
+        run: npm publish --dry-run --provenance --access public
+      - name: npm publish
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --provenance --access public
