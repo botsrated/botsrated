@@ -7,11 +7,43 @@
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
-export const BOTSRATED_BASE_URL = "https://botsrated.com";
+import {
+  BASE_MAINNET,
+  BASE_USDC,
+  BOTSRATED_BASE_URL,
+  BotsRatedError,
+  DISPUTE_URL,
+  MAX_HEADER_BYTES,
+  USER_AGENT,
+  cleanText,
+  hostOf,
+  isAddress,
+  sameSiteHost,
+  tryHostOf,
+} from "./util.js";
+
+export {
+  BASE_CHAIN_ID_HEX,
+  BASE_MAINNET,
+  BASE_USDC,
+  BOTSRATED_BASE_URL,
+  BotsRatedError,
+  DISPUTE_URL,
+  PRIVACY_URL,
+  TERMS_URL,
+  USER_AGENT,
+  VERSION,
+  cleanText,
+  hostOf,
+  isAddress,
+  sameSiteHost,
+  tryHostOf,
+} from "./util.js";
+export * from "./payment-guard.js";
+export * from "./onchain.js";
+
 /** BotsRated's payTo on Base. Paid calls to any other payTo are refused. */
 export const BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349";
-export const BASE_MAINNET = "eip155:8453";
-export const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 /** Published prices of the paid routes (since 2026-10-23), in atomic USDC (6 decimals). Quotes above these are refused. */
 export const PAID_ROUTE_MAX_ATOMIC = { check: 1000n, report: 2000n, best: 10000n } as const;
 /** Free daily quota per client (IP) per UTC day. Within it BotsRated answers 200 with `charged: false` and no 402. */
@@ -21,8 +53,11 @@ export type PaidRoute = keyof typeof PAID_ROUTE_MAX_ATOMIC;
 export const MAX_TIMEOUT_SECONDS = 600;
 /** EIP-3009 needs only the token's EIP-712 name/version; any other `extra` key (e.g. assetTransferMethod=permit2) is refused. */
 const ALLOWED_EXTRA = new Set(["name", "version"]);
-/** Discovery metadata only. Payment extensions (erc20ApprovalGasSponsoring, eip2612GasSponsoring, ...) are refused. */
-const IGNORED_EXTENSIONS = new Set(["bazaar"]);
+/**
+ * Discovery metadata and the payment-identifier retry key only. Payment extensions (erc20ApprovalGasSponsoring,
+ * eip2612GasSponsoring, ...) are refused. Extensions are never copied into what the signer sees.
+ */
+const IGNORED_EXTENSIONS = new Set(["bazaar", "payment-identifier"]);
 
 /** True when a PaymentRequired `extensions` value carries nothing but discovery metadata. */
 export function extensionsOk(extensions: unknown): boolean {
@@ -30,10 +65,13 @@ export function extensionsOk(extensions: unknown): boolean {
   return typeof extensions === "object" && !Array.isArray(extensions) && Object.keys(extensions).every((k) => IGNORED_EXTENSIONS.has(k));
 }
 
-/** True when a payment option is a plain one-shot EIP-3009 payment: `extra` only name/version strings, timeout 1..600 s. */
+/**
+ * True when a payment option is a plain one-shot EIP-3009 payment: `extra` only name/version strings, timeout 1..600 s.
+ * A missing `maxTimeoutSeconds` is invalid (it is no longer read as 600).
+ */
 function eip3009Only(req: PaymentRequirementsLike): boolean {
   const extra = req.extra ?? {};
-  const timeout = req.maxTimeoutSeconds ?? MAX_TIMEOUT_SECONDS;
+  const timeout = req.maxTimeoutSeconds;
   return (
     typeof extra === "object" &&
     !Array.isArray(extra) &&
@@ -114,17 +152,6 @@ export interface BotsRatedClientOptions {
   paid?: PaidOptions;
 }
 
-export class BotsRatedError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly status?: number,
-  ) {
-    super(message);
-    this.name = "BotsRatedError";
-  }
-}
-
 const USDC_DECIMALS = 6;
 
 export function usdToAtomic(usd: number): bigint {
@@ -134,28 +161,6 @@ export function usdToAtomic(usd: number): bigint {
 
 export function atomicToUsd(atomic: bigint): number {
   return Number(atomic) / 10 ** USDC_DECIMALS;
-}
-
-/**
- * Returns the lowercase ASCII host of a URL or bare host string: punycode (IDNA) encoded by `URL`, trailing dot removed.
- * `http:`/`https:` URLs are parsed as URLs even without `//` (so `https:evil.example` is `evil.example`).
- */
-export function hostOf(urlOrHost: string): string {
-  const s = urlOrHost.trim();
-  let host = "";
-  try {
-    host = new URL(s.includes("://") || /^https?:/i.test(s) ? s : `https://${s}`).hostname;
-  } catch {
-    host = "";
-  }
-  host = host.replace(/\.+$/, "").toLowerCase();
-  if (!host) throw new BotsRatedError(`not a URL or host: ${urlOrHost}`, "invalid_host");
-  return host;
-}
-
-/** True when two normalized hosts are equal or differ only by a leading `www.` (an apex <-> www redirect). */
-export function sameSiteHost(a: string, b: string): boolean {
-  return a === b || a === `www.${b}` || b === `www.${a}`;
 }
 
 const eq = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -206,8 +211,13 @@ function encodeHeader(payload: unknown): string {
 export async function readPaymentRequired(res: Response): Promise<PaymentRequiredLike> {
   const header = res.headers.get("payment-required");
   try {
-    if (header) return JSON.parse(atob(header)) as PaymentRequiredLike;
-    return (await res.json()) as PaymentRequiredLike;
+    if (header) {
+      if (header.length > (MAX_HEADER_BYTES * 4) / 3 + 4) throw new Error("too large");
+      return JSON.parse(atob(header)) as PaymentRequiredLike;
+    }
+    const text = await res.text();
+    if (text.length > MAX_HEADER_BYTES * 4) throw new Error("too large");
+    return JSON.parse(text) as PaymentRequiredLike;
   } catch {
     throw new BotsRatedError("could not parse the 402 payment terms", "bad_402");
   }
@@ -295,19 +305,21 @@ export class BotsRatedClient {
     return hostOf(this.baseUrl);
   }
 
-  /** Free. Latest stored probe for a seller. `found: false` when BotsRated does not cover the host. */
+  /**
+   * Free. Latest stored probe for a seller. `found: false` when BotsRated does not cover the host.
+   * Only the host name is sent to BotsRated, never the path or query of a URL you pass.
+   */
   async preflight(urlOrHost: string): Promise<PreflightResult> {
     const host = hostOf(urlOrHost);
     const hit = this.cache.get(host);
     if (hit && Date.now() - hit.at < this.cacheTtlMs) return hit.value;
-    const target = urlOrHost.includes("://") ? urlOrHost : host;
-    const res = await this.get(`/v1/preflight?url=${encodeURIComponent(target)}`);
+    const res = await this.get(`/v1/preflight?url=${encodeURIComponent(host)}`);
     const body = (await res.json().catch(() => ({}))) as Record<string, any>;
     let value: PreflightResult;
     if (res.status === 404 && body?.error?.code === "host_not_covered") {
       value = { found: false, host, body: { ...body, found: false } };
     } else if (!res.ok) {
-      throw new BotsRatedError(body?.error?.message ?? `preflight returned ${res.status}`, body?.error?.code ?? "http_error", res.status);
+      throw new BotsRatedError(cleanText(body?.error?.message ?? `preflight returned ${res.status}`), cleanText(body?.error?.code ?? "http_error", 40), res.status);
     } else {
       value = { found: body.found !== false, host, body };
     }
@@ -368,7 +380,7 @@ export class BotsRatedClient {
       asset: req.asset,
       amount: req.amount,
       payTo: req.payTo,
-      maxTimeoutSeconds: (req.maxTimeoutSeconds ?? MAX_TIMEOUT_SECONDS) as number,
+      maxTimeoutSeconds: req.maxTimeoutSeconds as number,
       extra,
     };
   }
@@ -411,7 +423,8 @@ export class BotsRatedClient {
     }
     if (!paid || !this.budget) {
       throw new BotsRatedError(
-        quote.status === 402
+        // /v1/best has no free daily quota, so only check and report mention one.
+        quote.status === 402 && route !== "best"
           ? "free daily quota used up and paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`"
           : "paid BotsRated routes are disabled; pass `paid: { budgetUsd, x402Client }`",
         "paid_disabled",
@@ -420,7 +433,7 @@ export class BotsRatedClient {
     }
     if (quote.status !== 402) {
       const body = (await quote.json().catch(() => ({}))) as Record<string, any>;
-      throw new BotsRatedError(body?.error?.message ?? `expected 402, got ${quote.status}`, body?.error?.code ?? "unexpected_status", quote.status);
+      throw new BotsRatedError(cleanText(body?.error?.message ?? `expected 402, got ${quote.status}`), cleanText(body?.error?.code ?? "unexpected_status", 40), quote.status);
     }
     const terms = await readPaymentRequired(quote);
     // Fail closed: every option must be acceptable (a fetchWithPayment re-reads the 402 and picks one itself).
@@ -440,7 +453,7 @@ export class BotsRatedClient {
       } catch (e) {
         // Nothing was signed, so nothing can settle.
         this.budget.release(amount);
-        throw new BotsRatedError(`payment not created: ${(e as Error).message}`, "payment_not_created");
+        throw new BotsRatedError(`payment not created: ${cleanText((e as Error)?.message)}`, "payment_not_created");
       }
     }
     let res: Response;
@@ -474,9 +487,9 @@ export class BotsRatedClient {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
-      return await this.fetchFn(this.baseUrl + path, { headers: { accept: "application/json" }, signal: ctrl.signal });
+      return await this.fetchFn(this.baseUrl + path, { headers: { accept: "application/json", "user-agent": USER_AGENT }, signal: ctrl.signal });
     } catch (e) {
-      throw new BotsRatedError(`BotsRated unreachable: ${(e as Error).message}`, "unreachable");
+      throw new BotsRatedError(`BotsRated unreachable: ${cleanText((e as Error)?.message, 80)}`, "unreachable");
     } finally {
       clearTimeout(t);
     }
@@ -536,7 +549,10 @@ export function factsFrom(body: Record<string, any>, host: string, source: "pref
 export interface GuardPolicy {
   /** Seller not in BotsRated's coverage. Default "allow". */
   notCovered?: "allow" | "block";
-  /** payTo being paid differs from every payTo BotsRated has seen for the host (same network). Default "block". */
+  /**
+   * payTo being paid is not among the payTos BotsRated's probes recorded for the host (same network), or is not an
+   * address. Default "warn" (changed from "block" in 0.2.0). Pass "block" (or use `strictGuardPolicy`) to stop those payments.
+   */
   payToMismatch?: "allow" | "warn" | "block";
   /** Same route, quoted amount above the last amount BotsRated observed. Default "warn". */
   priceAboveObserved?: "allow" | "warn" | "block";
@@ -551,6 +567,13 @@ export interface GuardPolicy {
   requireRequestUrl?: boolean;
 }
 
+/**
+ * The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
+ * Since 0.2.0 it also sets `requireRequestUrl`, so a payment whose real request URL is unknown is stopped too
+ * (use `guard.wrapFetch` or `guard.forRequest`).
+ */
+export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", requireRequestUrl: true });
+
 export interface Reason {
   code: string;
   detail: string;
@@ -562,11 +585,13 @@ export interface Decision {
   host?: string;
   reasons: Reason[];
   facts?: SellerFacts;
+  /** Where to dispute a BotsRated measurement. */
+  disputeUrl?: string;
 }
 
 const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate" | "requireRequestUrl">> = {
   notCovered: "allow",
-  payToMismatch: "block",
+  payToMismatch: "warn",
   priceAboveObserved: "warn",
   stale: "allow",
 };
@@ -582,44 +607,59 @@ const sameRoute = (a?: string, b?: string) => {
   }
 };
 
-/** Pure policy check of one payment against BotsRated facts. */
+/** Pure, local policy check of one payment against BotsRated facts. Reason details state facts only. */
 export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike, resourceUrl: string | undefined, policy: GuardPolicy = {}): Decision {
   const p = { ...DEFAULT_POLICY, ...policy };
   const reasons: Reason[] = [];
   const add = (code: string, detail: string, effect: "allow" | "warn" | "block" | "info") => {
     if (effect !== "allow") reasons.push({ code, detail, effect });
   };
+  const host = cleanText(facts.host, 253);
+  const network = cleanText(req?.network, 40);
 
   if (!facts.covered) {
-    add("not_covered", `${facts.host} is not in BotsRated's probe set`, p.notCovered === "block" ? "block" : "info");
+    add("not_covered", `BotsRated has no probe record for ${host}.`, p.notCovered === "block" ? "block" : "info");
   } else {
-    if (facts.observedNetwork && facts.observedNetwork !== req.network) {
-      add("network_not_measured", `paying on ${req.network}; BotsRated measured ${facts.observedNetwork}`, "info");
-    } else if (facts.knownPayTos.length > 0 && !facts.knownPayTos.includes(req.payTo.toLowerCase())) {
-      add("payto_mismatch", `payTo ${req.payTo} was never seen by BotsRated for ${facts.host} (seen: ${facts.knownPayTos.join(", ")})`, p.payToMismatch);
-    } else if (facts.knownPayTos.length === 0 && facts.listingPayTo) {
-      if (req.payTo.toLowerCase() === facts.listingPayTo) {
-        add("payto_listing_only", `payTo ${req.payTo} matches ${facts.host}'s listing but no BotsRated probe has observed it yet`, "info");
+    const observedNetwork = facts.observedNetwork ? cleanText(facts.observedNetwork, 40) : undefined;
+    const known = facts.knownPayTos.filter(isAddress).map((x) => x.toLowerCase());
+    const listing = isAddress(facts.listingPayTo) ? facts.listingPayTo.toLowerCase() : undefined;
+    if (!isAddress(req?.payTo)) {
+      add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.payToMismatch);
+    } else if (observedNetwork && observedNetwork !== network) {
+      add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
+    } else if (known.length > 0 && !known.includes(req.payTo.toLowerCase())) {
+      add(
+        "payto_not_observed",
+        `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork ?? network}.`,
+        p.payToMismatch,
+      );
+    } else if (known.length === 0 && listing) {
+      if (req.payTo.toLowerCase() === listing) {
+        add("payto_listing_only", `the payTo matches ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`, "info");
       } else {
-        add("payto_mismatch", `payTo ${req.payTo} differs from ${facts.host}'s listing (${facts.listingPayTo})`, p.payToMismatch);
+        add(
+          "payto_not_observed",
+          `the payTo in this payment request differs from the payTo in ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`,
+          p.payToMismatch,
+        );
       }
     }
-    if (facts.observedAmount && /^[0-9]+$/.test(facts.observedAmount) && /^[0-9]+$/.test(req.amount) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
-      add("price_above_observed", `quoted ${req.amount} atomic; BotsRated last observed ${facts.observedAmount} on this route`, p.priceAboveObserved);
+    if (facts.observedAmount && /^[0-9]+$/.test(facts.observedAmount) && /^[0-9]+$/.test(String(req?.amount)) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
+      add("price_above_observed", `the quoted amount (${req.amount} atomic units) is above the last amount BotsRated recorded on this route (${facts.observedAmount}).`, p.priceAboveObserved);
     }
-    if (facts.stale) add("stale", `BotsRated data is older than 24 h (last probe ${facts.lastProbeAt})`, p.stale === "block" ? "block" : "info");
+    if (facts.stale) add("data_stale", `BotsRated's latest probe of ${host} is older than 24 hours.`, p.stale === "block" ? "block" : "info");
     if (p.minValid402Rate !== undefined && facts.valid402Rate !== undefined && (facts.recentProbes ?? 0) >= 3 && facts.valid402Rate < p.minValid402Rate) {
-      add("low_valid_402_rate", `recent valid-402 rate ${facts.valid402Rate} is below ${p.minValid402Rate}`, "block");
+      add("low_valid_402_rate", `the recent valid-402 rate BotsRated measured (${facts.valid402Rate}) is below your minimum (${p.minValid402Rate}).`, "block");
     }
   }
-  return { action: reasons.some((r) => r.effect === "block") ? "block" : "allow", host: facts.host, reasons, facts };
+  return { action: reasons.some((r) => r.effect === "block") ? "block" : "allow", host: facts.host, reasons, facts, disputeUrl: DISPUTE_URL };
 }
 
 export interface GuardOptions {
   /** Reuse a client (needed for paid checks). Defaults to a free-only client. */
   client?: BotsRatedClient;
   policy?: GuardPolicy;
-  /** Allow the payment when BotsRated cannot be reached. Default true. */
+  /** Allow the payment when BotsRated cannot be reached (or the guard errors). Default true. */
   failOpen?: boolean;
   /** Run a check for payments at or above this USD amount: free within the daily quota (100/day), then a $0.001 paid check if the client is paid-enabled (otherwise skipped). */
   paidCheckAtOrAboveUsd?: number;
@@ -640,7 +680,7 @@ export interface PrePaymentGuard {
    * Decide on one payment. Never throws when `failOpen` is true.
    * @param resourceUrl The URL the payment is for; in an x402 hook this is the seller-supplied 402 `resource.url`.
    * @param requestUrl The URL actually being requested and paid. When given, its host is looked up, and the payment
-   *   is blocked (even with `failOpen`) if `resourceUrl` names a different host.
+   *   is blocked (even with `failOpen`) if `resourceUrl` names a different host. Only host names go to BotsRated.
    */
   decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision>;
   /**
@@ -654,32 +694,47 @@ export interface PrePaymentGuard {
   wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F;
 }
 
+const MEASUREMENT_NOTE = "This is a measurement, not a finding about the seller.";
+
+/** Fact-only text for a decision, with the dispute link. Seller text is never echoed beyond a parsed host name. */
 export function formatDecision(d: Decision): string {
   const blocking = d.reasons.filter((r) => r.effect === "block");
-  const list = (blocking.length ? blocking : d.reasons).map((r) => `${r.code}: ${r.detail}`).join("; ");
-  const receipt = d.facts?.receiptUrl ? ` (receipt: ${d.facts.receiptUrl})` : "";
-  return `BotsRated pre-payment check ${d.action === "block" ? "blocked" : "allowed"} ${d.host ?? "payment"}${list ? ` - ${list}` : ""}${receipt}`;
+  const dispute = d.disputeUrl ?? DISPUTE_URL;
+  const receipt = d.facts?.receiptUrl && /^https:\/\/(www\.)?botsrated\.com\//.test(d.facts.receiptUrl) ? ` Receipt: ${cleanText(d.facts.receiptUrl, 200)}.` : "";
+  if (d.action === "block" && blocking.length) {
+    const r = blocking[0];
+    return cleanText(`Payment stopped by your payment policy (rule: ${r.code}). Fact: ${r.detail}${receipt} ${MEASUREMENT_NOTE} Dispute: ${dispute}`, 700);
+  }
+  const list = d.reasons.map((r) => `${r.code}: ${r.detail}`).join(" ");
+  return cleanText(`BotsRated pre-payment check for ${d.host ?? "this payment"}: ${list || "no rule matched."}${receipt} ${MEASUREMENT_NOTE} Dispute: ${dispute}`, 700);
 }
 
 export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGuard {
   const client = options.client ?? new BotsRatedClient();
   const failOpen = options.failOpen ?? true;
+  const openOrClosed = (code: string, detail: string, host?: string): Decision => ({
+    action: failOpen ? "allow" : "block",
+    ...(host ? { host } : {}),
+    reasons: [{ code, detail, effect: failOpen ? "info" : "block" }],
+    disputeUrl: DISPUTE_URL,
+  });
 
   async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
+    try {
+      return await decideInner(resourceUrl, req, requestUrl);
+    } catch {
+      return openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
+    }
+  }
+
+  async function decideInner(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
     if (requestUrl) {
-      let paidHost: string;
-      try {
-        paidHost = hostOf(requestUrl);
-      } catch (e) {
-        return { action: "block", reasons: [{ code: "invalid_request_url", detail: (e as Error).message, effect: "block" }] };
+      const paidHost = tryHostOf(requestUrl);
+      if (!paidHost) {
+        return { action: "block", reasons: [{ code: "invalid_request_url", detail: "the URL being paid has no valid host.", effect: "block" }], disputeUrl: DISPUTE_URL };
       }
       if (resourceUrl) {
-        let claimed: string | undefined;
-        try {
-          claimed = hostOf(resourceUrl);
-        } catch {
-          claimed = undefined;
-        }
+        const claimed = tryHostOf(resourceUrl);
         // An apex <-> www redirect is tolerated: the 402 then comes from the redirected host.
         if (claimed === undefined || !sameSiteHost(claimed, paidHost)) {
           return {
@@ -688,30 +743,34 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
             reasons: [
               {
                 code: "resource_url_mismatch",
-                detail: `the 402's resource.url (${resourceUrl}) does not name the host being paid (${paidHost}); refusing to pay`,
+                detail: claimed
+                  ? `the 402's resource.url names ${claimed}, not ${paidHost}, the host being paid.`
+                  : `the 402's resource.url has no valid host; the host being paid is ${paidHost}.`,
                 effect: "block",
               },
             ],
+            disputeUrl: DISPUTE_URL,
           };
         }
       }
       resourceUrl = requestUrl;
     }
-    if (!resourceUrl) {
-      return { action: failOpen ? "allow" : "block", reasons: [{ code: "no_resource_url", detail: "payment has no resource URL to look up", effect: failOpen ? "info" : "block" }] };
-    }
-    const host = hostOf(resourceUrl);
+    if (!resourceUrl) return openOrClosed("no_resource_url", "the payment has no resource URL to look up.");
+    const host = tryHostOf(resourceUrl);
+    if (!host) return openOrClosed("invalid_resource_url", "the 402's resource.url has no valid host.");
     // Payments to BotsRated itself: only the client's own budgeted calls.
     if (host === client.host) {
       const ok = client.isReservedBotsRatedPayment(req);
       return {
         action: ok ? "allow" : "block",
         host,
-        reasons: ok ? [] : [{ code: "botsrated_payment_not_reserved", detail: "payments to BotsRated must go through BotsRatedClient with a budget", effect: "block" }],
+        reasons: ok ? [] : [{ code: "botsrated_payment_not_reserved", detail: "payments to BotsRated must go through BotsRatedClient with a budget.", effect: "block" }],
+        disputeUrl: DISPUTE_URL,
       };
     }
     try {
-      const pre = await client.preflight(resourceUrl);
+      // Host name only: the path and query of resourceUrl never leave this process.
+      const pre = await client.preflight(host);
       let facts = factsFrom(pre.body, host, "preflight");
       const extra: Reason[] = [];
       const threshold = options.paidCheckAtOrAboveUsd;
@@ -720,39 +779,50 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
         try {
           facts = factsFrom(await client.check(host), host, "check");
         } catch (e) {
-          extra.push({ code: "paid_check_skipped", detail: (e as Error).message, effect: "info" });
+          extra.push({ code: "paid_check_skipped", detail: cleanText((e as Error)?.message), effect: "info" });
         }
       }
       const d = evaluatePayment(facts, req, resourceUrl, options.policy);
       d.reasons.push(...extra);
       return d;
-    } catch (e) {
-      return {
-        action: failOpen ? "allow" : "block",
-        host,
-        reasons: [{ code: "botsrated_unavailable", detail: (e as Error).message, effect: failOpen ? "info" : "block" }],
-      };
+    } catch {
+      return openOrClosed("botsrated_unreachable", "BotsRated's preflight could not be reached in time.", host);
     }
   }
 
-  async function hook(ctx: BeforePaymentContextLike, requestUrl: string | undefined): Promise<void | { abort: true; reason: string }> {
+  async function hookInner(ctx: BeforePaymentContextLike, requestUrl: string | undefined): Promise<Decision> {
     const url = ctx.paymentRequired.resource?.url;
     let d: Decision =
       !requestUrl && options.policy?.requireRequestUrl
-        ? { action: "block", reasons: [{ code: "no_request_url", detail: "the URL being paid is unknown; wrap the request with guard.wrapFetch or payingRequest", effect: "block" }] }
+        ? { action: "block", reasons: [{ code: "no_request_url", detail: "the URL being paid is unknown; wrap the request with guard.wrapFetch or payingRequest.", effect: "block" }], disputeUrl: DISPUTE_URL }
         : await decide(url, ctx.selectedRequirements, requestUrl);
     const paidUrl = requestUrl ?? url;
-    if (d.action === "allow" && paidUrl && hostOf(paidUrl) === client.host) {
+    if (d.action === "allow" && paidUrl && tryHostOf(paidUrl) === client.host) {
       // A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an ERC-20
-      // approval of Permit2) and never hand any extensions to the signer.
+      // approval of Permit2) and never hand any extensions to the signer. This only ever touches BotsRated's own quote.
       if (!extensionsOk(ctx.paymentRequired.extensions)) {
-        d = { action: "block", host: d.host, reasons: [{ code: "botsrated_payment_extensions", detail: "BotsRated quotes must not carry payment extensions", effect: "block" }] };
+        d = { action: "block", host: d.host, reasons: [{ code: "botsrated_payment_extensions", detail: "BotsRated quotes must not carry payment extensions.", effect: "block" }], disputeUrl: DISPUTE_URL };
       } else {
         delete ctx.paymentRequired.extensions;
       }
     }
-    options.onDecision?.(d, ctx.selectedRequirements);
+    return d;
+  }
+
+  async function hook(ctx: BeforePaymentContextLike, requestUrl: string | undefined): Promise<void | { abort: true; reason: string }> {
+    let d: Decision;
+    try {
+      d = await hookInner(ctx, requestUrl);
+    } catch {
+      d = openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
+    }
+    try {
+      options.onDecision?.(d, ctx?.selectedRequirements);
+    } catch {
+      /* caller callback errors are ignored */
+    }
     if (d.action === "block") return { abort: true, reason: formatDecision(d) };
+    return undefined;
   }
 
   return {
@@ -818,12 +888,12 @@ export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string, op
       }
       if (claimed && paid && !sameSiteHost(claimed, paid)) {
         if (allowed.has(claimed)) {
-          note = { code: "resource_host_allowed", detail: `resource.url host ${claimed} is in allowResourceHosts`, effect: "info" };
+          note = { code: "resource_host_allowed", detail: `resource.url host ${claimed} is in allowResourceHosts.`, effect: "info" };
           resourceUrl = undefined;
         } else if (options.resourceUrlMismatch === "warn") {
           note = {
             code: "resource_url_mismatch",
-            detail: `the 402's resource.url (${resourceUrl}) names ${claimed}, not the MCP server ${paid}; allowed because resourceUrlMismatch is "warn"`,
+            detail: `the 402's resource.url names ${claimed}, not the MCP server ${paid}; allowed because resourceUrlMismatch is "warn".`,
             effect: "warn",
           };
           resourceUrl = undefined;

@@ -28,6 +28,15 @@ Issues of particular interest: anything that could make a pre-payment guard appr
 a paid call sign something other than the published quote, forge or replay a BotsRated signature, or reach private
 networks through BotsRated's probes or webhooks.
 
+## What The Payment Guard Can't Do
+
+The payment guard in `@botsrated/x402-preflight` and `botsrated` (0.2.0) never signs, never sends or resends a
+payment, never builds a payment header and never imports a signer. Its hook return values are discarded, it never
+registers the x402 payment-creation-failure hook, and its on-chain checks use read-only RPC methods. CI enforces this
+in [`integrations/x402-client/test/c1-no-repay.test.ts`](integrations/x402-client/test/c1-no-repay.test.ts) and
+[`integrations/python-core/tests/test_c1_no_repay.py`](integrations/python-core/tests/test_c1_no_repay.py). A way
+to make the guard cause a second payment is in scope and of particular interest.
+
 ## Please Do Not
 
 - run load or denial-of-service tests against botsrated.com;

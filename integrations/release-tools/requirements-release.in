@@ -1,0 +1,6 @@
+# Build and upload-check tools for the PyPI release workflow (docs/drafts/publish-pypi.yml).
+# Regenerate with: uv pip compile release-tools/requirements-release.in --generate-hashes --python-version 3.12 -o release-tools/requirements-release.txt
+# Keep hatchling here equal to the hatchling pin in each package's [build-system].
+build==1.6.1
+twine==7.0.0
+hatchling==1.32.4

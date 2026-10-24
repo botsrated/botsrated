@@ -1,0 +1,12 @@
+# Pinned release signer fingerprints for verify-tag.sh. The release workflows read this file from main.
+# Empty on purpose: every release fails closed until the repo owner adds a fingerprint here AND the matching
+# public key in .github/release-signers/ (both on main, in a reviewed commit).
+#
+# One fingerprint per line; '#' starts a comment.
+#   GPG: the full 40-hex fingerprint of the primary key (or of a signing subkey), spaces allowed:
+#          gpg --with-colons --fingerprint <you@example.com> | awk -F: '/^fpr/ {print $10; exit}'
+#        and export the public key to .github/release-signers/<name>.asc:
+#          gpg --armor --export <you@example.com>
+#   SSH: the key's SHA256 fingerprint, e.g. SHA256:AbC...:
+#          ssh-keygen -lf ~/.ssh/id_ed25519.pub | awk '{print $2}'
+#        and add "<you@example.com> namespaces=\"git\" <public key>" to .github/release-signers/allowed_signers.

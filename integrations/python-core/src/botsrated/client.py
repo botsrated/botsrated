@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -13,14 +12,34 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal, Protocol
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode
 
 import httpx
 
-BOTSRATED_BASE_URL = "https://botsrated.com"
+from botsrated.util import (
+    BASE_MAINNET,
+    BASE_USDC,
+    BOTSRATED_BASE_URL,
+    MAX_HEADER_BYTES,
+    USER_AGENT,
+    BotsRatedError,
+    clean_text,
+    host_of,
+    is_atomic_amount,
+    same_site_host,
+)
+
+__all__ = [
+    "BASE_MAINNET",
+    "BASE_USDC",
+    "BOTSRATED_BASE_URL",
+    "BotsRatedError",
+    "host_of",
+    "is_atomic_amount",
+    "same_site_host",
+]
+
 BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349"
-BASE_MAINNET = "eip155:8453"
-BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 # Published prices (since 2026-10-23) in atomic USDC. Quotes above these are refused.
 PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 1000, "report": 2000, "best": 10000}
 # Free calls per client (IP) per UTC day. Inside the quota BotsRated answers 200 with charged: false, no 402.
@@ -30,17 +49,10 @@ MAX_TIMEOUT_SECONDS = 600
 # EIP-3009 needs only the token's EIP-712 domain name/version. Any other ``extra`` key (e.g.
 # assetTransferMethod=permit2, paymentFlow) switches the x402 signer to a different flow.
 ALLOWED_EXTRA = frozenset({"name", "version"})
-# Discovery metadata only. Payment extensions (erc20ApprovalGasSponsoring, eip2612GasSponsoring, ...)
-# can make the signer sign more than the one-shot payment, so a BotsRated quote carrying them is refused.
-IGNORED_EXTENSIONS = frozenset({"bazaar"})
-
-
-_ATOMIC_RE = re.compile(r"[0-9]+")
-
-
-def is_atomic_amount(value: Any) -> bool:
-    """True for a string of ASCII digits only. ``str.isdigit`` also accepts e.g. Arabic-Indic or superscript digits."""
-    return isinstance(value, str) and _ATOMIC_RE.fullmatch(value) is not None
+# Discovery metadata and the payment-identifier retry key only. Payment extensions (erc20ApprovalGasSponsoring,
+# eip2612GasSponsoring, ...) can make the signer sign more than the one-shot payment, so a BotsRated quote carrying
+# them is refused. Extensions are never copied into what is signed.
+IGNORED_EXTENSIONS = frozenset({"bazaar", "payment-identifier"})
 
 
 _REQUEST_URL: ContextVar[str | None] = ContextVar("botsrated_request_url", default=None)
@@ -77,13 +89,6 @@ def is_free_quota_answer(body: Any) -> bool:
 PaidRoute = Literal["check", "report", "best"]
 
 
-class BotsRatedError(Exception):
-    def __init__(self, message: str, code: str, status: int | None = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.status = status
-
-
 class _ResponseLike(Protocol):
     status_code: int
     headers: Any
@@ -106,31 +111,6 @@ def usd_to_atomic(usd: float | str | Decimal) -> int:
     if d < 0:
         raise BotsRatedError(f"invalid USD amount: {usd}", "invalid_amount")
     return int((d * 1_000_000).to_integral_value())
-
-
-def host_of(url_or_host: str) -> str:
-    """Lowercase ASCII host of a URL or bare host: IDNA (punycode) encoded, trailing dot removed.
-
-    Backslashes are read as forward slashes first, the way WHATWG URL parsers (browsers, Node, the TypeScript
-    package) treat them in http(s) URLs, so ``https://evil.example\\@good.example`` is ``evil.example`` here too.
-    """
-    s = url_or_host.strip().replace("\\", "/")
-    try:
-        host = urlsplit(s if "://" in s else f"https://{s}").hostname
-    except ValueError:
-        host = None
-    host = (host or "").rstrip(".")
-    if not host:
-        raise BotsRatedError(f"not a URL or host: {url_or_host}", "invalid_host")
-    try:
-        return host.encode("idna").decode("ascii").lower()
-    except UnicodeError as e:
-        raise BotsRatedError(f"not a valid host name: {url_or_host}", "invalid_host") from e
-
-
-def same_site_host(a: str, b: str) -> bool:
-    """True when two normalized hosts are equal or differ only by a leading ``www.`` (an apex <-> www redirect)."""
-    return a == b or a == f"www.{b}" or b == f"www.{a}"
 
 
 def _eq(a: str | None, b: str | None) -> bool:
@@ -181,7 +161,11 @@ class PreflightResult:
 def read_payment_required(resp: _ResponseLike) -> dict[str, Any]:
     header = resp.headers.get("payment-required")
     try:
-        return json.loads(base64.b64decode(header)) if header else resp.json()
+        if header:
+            if len(header) > MAX_HEADER_BYTES * 4 // 3 + 4:
+                raise ValueError("too large")
+            return json.loads(base64.b64decode(header))
+        return resp.json()
     except Exception as e:
         raise BotsRatedError("could not parse the 402 payment terms", "bad_402") from e
 
@@ -217,7 +201,7 @@ class BotsRatedClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.host = host_of(self.base_url)
-        self._http = http or httpx.Client(timeout=timeout, headers={"accept": "application/json"})
+        self._http = http or httpx.Client(timeout=timeout, headers={"accept": "application/json", "user-agent": USER_AGENT})
         self._cache_ttl = cache_ttl
         self._cache: dict[str, tuple[float, PreflightResult]] = {}
         self._paying_get = paying_get
@@ -238,18 +222,20 @@ class BotsRatedClient:
 
     def _get(self, path: str) -> httpx.Response:
         try:
-            return self._http.get(self.base_url + path)
+            return self._http.get(self.base_url + path, headers={"user-agent": USER_AGENT})
         except httpx.HTTPError as e:
-            raise BotsRatedError(f"BotsRated unreachable: {e}", "unreachable") from e
+            raise BotsRatedError(f"BotsRated unreachable: {clean_text(e, 80)}", "unreachable") from e
 
     def preflight(self, url_or_host: str) -> PreflightResult:
-        """Free. Latest stored probe for a seller; ``found=False`` when the host is not covered."""
+        """Free. Latest stored probe for a seller; ``found=False`` when the host is not covered.
+
+        Only the host name is sent to BotsRated, never the path or query of a URL you pass.
+        """
         host = host_of(url_or_host)
         hit = self._cache.get(host)
         if hit and time.monotonic() - hit[0] < self._cache_ttl:
             return hit[1]
-        target = url_or_host if "://" in url_or_host else host
-        resp = self._get(f"/v1/preflight?url={quote(target, safe='')}")
+        resp = self._get(f"/v1/preflight?url={quote(host, safe='')}")
         try:
             body = resp.json()
         except ValueError:
@@ -260,7 +246,7 @@ class BotsRatedClient:
         elif resp.status_code >= 400:
             msg = err.get("message") if isinstance(err, dict) else None
             code = err.get("code") if isinstance(err, dict) else None
-            raise BotsRatedError(msg or f"preflight returned {resp.status_code}", code or "http_error", resp.status_code)
+            raise BotsRatedError(clean_text(msg or f"preflight returned {resp.status_code}"), clean_text(code or "http_error", 40), resp.status_code)
         else:
             result = PreflightResult(body.get("found") is not False, host, body)
         if self._cache_ttl > 0:
@@ -295,9 +281,8 @@ class BotsRatedClient:
         extra = req.get("extra")
         if extra is None:
             extra = {}
+        # A missing maxTimeoutSeconds is invalid (it is no longer read as 600).
         timeout = req.get("maxTimeoutSeconds", req.get("max_timeout_seconds"))
-        if timeout is None:
-            timeout = MAX_TIMEOUT_SECONDS
         pay_to = req.get("payTo") or req.get("pay_to")
         if not (
             isinstance(extra, dict)
@@ -367,8 +352,8 @@ class BotsRatedClient:
                 f"expected 402 or a free-quota answer, got {quote_resp.status_code}", "unexpected_status", quote_resp.status_code
             )
         if self.budget is None or (self._paying_get is None and self._x402_client is None):
-            msg = "paid BotsRated routes are disabled; pass budget_usd and paying_get"
-            if quote_resp.status_code == 402:
+            msg = "paid BotsRated routes are disabled; pass budget_usd and x402_client"
+            if quote_resp.status_code == 402 and route != "best":  # /v1/best has no free daily quota
                 msg = "free daily quota used up and " + msg
             raise BotsRatedError(msg, "paid_disabled", quote_resp.status_code)
         if quote_resp.status_code != 402:
@@ -377,8 +362,8 @@ class BotsRatedClient:
             except ValueError:
                 err = {}
             raise BotsRatedError(
-                err.get("message") or f"expected 402, got {quote_resp.status_code}",
-                err.get("code") or "unexpected_status",
+                clean_text(err.get("message") or f"expected 402, got {quote_resp.status_code}"),
+                clean_text(err.get("code") or "unexpected_status", 40),
                 quote_resp.status_code,
             )
         terms = read_payment_required(quote_resp)
@@ -399,7 +384,7 @@ class BotsRatedClient:
             except Exception as e:
                 # Nothing was signed, so nothing can settle.
                 self.budget.release(amount)
-                raise BotsRatedError(f"payment not created: {e}", "payment_not_created") from e
+                raise BotsRatedError(f"payment not created: {clean_text(e)}", "payment_not_created") from e
         resp: _ResponseLike
         try:
             if self._x402_client is not None:

@@ -6,6 +6,7 @@ from botsrated import (
     BASE_MAINNET,
     BASE_USDC,
     BOTSRATED_PAY_TO,
+    STRICT_GUARD_POLICY,
     BotsRatedClient,
     BotsRatedError,
     GuardPolicy,
@@ -33,7 +34,8 @@ def req(found, **over):
 @pytest.fixture
 def mock_api(found, not_covered, check_402_b64):
     with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
-        m.get("/v1/preflight", params={"url": found["latest_probe"]["url"]}).respond(200, json=found)
+        # Only the host name is sent (0.2.0+).
+        m.get("/v1/preflight", params={"url": "blockrun.ai"}).respond(200, json=found)
         m.get("/v1/preflight").respond(404, json=not_covered)
         m.get("/v1/check").respond(402, json={"x402Version": 2}, headers={"payment-required": check_402_b64})
         yield m
@@ -49,18 +51,22 @@ def test_evaluate_matches(found):
     assert evaluate_payment(facts, req(found), found["latest_probe"]["url"]).action == "allow"
 
 
-def test_evaluate_payto_mismatch_blocks_by_default(found):
+def test_evaluate_payto_mismatch_warns_by_default_blocks_with_explicit_policy(found):
     facts = facts_from(found, "blockrun.ai", "preflight")
     d = evaluate_payment(facts, req(found, payTo=DEAD), found["latest_probe"]["url"])
-    assert d.action == "block"
-    assert d.reasons[0].code == "payto_mismatch"
-    assert evaluate_payment(facts, req(found, payTo=DEAD), None, GuardPolicy(pay_to_mismatch="warn")).action == "allow"
+    assert d.action == "allow"
+    assert d.reasons[0].code == "payto_not_observed" and d.reasons[0].effect == "warn"
+    assert d.dispute_url == "https://botsrated.com/disputes"
+    strict = evaluate_payment(facts, req(found, payTo=DEAD), None, STRICT_GUARD_POLICY)
+    assert strict.action == "block"
+    assert strict.summary().startswith("Payment stopped by your payment policy (rule: payto_not_observed). Fact: ")
+    assert strict.summary().endswith("This is a measurement, not a finding about the seller. Dispute: https://botsrated.com/disputes")
 
 
 def test_evaluate_other_network_not_compared(found):
     facts = facts_from(found, "blockrun.ai", "preflight")
     d = evaluate_payment(facts, req(found, payTo=DEAD, network="eip155:84532"), None)
-    assert d.action == "allow" and d.reasons[0].code == "network_not_measured"
+    assert d.action == "allow" and d.reasons[0].code == "network_not_observed"
 
 
 def test_price_above_observed_same_route_only(found):
@@ -189,13 +195,13 @@ def test_listing_payto_alone_does_not_confirm(found):
     body = {**found, "listing": {**(found.get("listing") or {}), "payTo": listed}}
     facts = facts_from(body, "blockrun.ai", "preflight")
     assert listed not in facts.known_pay_tos
-    d = evaluate_payment(facts, req(found, payTo=listed), None)
-    assert d.action == "block" and d.reasons[0].code == "payto_mismatch"
+    d = evaluate_payment(facts, req(found, payTo=listed), None, STRICT_GUARD_POLICY)
+    assert d.action == "block" and d.reasons[0].code == "payto_not_observed"
     no_probe = {**body, "latest_probe": None, "measured": {}}
     facts = facts_from(no_probe, "blockrun.ai", "preflight")
     d = evaluate_payment(facts, req(found, payTo=listed), None)
     assert d.action == "allow" and d.reasons[0].code == "payto_listing_only"
-    d = evaluate_payment(facts, req(found, payTo=DEAD), None)
+    d = evaluate_payment(facts, req(found, payTo=DEAD), None, STRICT_GUARD_POLICY)
     assert d.action == "block"
 
 
@@ -204,7 +210,7 @@ def test_guard_paid_check_threshold(mock_api, sample_check, found):
 
     def paying_get(url):
         # the guard sees this payment to BotsRated and must allow it because it is reserved
-        r = {"scheme": "exact", "network": BASE_MAINNET, "asset": BASE_USDC, "payTo": BOTSRATED_PAY_TO, "amount": "1000"}
+        r = {"scheme": "exact", "network": BASE_MAINNET, "asset": BASE_USDC, "payTo": BOTSRATED_PAY_TO, "amount": "1000", "maxTimeoutSeconds": 300}
         assert holder["g"].decide(url, r).action == "allow"
         return httpx.Response(200, json=sample_check)
 
@@ -238,6 +244,14 @@ def test_free_answer_on_paid_attempt_keeps_amount_counted(mock_api, free_check):
 def test_quota_used_up_message(mock_api):
     with pytest.raises(BotsRatedError, match="free daily quota used up"):
         BotsRatedClient().check("blockrun.ai")
+
+
+def test_best_without_paid_lookups_does_not_mention_a_quota():
+    http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(402, json={})))
+    with pytest.raises(BotsRatedError) as e:
+        BotsRatedClient(http=http).best("weather")
+    assert e.value.code == "paid_disabled"
+    assert "quota" not in str(e.value) and "x402_client" in str(e.value)
 
 
 def test_refuses_old_check_price(check_402_b64):

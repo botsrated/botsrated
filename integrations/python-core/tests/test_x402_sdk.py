@@ -9,16 +9,16 @@ eth_account = pytest.importorskip("eth_account")
 from x402 import x402ClientSync
 from x402.schemas import PaymentRequired
 
-from botsrated import BASE_MAINNET, BASE_USDC, PrePaymentGuard
+from botsrated import BASE_MAINNET, BASE_USDC, STRICT_GUARD_POLICY, PrePaymentGuard
 
 
-def _client(guard):
+def _client(guard, hook=None):
     from x402.mechanisms.evm import EthAccountSigner
     from x402.mechanisms.evm.exact import ExactEvmScheme
 
     c = x402ClientSync()
     c.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(eth_account.Account.create())))
-    c.on_before_payment_creation(guard.x402_hook)
+    c.on_before_payment_creation(hook or guard.x402_hook)
     return c
 
 
@@ -45,11 +45,23 @@ def _pr(found, pay_to):
 def test_hook_allows_and_blocks(found):
     with respx.mock(base_url="https://botsrated.com") as m:
         m.get("/v1/preflight").respond(200, json=found)
-        client = _client(PrePaymentGuard())
+        g = PrePaymentGuard(policy=STRICT_GUARD_POLICY)
+        # The legacy strict preset needs the real request URL (require_request_url=True since 0.2.0).
+        client = _client(g, g.x402_hook_for(found["latest_probe"]["url"]))
         payload = client.create_payment_payload(_pr(found, found["latest_probe"]["live_payTo"]))
         assert payload.accepted.pay_to.lower() == found["latest_probe"]["live_payTo"].lower()
-        with pytest.raises(Exception, match="payto_mismatch"):
+        with pytest.raises(Exception, match=r"Payment stopped by your payment policy \(rule: payto_not_observed\)"):
             client.create_payment_payload(_pr(found, "0x000000000000000000000000000000000000dEaD"))
+
+
+def test_legacy_strict_preset_blocks_unknown_request_url(found):
+    """R2-L4: STRICT_GUARD_POLICY stops a payment whose real request URL is unknown, even with a matching payTo."""
+    with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        lookup = m.get("/v1/preflight").respond(200, json=found)
+        client = _client(PrePaymentGuard(policy=STRICT_GUARD_POLICY))
+        with pytest.raises(Exception, match=r"rule: no_request_url"):
+            client.create_payment_payload(_pr(found, found["latest_probe"]["live_payTo"]))
+        assert not lookup.called  # stopped locally, before any BotsRated lookup
 
 
 def _botsrated_pr(extra_extra=None, extensions=None):

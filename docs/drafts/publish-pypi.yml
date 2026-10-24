@@ -1,0 +1,166 @@
+name: Publish PyPI package (Trusted Publishing)
+
+# Manual only (workflow_dispatch); nothing runs on push, tag or schedule. Dry run (build + checks only) is the
+# default. Publishes one package from integrations/ to PyPI with Trusted Publishing (OIDC): no PyPI token is stored
+# in this repo or its secrets. PEP 740 attestations are uploaded by gh-action-pypi-publish.
+#
+# What gets published: the code at a SIGNED release tag (input "tag", e.g. botsrated-v0.2.0), never main HEAD.
+# The workflow runs from main; the tag is verified against signer keys taken from main (.github/release-signers/)
+# and must point at a commit on main.
+#
+# Jobs (least privilege):
+#   verify  - checks the tag (no credentials).
+#   test    - runs the tests at the tag with pinned test dependencies (release-tools/constraints-test.txt).
+#   build   - builds the sdist and wheel at the tag with hash-pinned tools only (release-tools/requirements-release.txt,
+#             pip --require-hashes; hatchling pinned in [build-system] and used with --no-isolation, so nothing is
+#             resolved from PyPI at build time). No test dependencies are installed in this job.
+#   publish - in the reviewer-gated "pypi-publish" environment with id-token: write; uploads the built files only.
+#
+# Before the first real run (repo owner):
+# 1. GitHub -> Settings -> Environments -> "pypi-publish": add Anton as a required reviewer, allow only the main branch.
+# 2. pypi.org -> project -> Publishing -> add a trusted publisher (GitHub):
+#      owner: botsrated   repository: botsrated   workflow: publish-pypi.yml   environment: pypi-publish
+# 3. Then remove any API tokens for the project.
+# 4. Commit the release signer public key(s) to .github/release-signers/ on main, add their fingerprints to
+#    integrations/release-tools/signers.txt (on main; empty = every release fails closed), and sign release tags
+#    (git tag -s <project>-v<version>).
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package directory under integrations/"
+        required: true
+        type: choice
+        options: [python-core, langchain, llamaindex, microsoft-agent-framework]
+      tag:
+        description: "Signed release tag to build, e.g. botsrated-v0.2.0"
+        required: true
+        type: string
+      dry_run:
+        description: "Only build and check, don't upload"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify signed tag ${{ inputs.tag }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - id: check
+        env:
+          TAG: ${{ inputs.tag }}
+          PKG: ${{ inputs.package }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG" "refs/heads/main:refs/remotes/origin/main"
+          # Expected tag name from pyproject.toml AT THE TAG: <project name>-v<version>
+          expected=$(git show "refs/tags/$TAG:integrations/$PKG/pyproject.toml" | python -c "import sys,tomllib;p=tomllib.loads(sys.stdin.read())['project'];print(p['name']+'-v'+p['version'])")
+          # verify-tag.sh, its self-test, signers.txt and the signer keys come from main (this checkout), never from the tag.
+          bash integrations/release-tools/test-verify-tag.sh   # throwaway keys; proves the runner's gpg rejects unpinned keys
+          bash integrations/release-tools/verify-tag.sh "$TAG" "$expected" .github/release-signers integrations/release-tools/signers.txt
+          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Building $TAG at $sha" >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Test ${{ inputs.package }} at ${{ inputs.tag }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Test (pinned test dependencies)
+        env:
+          PKG: ${{ inputs.package }}
+        run: |
+          python -m venv /tmp/testenv && . /tmp/testenv/bin/activate
+          pip install -c ../release-tools/constraints-test.txt pytest respx pytest-asyncio
+          if [ "$PKG" = "langchain" ]; then pip install -c ../release-tools/constraints-test.txt "langchain-tests==1.1.9"; fi
+          pip install -c ../release-tools/constraints-test.txt -e "../python-core[x402]" -e .
+          python -m pytest -q -m "not live" tests
+
+  build:
+    name: Build ${{ inputs.package }} at ${{ inputs.tag }}
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # no id-token here
+    defaults:
+      run:
+        working-directory: integrations/${{ inputs.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Hash-pinned build tools only
+        run: |
+          python -m venv /tmp/buildenv
+          /tmp/buildenv/bin/python -m pip install --no-deps --require-hashes --only-binary :all: -r ../release-tools/requirements-release.txt
+          # The [build-system] hatchling pin must equal the hash-pinned one (no build-time resolution from PyPI).
+          want=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['build-system']['requires'])")
+          have=$(/tmp/buildenv/bin/python -c "import importlib.metadata as m;print(['hatchling=='+m.version('hatchling')])")
+          [ "$want" = "$have" ] || { echo "::error::[build-system] requires $want but the pinned tools have $have"; exit 1; }
+      - name: Build sdist and wheel
+        run: rm -rf dist && /tmp/buildenv/bin/python -m build --no-isolation && /tmp/buildenv/bin/twine check --strict dist/* && sha256sum dist/* | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Version not yet on PyPI
+        run: |
+          name=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['name'])")
+          ver=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "$name==$ver"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/$name/$ver/json")
+          if [ "$code" = "200" ]; then echo "::error::$name $ver is already on PyPI; bump the version first"; exit 1; fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: integrations/${{ inputs.package }}/dist/
+          if-no-files-found: error
+
+  publish:
+    name: Upload ${{ inputs.package }} to PyPI
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: pypi-publish   # required reviewer configured on the environment
+    permissions:
+      id-token: write   # OIDC token for PyPI Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
