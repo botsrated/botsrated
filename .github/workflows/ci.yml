@@ -1,0 +1,90 @@
+name: CI
+
+# Offline tests only: every HTTP call is mocked (respx / fetch stubs). No secrets, no network calls to
+# botsrated.com, no payments. Live tests (pytest -m live, haystack/strands smoke scripts) are not run here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install packages from this checkout
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest respx pytest-asyncio langchain-tests ruff
+          pip install -e "integrations/python-core[x402]" -e integrations/langchain -e integrations/llamaindex -e integrations/microsoft-agent-framework
+      - name: Lint (ruff check)
+        run: |
+          for d in python-core langchain llamaindex microsoft-agent-framework; do (cd integrations/$d && ruff check .); done
+      - name: botsrated (python-core)
+        working-directory: integrations/python-core
+        run: python -m pytest -q -m "not live" tests
+      - name: langchain-botsrated
+        working-directory: integrations/langchain
+        run: python -m pytest -q -m "not live" tests
+      - name: llama-index-tools-botsrated
+        working-directory: integrations/llamaindex
+        run: python -m pytest -q -m "not live" tests
+      - name: agent-framework-botsrated
+        working-directory: integrations/microsoft-agent-framework
+        run: python -m pytest -q -m "not live" tests
+
+  node:
+    name: Node ${{ matrix.node }} (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22"]
+        package: ["x402-client", "vercel-ai-sdk"]
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: integrations/${{ matrix.package }}/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  spec:
+    name: Receipt spec verifier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Syntax check
+        run: node --check spec/verify.mjs
