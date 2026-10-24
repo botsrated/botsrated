@@ -13,7 +13,7 @@ pip install langchain-botsrated
 
 | Tool | Cost | Notes |
 |---|---|---|
-| `botsrated_preflight` | free | Latest unpaid probe of the seller. With `pay_to` (+ `network`, `amount`) it returns `decision.action` `allow` or `block` and the reasons. By default, a payTo that BotsRated never saw for the host is blocked. |
+| `botsrated_preflight` | free | Latest unpaid probe of the seller. With `pay_to` (+ `network`, `amount`) it returns `decision.action` `allow` or `block` and the reasons. A payTo that BotsRated never saw for the host is a warning (`payto_not_observed`) with botsrated 0.2+, and was blocked (`payto_mismatch`) with 0.1.x. |
 | `botsrated_paid_check` | $0.001 USDC on Base (first 100/day free) | Only added when the client has a budget. Free-quota answers report `charged: false` and do not touch the budget. |
 
 ```python

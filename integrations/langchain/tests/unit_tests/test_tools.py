@@ -22,6 +22,8 @@ SAMPLE = json.loads((FX / "sample-check.json").read_text())
 @pytest.fixture
 def api():
     with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as m:
+        # botsrated sends only the host name (0.2+; older versions sent the URL)
+        m.get("/v1/preflight", params={"url": FOUND["host"]}).respond(200, json=FOUND)
         m.get("/v1/preflight", params={"url": FOUND["latest_probe"]["url"]}).respond(200, json=FOUND)
         m.get("/v1/preflight").respond(404, json=NOT_COVERED)
         m.get("/v1/check").respond(402, headers={"payment-required": B64}, json={})
@@ -34,10 +36,11 @@ def test_preflight_allow(api):
     assert out["last_probe"]["receipt_url"].startswith("https://botsrated.com/receipt/")
 
 
-def test_preflight_block_unseen_payto(api):
+def test_preflight_unseen_payto_is_reported(api):
     out = json.loads(BotsRatedPreflightTool().invoke({"url": FOUND["latest_probe"]["url"], "pay_to": "0x000000000000000000000000000000000000dEaD"}))
-    assert out["decision"]["action"] == "block"
-    assert out["decision"]["reasons"][0]["code"] == "payto_mismatch"
+    r = out["decision"]["reasons"][0]
+    # botsrated 0.2+: advice only by default (warn, payto_not_observed); 0.1.x blocked it as payto_mismatch.
+    assert (out["decision"]["action"], r["code"], r["effect"]) in {("allow", "payto_not_observed", "warn"), ("block", "payto_mismatch", "block")}
 
 
 def test_preflight_not_covered(api):

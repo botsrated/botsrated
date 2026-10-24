@@ -1,39 +1,38 @@
 name: Publish npm package (trusted publishing)
 
-# Manual only (workflow_dispatch); nothing runs on push, tag or schedule. Dry run is the default.
-# Publishes one package from integrations/ to npm with OIDC trusted publishing and --provenance: no npm token is
-# stored in this repo or its secrets.
+# Manual only: workflow_dispatch from refs/heads/main. Any other event or ref fails in the first job. Nothing runs on
+# push, tag or schedule. Dry run is the default. Publishes one package from integrations/ to npm with OIDC trusted
+# publishing and --provenance: no npm token is stored in this repo or its secrets.
 #
-# What gets published: the code at a SIGNED release tag (input "tag", e.g. x402-preflight-v0.2.0), never main HEAD.
-# The workflow itself runs from main; the tag is verified against signer keys taken from main
-# (.github/release-signers/: allowed_signers for SSH-signed tags and/or *.asc for GPG-signed tags) and must point
-# at a commit on main.
+# Release gate (no signed tags needed; works from the GitHub iPhone app):
+#   1. Someone with write access dispatches this workflow on main with the package and its version.
+#   2. gate checks: event and ref, the version input equals package.json's version at the run's commit, the tag
+#      <name>-v<version> doesn't exist yet and the version isn't on npm yet. Every later job checks out exactly that
+#      commit (github.sha, the main commit the run started on), never a branch name.
+#   3. publish waits in the "npm-publish" environment until Anton approves it (required reviewer; approving needs
+#      his GitHub sign-in with 2FA).
+#   4. After a successful (non-dry-run) publish, the tag job creates the annotated tag <name>-v<version> on that
+#      commit with the GITHUB_TOKEN. It fails if the tag already exists. Only that job has contents: write.
+# The optional signed-tag check (integrations/release-tools/verify-tag.sh and test-verify-tag.sh) stays in the repo
+# and isn't used here.
 #
 # Jobs (least privilege):
-#   verify  - checks the tag (no credentials).
-#   test    - npm ci (with install scripts), typecheck and tests at the tag, then packs a reference .tgz. Nothing
-#             it builds is published.
+#   gate    - the checks above (contents: read; GITHUB_TOKEN used read-only to look the tag up).
+#   test    - npm ci (with install scripts), typecheck and tests, then packs a reference .tgz. Nothing it builds is
+#             published.
 #   pack    - the tarball that is published: a fresh checkout, npm ci --ignore-scripts (no dependency install
 #             script runs), dist/ built by calling the pinned TypeScript compiler directly, npm pack --ignore-scripts.
 #   compare - the pack .tgz must be byte-identical (sha256) to the test job's reference .tgz, so a dependency that
 #             changed the build output in either job stops the release.
 #   publish - in the reviewer-gated "npm-publish" environment with id-token: write; downloads the pack .tgz and runs
 #             npm publish on it. No checkout, no npm ci, no project scripts.
-# No job above publish has id-token or an environment. Every job installs the npm CLI only from a tarball whose
-# sha512 matches NPM_CLI_INTEGRITY below (same value as the registry's dist.integrity for that version).
+#   tag     - after a real publish only: creates the release tag (contents: write, no checkout, no id-token).
+# Only publish has id-token. Every npm job installs the npm CLI only from a tarball whose sha512 matches
+# NPM_CLI_INTEGRITY below (same value as the registry's dist.integrity for that version).
 #
-# Before the first real run (repo owner):
-# 1. GitHub -> Settings -> Environments -> "npm-publish": add Anton as a required reviewer, allow only the main branch.
-# 2. npmjs.com -> package settings -> Trusted publishing -> GitHub Actions, for each package:
-#      organization/user: botsrated   repository: botsrated   workflow filename: publish-npm.yml   environment: npm-publish
-#    and allow "npm publish" (configs created after 2026-09-03 default to "npm stage publish" only). A new
-#    trusted-publisher config must complete its first successful publish within 2 days.
-# 3. Then set the package's publishing access to "Require two-factor authentication and disallow tokens".
-# 4. Commit the release signer public key(s) to .github/release-signers/ on main, add their fingerprints to
-#    integrations/release-tools/signers.txt (on main; empty = every release fails closed), and sign release tags
-#    (git tag -s <package>-v<version>).
+# Before the first real run (repo owner): see docs/drafts/README.md ("What Anton sets up").
 # Publish order: x402-client first, then vercel-ai-sdk (it depends on @botsrated/x402-preflight from npm).
-# Provenance note: npm provenance names the workflow run (main); the job summary records the tag and its commit.
+# Provenance note: npm provenance names this workflow run on main and its commit (the same commit the tag gets).
 
 on:
   workflow_dispatch:
@@ -43,8 +42,8 @@ on:
         required: true
         type: choice
         options: [x402-client, vercel-ai-sdk]
-      tag:
-        description: "Signed release tag to build, e.g. x402-preflight-v0.2.0"
+      version:
+        description: "Version to release; must equal package.json's version on main, e.g. 0.2.0"
         required: true
         type: string
       dry_run:
@@ -65,39 +64,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Verify signed tag ${{ inputs.tag }}
-    if: github.ref == 'refs/heads/main'
+  gate:
+    name: Release gate (main, version ${{ inputs.version }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       sha: ${{ steps.check.outputs.sha }}
+      tag: ${{ steps.check.outputs.tag }}
     steps:
+      - name: Only workflow_dispatch from refs/heads/main
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT" != "workflow_dispatch" ] || [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::releases run only by workflow_dispatch from refs/heads/main (got $EVENT on $REF)"; exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
-          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - id: check
         env:
-          TAG: ${{ inputs.tag }}
           PKG: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}   # read-only here (contents: read): looks the tag up
         run: |
-          git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG" "refs/heads/main:refs/remotes/origin/main"
-          # Expected tag name from the package manifest AT THE TAG: <name without @botsrated/>-v<version>
-          name=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).name.replace(/^@botsrated\//, '')")
-          ver=$(git show "refs/tags/$TAG:integrations/$PKG/package.json" | node -p "JSON.parse(require('fs').readFileSync(0)).version")
-          # verify-tag.sh, its self-test, signers.txt and the signer keys come from main (this checkout), never from the tag.
-          bash integrations/release-tools/test-verify-tag.sh   # throwaway keys; proves the runner's gpg rejects unpinned keys
-          bash integrations/release-tools/verify-tag.sh "$TAG" "$name-v$ver" .github/release-signers integrations/release-tools/signers.txt
-          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "Building $TAG at $sha" >> "$GITHUB_STEP_SUMMARY"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then echo "::error::'$VERSION' is not a version like 1.2.3"; exit 1; fi
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "::error::checkout is not the run's commit $SHA"; exit 1; }
+          cd "integrations/$PKG"
+          name=$(node -p "require('./package.json').name"); ver=$(node -p "require('./package.json').version")
+          if [ "$ver" != "$VERSION" ]; then echo "::error::version input $VERSION does not match package.json ($ver) at $SHA"; exit 1; fi
+          tag="${name#@botsrated/}-v$ver"
+          if gh api "repos/$REPO/git/matching-refs/tags/$tag" --jq '.[].ref' | grep -qxF "refs/tags/$tag"; then
+            echo "::error::tag $tag already exists; bump the version first"; exit 1
+          fi
+          if npm view "$name@$ver" version >/dev/null 2>&1; then echo "::error::$name@$ver is already published; bump the version first"; exit 1; fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $name@$ver from main at $SHA; tag after publish: $tag" >> "$GITHUB_STEP_SUMMARY"
 
   test:
-    name: Test ${{ inputs.package }} at ${{ inputs.tag }}
-    needs: verify
+    name: Test ${{ inputs.package }} ${{ inputs.version }}
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: read   # no id-token here
@@ -107,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.verify.outputs.sha }}
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -134,8 +145,8 @@ jobs:
           if-no-files-found: error
 
   pack:
-    name: Pack ${{ inputs.package }} at ${{ inputs.tag }} (no install scripts)
-    needs: verify
+    name: Pack ${{ inputs.package }} ${{ inputs.version }} (no install scripts)
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: read   # no id-token here
@@ -145,7 +156,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.verify.outputs.sha }}
+          ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -195,14 +206,14 @@ jobs:
           name: npm-tarball-reference
           path: ref/
       - run: |
-          a=$(cd pack && sha256sum *.tgz); b=$(cd ref && sha256sum *.tgz)
+          a=$(cd pack && sha256sum -- *.tgz); b=$(cd ref && sha256sum -- *.tgz)
           echo "pack: $a"; echo "test: $b"
           if [ "$a" != "$b" ]; then echo "::error::the published tarball differs from the tested build"; exit 1; fi
 
   publish:
     name: Publish ${{ inputs.package }}${{ inputs.dry_run && ' (dry run)' || '' }}
-    needs: [verify, test, pack, compare]
-    if: github.ref == 'refs/heads/main'
+    needs: [gate, test, pack, compare]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: npm-publish   # required reviewer configured on the environment
     permissions:
@@ -231,3 +242,28 @@ jobs:
       - name: npm publish
         if: ${{ !inputs.dry_run }}
         run: npm publish ./pack/*.tgz --provenance --access public --ignore-scripts
+
+  tag:
+    name: Create release tag ${{ needs.gate.outputs.tag }}
+    needs: [gate, publish]
+    if: ${{ !inputs.dry_run && needs.publish.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only this job: creates the tag object and ref through the API (no checkout)
+    steps:
+      - name: Create annotated tag on the published commit (fails if it exists)
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/$REPO/git/matching-refs/tags/$TAG" --jq '.[].ref' | grep -qxF "refs/tags/$TAG"; then
+            echo "::error::tag $TAG already exists"; exit 1
+          fi
+          obj=$(gh api "repos/$REPO/git/tags" -f tag="$TAG" -f object="$SHA" -f type=commit \
+                -f message="$TAG: published to npm by $RUN_URL" --jq .sha)
+          # Creating a ref that already exists returns 422, so a race cannot move an existing tag.
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$obj" --jq .ref
+          echo "Tagged $TAG -> $SHA" >> "$GITHUB_STEP_SUMMARY"

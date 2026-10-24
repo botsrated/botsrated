@@ -1,6 +1,6 @@
-# Pinned release signer fingerprints for verify-tag.sh. The release workflows read this file from main.
-# Empty on purpose: every release fails closed until the repo owner adds a fingerprint here AND the matching
-# public key in .github/release-signers/ (both on main, in a reviewed commit).
+# Pinned release signer fingerprints for the optional verify-tag.sh check (the release workflows don't use it).
+# Empty on purpose: verify-tag.sh fails closed until a fingerprint is added here AND the matching public key in
+# .github/release-signers/ (both on main, in a reviewed commit).
 #
 # One fingerprint per line; '#' starts a comment.
 #   GPG: the full 40-hex fingerprint of the primary key (or of a signing subkey), spaces allowed:

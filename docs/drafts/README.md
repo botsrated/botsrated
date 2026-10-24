@@ -2,48 +2,64 @@
 
 `publish-npm.yml` and `publish-pypi.yml` belong in `.github/workflows/`. They are kept here because the token
 that prepared them has no `workflow` scope. To enable them, a maintainer copies them into `.github/workflows/`
-(e.g. through the GitHub web UI) and first completes the setup steps in each file's header:
+(e.g. through the GitHub web UI) after the setup below.
 
-- GitHub environments `npm-publish` and `pypi-publish`, each with Anton as required reviewer and main-only.
-- npm trusted publisher (workflow `publish-npm.yml`, environment `npm-publish`) for each npm package.
-- PyPI trusted publisher (workflow `publish-pypi.yml`, environment `pypi-publish`) for each PyPI project.
+## The release gate (phone-friendly, no signed tags)
 
-Both are manual (`workflow_dispatch`), run only from main, and default to a dry run.
+Anton releases from the GitHub iPhone app, so the gate doesn't need GPG or SSH signing:
 
-Changes after the security re-review of Oct 24, 2026:
+1. **Manual run on main only.** The workflows run only by `workflow_dispatch`. The first job (`gate`) fails unless
+   the event is `workflow_dispatch` and the ref is `refs/heads/main`. Dry run is on by default.
+2. **Version input must match.** The `version` input must equal `package.json` / `pyproject.toml` at the run's
+   commit. The gate also fails if the release tag `<package>-v<version>` already exists or the version is already
+   on npm / PyPI.
+3. **Exact commit.** Every job checks out `github.sha`, the main commit the run started on, never a branch name.
+   A push to main after the run starts doesn't change what's built.
+4. **Anton approves.** The `publish` job uses the `npm-publish` / `pypi-publish` environment, with Anton as the
+   required reviewer. He approves from the GitHub app, which needs his GitHub sign-in and 2FA. The publish job is
+   the only one with `id-token: write`.
+5. **CI tags the release.** After a successful real publish, a final `tag` job creates the annotated tag
+   `<package>-v<version>` on that commit with the `GITHUB_TOKEN`. It's the only job with `contents: write`. It
+   doesn't check anything out, and it fails if the tag already exists.
 
-- **Signed tag, not main HEAD.** Each run takes a `tag` input (`<package>-v<version>`, e.g. `x402-preflight-v0.2.0`
-  or `botsrated-v0.2.0`). A `verify` job checks, with `integrations/release-tools/verify-tag.sh` from main, that
-  it is an annotated tag named after the package version, that its signature verifies against the keys in
-  `.github/release-signers/` on main (`allowed_signers` for SSH-signed tags, `*.asc` for GPG-signed tags), and
-  that it points at a commit on main. Everything is then built from that commit. Before the first run, commit the
-  release signer key(s) to `.github/release-signers/` and sign tags with `git tag -s`.
-- **npm: test, pack, compare, then publish.** A `test` job runs `npm ci`, typecheck, tests and `npm pack`. A
-  separate `pack` job builds the release tarball with `npm ci --ignore-scripts`, the TypeScript compiler and
-  `npm pack --ignore-scripts`, and a `compare` job requires both tarballs to match byte for byte. None of these
-  jobs has `id-token` or an environment. The `publish` job (environment `npm-publish`, `id-token: write`) only downloads the
-  `.tgz` and runs `npm publish <tgz> --provenance --ignore-scripts`. npm provenance names the main workflow run;
-  the job summary records the tag, its commit and the tarball's sha256.
-- **PyPI: pinned build tools.** The wheel and sdist are built only with hash-pinned tools
-  (`integrations/release-tools/requirements-release.txt`, `pip --require-hashes`: build 1.6.1, twine 7.0.0,
-  hatchling 1.32.4) and `python -m build --no-isolation`, in a job that installs no test dependencies. Each
-  package's `[build-system]` pins `hatchling==1.32.4`, and the job fails if the two differ. Tests run in a separate
-  job with pinned test dependencies (`integrations/release-tools/constraints-test.txt`, including `x402==2.25.0`).
+Kept from the security reviews:
+- npm: separate `test`, `pack` and `compare` jobs. The published tarball is built with `npm ci --ignore-scripts`
+  and must match the tested build byte for byte. The npm CLI is installed only from a checksum-verified tarball.
+- PyPI: hash-pinned build tools and `--no-isolation`; pinned test dependencies.
+- `persist-credentials: false` on every checkout; inputs reach scripts only through `env`.
 
-Changes after Security's recheck 2 (Oct 24, 2026):
+The signed-tag check is still available but optional: `integrations/release-tools/verify-tag.sh` (pinned keys
+and a fingerprint allowlist in `signers.txt`) and its self-test `test-verify-tag.sh`. The workflows don't call it.
 
-- **R2-M1: GPG verification is pinned.** `verify-tag.sh` runs GPG with a fresh, empty `GNUPGHOME`, imports only
-  the keys in `.github/release-signers/`, and then requires the fingerprint of the key that made the signature
-  (from `git verify-tag --raw`: GPG `VALIDSIG`, signing subkey or primary key; SSH `SHA256:` fingerprint) to be
-  listed in `integrations/release-tools/signers.txt` on main. A valid signature from any other key is rejected,
-  including one whose key is already on the runner or sits in the signers folder without being pinned.
-  `signers.txt` is committed empty, so releases fail closed until the owner adds a fingerprint there and the
-  public key to `.github/release-signers/`. `integrations/release-tools/test-verify-tag.sh` is the self-test
-  (throwaway keys and repo; the SSH cases run where `ssh-keygen` exists); the verify job runs it first.
-- **R2-M2: the published tarball is built without install scripts.** A `pack` job builds from a fresh checkout
-  with `npm ci --ignore-scripts`, compiles `dist/` by calling the lockfile's TypeScript compiler directly and runs
-  `npm pack --ignore-scripts`. The `test` job (normal `npm ci`, typecheck, tests) packs a reference tarball, and a
-  `compare` job requires the two to be byte-identical (sha256) before `publish` can run.
-- **R2-L5: npm CLI integrity.** Every npm job installs npm 12.2.1 only from the registry tarball after checking its
-  sha512 against `NPM_CLI_INTEGRITY` (the registry's `dist.integrity`), with `--ignore-scripts`. Bumping npm means
-  updating both `NPM_CLI_VERSION` and `NPM_CLI_INTEGRITY`.
+## What Anton sets up (once)
+
+- **Environments** `npm-publish` and `pypi-publish` (Settings → Environments): Anton as the required reviewer,
+  and deployment branches limited to `main`. Turn on **Prevent self-review** only if releases are started by
+  another account (for example a bot or a co-maintainer). If Anton starts the run himself, that setting would stop
+  him from approving it.
+- **Branch protection on `main`** (Settings → Rules or Branches): require a pull request before merging, block
+  force pushes and deletions, and require the CI checks to pass. If someone else gets write access, also require
+  an approving review.
+- **Tag protection** (optional): a ruleset for `*-v*` tags that blocks updates and deletions, so a release tag
+  can't be moved after CI creates it.
+- **npm trusted publisher** for each package: repository `botsrated/botsrated`, workflow `publish-npm.yml`,
+  environment `npm-publish`, and allow `npm publish`. Then set publishing access to "Require two-factor
+  authentication and disallow tokens".
+- **PyPI trusted publisher** for each project: owner `botsrated`, repository `botsrated`, workflow
+  `publish-pypi.yml`, environment `pypi-publish`. Then remove the project's API tokens.
+
+## Residual risks
+
+- **Write access to main is the real trust boundary.** Anyone who can push to main, or merge to it, can change
+  the code or the workflow before Anton approves. The approval screen shows the run and its commit, not a diff.
+  Mitigation: branch protection that requires a pull request (and a review when there's more than one
+  maintainer), and checking that the run's commit is the merge he expects before approving.
+- **Approval is one tap.** It's protected by Anton's GitHub account and 2FA, so it's only as strong as that
+  account. Keep 2FA on his own device and don't share the account.
+- **No independent signature.** Without signed tags nothing outside GitHub vouches for the commit. npm
+  provenance and PyPI attestations record which workflow run and commit produced the package, and the CI tag
+  points at that same commit.
+- **The `GITHUB_TOKEN` can write tags** in the final job. It runs only after a successful publish and uses fixed
+  inputs from the gate. A tag ruleset (above) stops it, or anything else, from moving an existing tag.
+- **Prevent self-review** can't be used if Anton both starts and approves the run (see setup).
+- **Third-party actions** are pinned by commit SHA, but they still run code. Update the pins deliberately.

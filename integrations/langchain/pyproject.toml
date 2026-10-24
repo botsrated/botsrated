@@ -1,11 +1,11 @@
 [project]
 name = "langchain-botsrated"
-version = "0.1.2"
+version = "0.1.3"
 description = "LangChain tools for BotsRated: free pre-payment preflight of x402 sellers, opt-in budgeted paid checks."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["langchain-core>=0.3", "botsrated>=0.1.5,<0.2"]
+dependencies = ["langchain-core>=0.3", "botsrated>=0.1.5,<0.3"]
 
 [project.urls]
 Homepage = "https://botsrated.com"
