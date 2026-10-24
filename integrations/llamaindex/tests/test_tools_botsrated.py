@@ -40,8 +40,8 @@ def test_preflight_decisions(api):
     url = FOUND["latest_probe"]["url"]
     assert spec.preflight(url, pay_to=FOUND["latest_probe"]["live_payTo"])["decision"]["action"] == "allow"
     d = spec.preflight(url, pay_to="0x000000000000000000000000000000000000dEaD")["decision"]
-    # botsrated 0.2+: advice only by default (warn, payto_not_observed); 0.1.x blocked it as payto_mismatch.
-    assert (d["action"], d["reasons"][0]["code"]) in {("allow", "payto_not_observed"), ("block", "payto_mismatch")}
+    # Still blocked on every botsrated version (0.2 made it advice-only by default); the code was renamed in 0.2.
+    assert d["action"] == "block" and d["reasons"][0]["code"] in {"payto_not_observed", "payto_mismatch"}
     assert spec.preflight("x.example")["covered"] is False
 
 

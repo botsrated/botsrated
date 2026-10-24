@@ -16,7 +16,7 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.5+ (below 0.3; from agent-framework-botsrated 0.1.3).
+Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.6+ (below 0.3; from agent-framework-botsrated 0.1.3).
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 
@@ -52,15 +52,16 @@ Default policy (from `botsrated.GuardPolicy`, configurable through `guard=PrePay
 
 | Situation | Result |
 |---|---|
-| `payTo` never observed by BotsRated for that host (same network) | botsrated 0.2+: allowed with a warning (`payto_not_observed`); set `PrePaymentGuard(policy=GuardPolicy(pay_to_mismatch="block"))` to block. botsrated 0.1.x: **blocked** (`payto_mismatch`) |
+| `payTo` never observed by BotsRated for that host (same network) | **blocked** (`payto_not_observed`; `payto_mismatch` with botsrated 0.1.x). The default guard passes `GuardPolicy(pay_to_mismatch="block")`, so this holds with botsrated 0.2, whose own default is advice-only |
 | Quote can't be read from the arguments | **blocked** (`quote_unreadable`) |
 | Price above the last observed price on the same route | allowed with a warning |
 | Host not covered, or data older than 24 h | allowed (info) |
 | BotsRated unreachable | allowed (`fail_open=True`); set `PrePaymentGuard(fail_open=False)` to block |
 
 The middleware checks what the payment tool was asked to pay. If your tool fetches the 402 itself and signs it, also
-register `botsrated.PrePaymentGuard().x402_hook` on your `x402Client`'s `on_before_payment_creation` so the check
-runs on the exact quote being signed, and make the request through `guard.wrap_get(...)` (or inside
+register `botsrated.PrePaymentGuard(policy=botsrated.GuardPolicy(pay_to_mismatch="block")).x402_hook` on your
+`x402Client`'s `on_before_payment_creation` so the check runs on the exact quote being signed (without that policy,
+botsrated 0.2's guard only warns about an unobserved payTo), and make the request through `guard.wrap_get(...)` (or inside
 `with botsrated.paying_request(url):`) so the guard checks the host actually being paid rather than the
 seller-supplied 402 `resource.url` (botsrated 0.1.5+).
 

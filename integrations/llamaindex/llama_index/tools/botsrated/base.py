@@ -6,7 +6,17 @@ from typing import Any
 
 from llama_index.core.tools.tool_spec.base import BaseToolSpec
 
-from botsrated import BotsRatedClient, BotsRatedError, evaluate_payment, facts_from
+from botsrated import (
+    BotsRatedClient,
+    BotsRatedError,
+    GuardPolicy,
+    evaluate_payment,
+    facts_from,
+)
+
+# Keeps this package's documented default on every botsrated version: a payTo BotsRated's probes never recorded
+# for the host blocks the payment (botsrated 0.2 made that advice-only by default).
+PAYMENT_POLICY = GuardPolicy(pay_to_mismatch="block")
 
 
 class BotsRatedToolSpec(BaseToolSpec):
@@ -54,7 +64,7 @@ class BotsRatedToolSpec(BaseToolSpec):
         }
         if pay_to:
             req = {"payTo": pay_to, "network": network or probe.get("live_network"), "amount": amount or "0"}
-            d = evaluate_payment(facts_from(pre.body, pre.host, "preflight"), req, url if "://" in url else None)
+            d = evaluate_payment(facts_from(pre.body, pre.host, "preflight"), req, url if "://" in url else None, PAYMENT_POLICY)
             out["decision"] = {"action": d.action, "reasons": [r.__dict__ for r in d.reasons]}
         return out
 

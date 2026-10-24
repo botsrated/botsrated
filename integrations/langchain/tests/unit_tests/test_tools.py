@@ -36,11 +36,13 @@ def test_preflight_allow(api):
     assert out["last_probe"]["receipt_url"].startswith("https://botsrated.com/receipt/")
 
 
-def test_preflight_unseen_payto_is_reported(api):
+def test_preflight_block_unseen_payto(api):
+    """The tool keeps blocking an unobserved payTo on every botsrated version (0.2 made it advice-only by default)."""
     out = json.loads(BotsRatedPreflightTool().invoke({"url": FOUND["latest_probe"]["url"], "pay_to": "0x000000000000000000000000000000000000dEaD"}))
+    assert out["decision"]["action"] == "block"
     r = out["decision"]["reasons"][0]
-    # botsrated 0.2+: advice only by default (warn, payto_not_observed); 0.1.x blocked it as payto_mismatch.
-    assert (out["decision"]["action"], r["code"], r["effect"]) in {("allow", "payto_not_observed", "warn"), ("block", "payto_mismatch", "block")}
+    # Reason code: payto_not_observed since botsrated 0.2, payto_mismatch in 0.1.x.
+    assert r["code"] in {"payto_not_observed", "payto_mismatch"} and r["effect"] == "block"
 
 
 def test_preflight_not_covered(api):

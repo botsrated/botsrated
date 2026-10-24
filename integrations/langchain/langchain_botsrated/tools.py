@@ -5,9 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from botsrated import BotsRatedClient, BotsRatedError, evaluate_payment, facts_from
+from botsrated import (
+    BotsRatedClient,
+    BotsRatedError,
+    GuardPolicy,
+    evaluate_payment,
+    facts_from,
+)
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict, Field
+
+# Keeps this package's documented default on every botsrated version: a payTo BotsRated's probes never recorded
+# for the host blocks the payment (botsrated 0.2 made that advice-only by default).
+PAYMENT_POLICY = GuardPolicy(pay_to_mismatch="block")
 
 
 class PreflightInput(BaseModel):
@@ -59,7 +69,7 @@ class BotsRatedPreflightTool(BaseTool):
         out = _summary(pre.body)
         if pay_to:
             req = {"payTo": pay_to, "network": network or (pre.body.get("latest_probe") or {}).get("live_network"), "amount": amount or "0"}
-            d = evaluate_payment(facts_from(pre.body, pre.host, "preflight"), req, url if "://" in url else None)
+            d = evaluate_payment(facts_from(pre.body, pre.host, "preflight"), req, url if "://" in url else None, PAYMENT_POLICY)
             out["decision"] = {"action": d.action, "reasons": [r.__dict__ for r in d.reasons]}
         return json.dumps(out)
 

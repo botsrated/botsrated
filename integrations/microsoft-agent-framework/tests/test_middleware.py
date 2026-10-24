@@ -197,3 +197,13 @@ def test_version_comes_from_package_metadata() -> None:
     import agent_framework_botsrated
 
     assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.3"
+
+
+def test_default_guard_blocks_an_unobserved_pay_to() -> None:
+    """The middleware's own default guard keeps blocking an unobserved payTo (botsrated 0.2 made it advice-only)."""
+    mw = BotsRatedPaymentMiddleware(["pay_x402"])
+    assert mw.guard.policy.pay_to_mismatch == "block"
+    facts = SellerFacts(covered=True, host="seller.example", source="preflight", known_pay_tos=[GOOD])
+    req = {"scheme": "exact", "network": "eip155:8453", "payTo": BAD, "amount": "1"}
+    d = evaluate_payment(facts, req, SELLER, mw.guard.policy)
+    assert d.action == "block" and d.reasons[0].code == PAYTO_CODE
