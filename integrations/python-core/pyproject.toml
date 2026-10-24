@@ -1,22 +1,26 @@
 [project]
 name = "botsrated"
-version = "0.1.6"
-description = "Pre-payment check for x402 agents: free BotsRated preflight before paying a seller; paid lookups opt-in with a budget."
+version = "0.2.0"
+description = "Payment guard for x402 agents: checks facts BotsRated measured about a seller before paying (advice-only by default), adds a payment-identifier retry key where supported, and checks on chain, read-only, whether a payment settled once. Not affiliated with Coinbase or the x402 Foundation."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["httpx>=0.27"]
-keywords = ["x402", "botsrated", "agents", "payments", "preflight", "base", "usdc"]
+dependencies = ["httpx>=0.27,<1"]
+keywords = ["x402", "botsrated", "payment-guard", "payment-identifier", "agents", "payments", "preflight", "base", "usdc"]
 
 [project.optional-dependencies]
-x402 = ["x402[httpx,evm]>=2.25"]
+x402 = ["x402[httpx,evm]>=2.25,<3"]
 
 [project.urls]
 Homepage = "https://botsrated.com"
 Repository = "https://github.com/botsrated/botsrated"
+Issues = "https://github.com/botsrated/botsrated/issues"
+Security = "https://github.com/botsrated/botsrated/blob/main/SECURITY.md"
+Terms = "https://botsrated.com/terms"
+Privacy = "https://botsrated.com/privacy"
 
 [dependency-groups]
-dev = ["pytest>=8", "respx>=0.21"]
+dev = ["pytest>=8", "respx>=0.21", "pytest-asyncio>=0.23"]
 
 [build-system]
 requires = ["hatchling"]

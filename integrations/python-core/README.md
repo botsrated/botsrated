@@ -1,32 +1,193 @@
 # botsrated (Python)
 
-A pre-payment check for x402 agents. Before your agent pays a seller, it asks
-[BotsRated](https://botsrated.com) what it has measured about that seller, using the free
-`GET /v1/preflight` route. Paid lookups are opt-in and capped by a budget you set.
+The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment check.
 
-BotsRated is in beta. It covers about 4,800 x402 seller hosts on Base, taken from the CDP Bazaar,
-Agentic.Market, 402index and x402-list. Each host gets an unpaid probe about every 1.8 h, and every
-receipt is signed.
+- **Before your agent signs**, it looks up facts [BotsRated](https://botsrated.com) measured about the seller's host
+  and compares them with the payment request on your machine.
+- **While the payment is built**, it adds an x402 `payment-identifier` retry key, only when the seller advertises
+  that extension.
+- **After**, it keeps a local record (never the signature) and can read the blockchain, read-only, to see whether
+  the payment settled once.
 
-**Status: published on PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.1.6.**
+It reduces the chance of paying the wrong address or paying twice. It does not prevent either, and it guarantees
+nothing.
+
+**Status: 0.2.0 is not released yet. The latest version on PyPI is
+[`botsrated` 0.1.6](https://pypi.org/project/botsrated/), which does not include the payment guard.**
+
+**What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't guarantee that a payment is safe, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT licence, "as is", without warranty.
+
+**Hosted checks.** By default this package calls BotsRated's free API (`https://botsrated.com/v1/preflight`). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT licence. You can turn hosted checks off with `hosted=False` (only local retry-key and on-chain checks then run).
+
+## Install
 
 ```bash
-pip install botsrated            # free preflight + guard
-pip install "botsrated[x402]"    # + x402 SDK hook / paid lookups
+pip install "botsrated[x402]"
 ```
 
-## Guard an x402 client (free)
+Runtime dependencies: `httpx>=0.27,<1` (and, with the `x402` extra, `x402[httpx,evm]>=2.25,<3`). The guard only
+uses the hook and extension points of the x402 client you pass in.
+
+## Payment guard: start with dry-run
+
+```python
+import httpx
+from x402 import x402Client
+from x402.http.clients.httpx import x402AsyncTransport
+from x402.mechanisms.evm import EthAccountSigner
+from x402.mechanisms.evm.exact import ExactEvmScheme
+from botsrated import PaymentGuard
+
+client = x402Client()
+client.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(account)))
+
+# Recommended first setting: log what the guard sees, change nothing.
+guard = PaymentGuard(dry_run=True, on_decision=lambda d: print(d.message))
+guard.install(client)  # before/after/response hooks (+ the retry-key extension when not in dry-run)
+
+http = httpx.AsyncClient(transport=x402AsyncTransport(client, httpx.AsyncHTTPTransport()))
+paid_get = guard.wrap_async_get(http.get)  # tells the guard which URL is being paid
+await paid_get("https://seller.example/api")
+```
+
+`x402ClientSync` works too (`guard.install(sync_client)`, then `guard.wrap_get(session.get)` or
+`with guard.request(url): ...`).
+
+When the log looks right, drop `dry_run`. The zero-config setting (`PaymentGuard()`) is advice only: it reports
+facts and never stops a payment. To stop payments, choose a policy yourself:
+
+```python
+from botsrated import POLICIES, PaymentGuard
+
+guard = PaymentGuard(policy=POLICIES["strict"])  # your choice
+```
+
+A stopped payment raises the x402 abort error with text like:
+
+> Payment stopped by your payment policy (rule: payToMismatch). Fact: the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for seller.example on eip155:8453. Receipt: https://botsrated.com/receipt/…. This is a measurement, not a finding about the seller. Dispute: https://botsrated.com/disputes
+
+### Rules and defaults
+
+| Rule (`PaymentGuardPolicy(...)`) | Reason code | `POLICIES["warn"]` (default) | `POLICIES["strict"]` |
+|---|---|---|---|
+| `pay_to_mismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
+| `pay_to_invalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
+| `resource_host_mismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
+| `price_above_observed`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
+| `not_covered`: BotsRated has no probe record for the host | `not_covered` | info | info |
+| `stale`: BotsRated's latest probe is older than 24 h | `data_stale` | info | info |
+| BotsRated unreachable (1.5 s timeout) | `botsrated_unreachable` | info (`fail_open=True`) | info unless `fail_open=False` |
+| After payment: the seller did not report a settled payment | `payment_state_unknown` | warn | warn |
+
+Each rule takes `"allow"`, `"warn"` or `"block"`, e.g.
+`dataclasses.replace(POLICIES["warn"], pay_to_mismatch="block")`. Every decision carries `reasons` (code, effect,
+rule, fact), `facts`, `policy_rule`, `dispute_url` and a `message`. Reason texts state facts only; seller text is
+never echoed except a parsed host name.
+
+### Options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `policy` | `POLICIES["warn"]` | Which facts warn and which stop a payment |
+| `dry_run` | `False` | Log decisions, stop nothing, add no retry key. Recommended first setting |
+| `hosted` | `True` | `False`: nothing is sent to botsrated.com |
+| `fail_open` | `True` | `False`: stop the payment when BotsRated can't be reached or the guard errors |
+| `retry_key` | `True` | Add a `payment-identifier` id where the seller advertises it |
+| `onchain` | default RPCs | RPC settings for `payment_state`, or `False` |
+| `timeout` / `cache_ttl` | 1.5 s / 5 min | Hosted lookup timeout and per-host cache |
+| `preflight` | hosted call | Your own lookup `(host) -> (found, body)` |
+| `on_decision` | none | Receives every decision (errors in it are ignored) |
+
+### Fail-open or fail-closed
+
+- **Fail-open (default):** if botsrated.com is down or slow, or the guard itself hits an error, the payment goes
+  ahead and the decision says `botsrated_unreachable` (or `hook_error`). Our outage never stops your agent, but
+  during an outage you get no seller facts.
+- **Fail-closed (`fail_open=False`):** the same cases stop the payment. Use it only if an unchecked payment is worse
+  for you than a missed call.
+- Local checks (`resource_host_mismatch`, `payto_invalid`) and the on-chain check never depend on botsrated.com.
+
+### What the guard sends, and to whom
+
+- **botsrated.com:** `GET /v1/preflight?url=<host name>` with `User-Agent: botsrated-python/<version>`.
+  Never the path, query, wallet, amount, nonce, tx hash, payment header or request body. No install id. Covered by
+  the [Terms](https://botsrated.com/terms) and [Privacy Policy](https://botsrated.com/privacy). Turn it off with
+  `hosted=False`.
+- **Base RPCs (only when you call `payment_state`):** JSON-RPC reads that include the payer address and nonce; the
+  RPC operator also sees your IP. Use your own RPCs if that matters.
+- No remote configuration, feature flags or auto-update: behaviour changes only with a new package version.
+
+### Retry key (`payment-identifier`)
+
+If the seller's 402 advertises the x402 `payment-identifier` extension, the guard adds a random id
+(`pay_` + 128 random bits) through x402's extension mechanism. Nothing else in the payload changes, and the
+seller's 402 is never modified. Ids are never reused across sellers, payTo addresses or routes. Inside
+`with guard.operation(key):` a retry of the same logical operation (same payTo, host and path) reuses the id, so a
+seller that honours the extension can answer a retry from its cache (or refuse a different payload with 409)
+instead of charging again.
+
+A retry key only stops a second charge if the seller supports it. In BotsRated's own probes on Oct 24, 2026,
+81 of 3,739 seller hosts (2.2%) advertised `payment-identifier` in their 402, and 6 of them required it.
+Elsewhere the guard adds nothing.
+
+### Did it settle once? (read-only)
+
+```python
+rec = guard.records()[-1]              # pay_to, amount, nonce, valid_before, host; never the signature
+state = guard.payment_state(rec)       # or: await guard.apayment_state(rec). Reads the chain; never pays, signs or retries
+```
+
+There are three answers only:
+
+- `settled`: two RPCs on different hosts both show the EIP-3009 authorization used at Base's `safe` block tag,
+  the chain id is 8453, and the transaction receipt has `AuthorizationUsed(from, nonce)` and
+  `Transfer(from, payTo, amount)` emitted by the pinned USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
+- `unknown` (`payment_state_unknown`) with `wait_until`: not settled yet, the RPCs disagree or failed, or the
+  record can't be checked. **Do not sign a new payment for that purchase before `wait_until`** (the signed
+  authorization stays valid until its `validBefore`, plus a margin of at least 30 s).
+- `expired_unsettled`: `validBefore` plus the margin has passed and both RPCs show it unused at the `finalized`
+  tag. Only then is a fresh payment free of a double-charge risk from the first one.
+
+The guard never retries on `unknown`. botsrated.com is never asked; a tx hash the seller reports is only a hint
+that is verified on chain.
+
+**Default RPCs** (two operators; please confirm or replace):
+
+| RPC | Operator |
+|---|---|
+| `https://mainnet.base.org` | Coinbase (Base public endpoint; rate-limited, not for production load) |
+| `https://base-rpc.publicnode.com` | Allnodes (PublicNode) |
+
+```python
+PaymentGuard(onchain={"rpcs": ["https://your-rpc-1", "https://your-rpc-2"], "confirm_tag": "finalized"})
+```
+
+### What the guard can't do (by design)
+
+- It never signs, never sends or resends a payment, never builds a payment header and never imports a signer.
+- Every hook is wrapped so its return value is discarded. The after-payment and response hooks always return
+  `None`, so they can never ask x402 to "recover" (which would sign a fresh payment). The pre-payment hook can only
+  return an `AbortResult`. The payment-creation-failure hook is never registered.
+- These limits are enforced by tests in CI: `tests/test_c1_no_repay.py` (fuzzed hook contexts, a grep of the
+  guard's source and built wheel for signing, payment-header and retry code, an import allow-list, and a real
+  x402 httpx run where the seller fails after payment and exactly one payload is created).
+
+## The pre-payment guard (`PrePaymentGuard`)
+
+The older, simpler guard (pre-payment check only). Since 0.2.0 it also sends only the host name and is
+advice-only on payTo by default; pass `policy=STRICT_GUARD_POLICY` (or `GuardPolicy(pay_to_mismatch="block")`) to
+stop those payments as before.
 
 ```python
 from x402 import x402ClientSync
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact import ExactEvmScheme
 from x402.http.clients import x402_requests
-from botsrated import PrePaymentGuard
+from botsrated import STRICT_GUARD_POLICY, PrePaymentGuard
 
 client = x402ClientSync()
 client.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(account)))
-guard = PrePaymentGuard()
+guard = PrePaymentGuard(policy=STRICT_GUARD_POLICY)  # the policy is your choice
 client.on_before_payment_creation(guard.x402_hook)
 
 # Tell the guard which URL is actually being paid (since 0.1.5):
@@ -45,13 +206,14 @@ differs only by a leading `www.` (an apex <-> www redirect) is accepted (since 0
 `resource.url` (as before 0.1.5); set `GuardPolicy(require_request_url=True)` to block those payments instead.
 
 Defaults:
-- A payTo that differs from every payTo BotsRated's own probes saw for the host, on the same network, is **blocked**.
-  The seller's directory listing alone never confirms a payTo: with no probe observation, a listing match is
-  allowed with a `payto_listing_only` note and a listing mismatch is blocked.
+- A payTo that differs from every payTo BotsRated's own probes saw for the host, on the same network, is a
+  **warning** (`payto_not_observed`; it was a block before 0.2.0). The seller's directory listing alone never
+  confirms a payTo: with no probe observation, a listing match is noted with `payto_listing_only` and a listing
+  mismatch follows the same rule.
 - A price above the last observed price on the same route is a warning.
 - A host that is not covered is allowed.
-- Data older than 24 h is allowed.
-- If BotsRated cannot be reached (4 s timeout), the payment is allowed (`fail_open`).
+- Data older than 24 h is allowed (`data_stale`).
+- If BotsRated cannot be reached (4 s timeout), the payment is allowed (`fail_open`, `botsrated_unreachable`).
 - The minimum valid-402 rate is off.
 
 Change these with `GuardPolicy(...)`. Preflight answers are cached for 5 minutes per host.
@@ -89,9 +251,9 @@ How paid calls work:
 - Amounts must be ASCII digits only (`[0-9]+`); since 0.1.5 a quote with e.g. Arabic-Indic or full-width
   digits is refused.
 - Only a one-shot EIP-3009 payment is signed: an option whose `extra` holds anything beyond the token's
-  `name`/`version` (e.g. `assetTransferMethod: permit2`, `paymentFlow`), a `maxTimeoutSeconds` above 600, or
-  payment extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`; only the discovery-only `bazaar` key is
-  tolerated) rejects the quote with `terms_rejected` before anything is paid.
+  `name`/`version` (e.g. `assetTransferMethod: permit2`, `paymentFlow`), a missing `maxTimeoutSeconds` or one above 600
+  (since 0.2.0 a missing value is invalid), or payment extensions in the 402 (e.g. `erc20ApprovalGasSponsoring`;
+  only `bazaar` and `payment-identifier` are tolerated, and neither is signed) rejects the quote with `terms_rejected` before anything is paid.
 - With `x402_client=`, if signing fails nothing can settle and the reservation is released (`payment_not_created`).
 - When the guard is registered, it refuses any payment to botsrated.com that the client did not reserve or
   that carries payment extensions, and strips extensions before the x402 signer runs.
@@ -99,7 +261,10 @@ How paid calls work:
 ## Tests
 
 ```bash
-uv run --with pytest --with respx --with "x402[evm]" pytest
+uv run --with pytest --with respx --with pytest-asyncio --with "x402[httpx,evm]" pytest -m "not live"
 ```
 
-License: MIT. BotsRated reports measurements, not endorsements.
+Security reports: [SECURITY.md](https://github.com/botsrated/botsrated/blob/main/SECURITY.md).
+
+License: MIT. BotsRated reports measurements, not endorsements. 
+BotsRated is independent and is not affiliated with or endorsed by Coinbase, the x402 Foundation or any seller. "x402" is used only to describe compatibility.

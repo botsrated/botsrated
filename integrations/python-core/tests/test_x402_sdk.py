@@ -9,7 +9,7 @@ eth_account = pytest.importorskip("eth_account")
 from x402 import x402ClientSync
 from x402.schemas import PaymentRequired
 
-from botsrated import BASE_MAINNET, BASE_USDC, PrePaymentGuard
+from botsrated import BASE_MAINNET, BASE_USDC, STRICT_GUARD_POLICY, PrePaymentGuard
 
 
 def _client(guard):
@@ -45,10 +45,10 @@ def _pr(found, pay_to):
 def test_hook_allows_and_blocks(found):
     with respx.mock(base_url="https://botsrated.com") as m:
         m.get("/v1/preflight").respond(200, json=found)
-        client = _client(PrePaymentGuard())
+        client = _client(PrePaymentGuard(policy=STRICT_GUARD_POLICY))
         payload = client.create_payment_payload(_pr(found, found["latest_probe"]["live_payTo"]))
         assert payload.accepted.pay_to.lower() == found["latest_probe"]["live_payTo"].lower()
-        with pytest.raises(Exception, match="payto_mismatch"):
+        with pytest.raises(Exception, match=r"Payment stopped by your payment policy \(rule: payto_not_observed\)"):
             client.create_payment_payload(_pr(found, "0x000000000000000000000000000000000000dEaD"))
 
 

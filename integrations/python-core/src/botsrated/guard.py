@@ -12,12 +12,19 @@ from botsrated.client import (
     BotsRatedError,
     current_request_url,
     extensions_ok,
-    host_of,
-    is_atomic_amount,
     paying_request,
-    same_site_host,
     usd_to_atomic,
 )
+from botsrated.util import (
+    DISPUTE_URL,
+    clean_text,
+    is_address,
+    is_atomic_amount,
+    same_site_host,
+    try_host_of,
+)
+
+MEASUREMENT_NOTE = "This is a measurement, not a finding about the seller."
 
 T = TypeVar("T")
 
@@ -54,25 +61,38 @@ class Decision:
     host: str | None
     reasons: list[Reason]
     facts: SellerFacts | None = None
+    dispute_url: str = DISPUTE_URL
 
     def summary(self) -> str:
-        blocking = [r for r in self.reasons if r.effect == "block"] or self.reasons
-        listed = "; ".join(f"{r.code}: {r.detail}" for r in blocking)
-        receipt = f" (receipt: {self.facts.receipt_url})" if self.facts and self.facts.receipt_url else ""
-        verb = "blocked" if self.action == "block" else "allowed"
-        return f"BotsRated pre-payment check {verb} {self.host or 'payment'}" + (f" - {listed}" if listed else "") + receipt
+        """Fact-only text with the dispute link. Seller text is never echoed beyond a parsed host name."""
+        blocking = [r for r in self.reasons if r.effect == "block"]
+        receipt_url = self.facts.receipt_url if self.facts else None
+        receipt = f" Receipt: {clean_text(receipt_url, 200)}." if isinstance(receipt_url, str) and receipt_url.startswith(("https://botsrated.com/", "https://www.botsrated.com/")) else ""
+        if self.action == "block" and blocking:
+            r = blocking[0]
+            text = f"Payment stopped by your payment policy (rule: {r.code}). Fact: {r.detail}{receipt} {MEASUREMENT_NOTE} Dispute: {self.dispute_url}"
+        else:
+            listed = " ".join(f"{r.code}: {r.detail}" for r in self.reasons) or "no rule matched."
+            text = f"BotsRated pre-payment check for {self.host or 'this payment'}: {listed}{receipt} {MEASUREMENT_NOTE} Dispute: {self.dispute_url}"
+        return clean_text(text, 700)
 
 
 @dataclass
 class GuardPolicy:
     not_covered: Literal["allow", "block"] = "allow"
-    pay_to_mismatch: Literal["allow", "warn", "block"] = "block"
+    # payTo not among the payTos BotsRated's probes recorded (or not an address). Default "warn" since 0.2.0
+    # (was "block"); use STRICT_GUARD_POLICY or pay_to_mismatch="block" to stop those payments.
+    pay_to_mismatch: Literal["allow", "warn", "block"] = "warn"
     price_above_observed: Literal["allow", "warn", "block"] = "warn"
     stale: Literal["allow", "block"] = "allow"
     min_valid_402_rate: float | None = None
     # Block an x402 hook payment when the request URL being paid is unknown (no ``paying_request`` /
     # ``wrap_get`` / ``x402_hook_for``). Off by default: the host is then read from the 402's resource.url.
     require_request_url: bool = False
+
+
+# The pre-0.2.0 behaviour as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
+STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block")
 
 
 def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "check"]) -> SellerFacts:
@@ -104,7 +124,10 @@ def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "ch
 def _same_route(a: str | None, b: str | None) -> bool:
     if not a or not b:
         return False
-    x, y = urlsplit(a), urlsplit(b)
+    try:
+        x, y = urlsplit(a), urlsplit(b)
+    except ValueError:
+        return False
     return (x.hostname or "") == (y.hostname or "") and x.path.rstrip("/") == y.path.rstrip("/")
 
 
@@ -130,24 +153,35 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
             reasons.append(Reason(code, detail, effect))  # type: ignore[arg-type]
 
     req = as_requirements(req)
-    pay_to = str(req.get("payTo") or "")
+    raw_pay_to = req.get("payTo")
     amount = str(req.get("amount") or "")
+    host = clean_text(facts.host, 253)
+    network = clean_text(req.get("network"), 40)
     if not facts.covered:
-        add("not_covered", f"{facts.host} is not in BotsRated's probe set", "block" if p.not_covered == "block" else "info")
+        add("not_covered", f"BotsRated has no probe record for {host}.", "block" if p.not_covered == "block" else "info")
     else:
-        if facts.observed_network and facts.observed_network != req.get("network"):
-            add("network_not_measured", f"paying on {req.get('network')}; BotsRated measured {facts.observed_network}", "info")
-        elif facts.known_pay_tos and pay_to.lower() not in facts.known_pay_tos:
+        observed = clean_text(facts.observed_network, 40) if facts.observed_network else None
+        known = [x.lower() for x in facts.known_pay_tos if is_address(x)]
+        listing = facts.listing_pay_to.lower() if is_address(facts.listing_pay_to) else None
+        if not is_address(raw_pay_to):
+            add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.pay_to_mismatch)
+        elif observed and observed != network:
+            add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
+        elif known and raw_pay_to.lower() not in known:
             add(
-                "payto_mismatch",
-                f"payTo {pay_to} was never seen by BotsRated for {facts.host} (seen: {', '.join(facts.known_pay_tos)})",
+                "payto_not_observed",
+                f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed or network}.",
                 p.pay_to_mismatch,
             )
-        elif not facts.known_pay_tos and facts.listing_pay_to:
-            if pay_to.lower() == facts.listing_pay_to:
-                add("payto_listing_only", f"payTo {pay_to} matches {facts.host}'s listing but no BotsRated probe has observed it yet", "info")
+        elif not known and listing:
+            if raw_pay_to.lower() == listing:
+                add("payto_listing_only", f"the payTo matches {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.", "info")
             else:
-                add("payto_mismatch", f"payTo {pay_to} differs from {facts.host}'s listing ({facts.listing_pay_to})", p.pay_to_mismatch)
+                add(
+                    "payto_not_observed",
+                    f"the payTo in this payment request differs from the payTo in {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.",
+                    p.pay_to_mismatch,
+                )
         if (
             facts.observed_amount
             and is_atomic_amount(str(facts.observed_amount))
@@ -155,16 +189,24 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
             and _same_route(resource_url, facts.probed_url)
             and int(amount) > int(facts.observed_amount)
         ):
-            add("price_above_observed", f"quoted {amount} atomic; BotsRated last observed {facts.observed_amount} on this route", p.price_above_observed)
+            add(
+                "price_above_observed",
+                f"the quoted amount ({amount} atomic units) is above the last amount BotsRated recorded on this route ({facts.observed_amount}).",
+                p.price_above_observed,
+            )
         if facts.stale:
-            add("stale", f"BotsRated data is older than 24 h (last probe {facts.last_probe_at})", "block" if p.stale == "block" else "info")
+            add("data_stale", f"BotsRated's latest probe of {host} is older than 24 hours.", "block" if p.stale == "block" else "info")
         if (
             p.min_valid_402_rate is not None
             and facts.valid_402_rate is not None
             and (facts.recent_probes or 0) >= 3
             and facts.valid_402_rate < p.min_valid_402_rate
         ):
-            add("low_valid_402_rate", f"recent valid-402 rate {facts.valid_402_rate} is below {p.min_valid_402_rate}", "block")
+            add(
+                "low_valid_402_rate",
+                f"the recent valid-402 rate BotsRated measured ({facts.valid_402_rate}) is below your minimum ({p.min_valid_402_rate}).",
+                "block",
+            )
     action: Literal["allow", "block"] = "block" if any(r.effect == "block" for r in reasons) else "allow"
     return Decision(action, facts.host, reasons, facts)
 
@@ -196,8 +238,12 @@ class PrePaymentGuard:
         self.paid_threshold = paid_check_at_or_above_usd
         self.on_decision = on_decision
 
+    def _open_or_closed(self, code: str, detail: str, host: str | None = None) -> Decision:
+        eff: Effect = "info" if self.fail_open else "block"
+        return Decision("allow" if self.fail_open else "block", host, [Reason(code, detail, eff)])
+
     def decide(self, resource_url: str | None, requirements: Any, *, request_url: str | None = None) -> Decision:
-        """Decide on one payment.
+        """Decide on one payment. Never raises when ``fail_open`` is True.
 
         Args:
             resource_url: The URL the payment is for. In an x402 hook this is the seller-supplied 402
@@ -206,61 +252,59 @@ class PrePaymentGuard:
             request_url: The URL actually being requested and paid. When given, BotsRated looks up this
                 URL's host, and the payment is blocked (even with ``fail_open``) if ``resource_url`` names
                 a different host. Hosts are compared after IDNA/trailing-dot normalization, and an apex <-> www
-                difference (a redirect between the two) is tolerated.
+                difference (a redirect between the two) is tolerated. Only host names are sent to BotsRated.
         """
+        try:
+            return self._decide(resource_url, requirements, request_url)
+        except Exception:  # noqa: BLE001
+            return self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
+
+    def _decide(self, resource_url: str | None, requirements: Any, request_url: str | None) -> Decision:
         req = as_requirements(requirements)
         if request_url:
-            try:
-                host = host_of(request_url)
-            except BotsRatedError as e:
-                return Decision("block", None, [Reason("invalid_request_url", str(e), "block")])
+            paid_host = try_host_of(request_url)
+            if not paid_host:
+                return Decision("block", None, [Reason("invalid_request_url", "the URL being paid has no valid host.", "block")])
             if resource_url:
-                try:
-                    claimed: str | None = host_of(resource_url)
-                except BotsRatedError:
-                    claimed = None
+                claimed = try_host_of(resource_url)
                 # An apex <-> www redirect is tolerated: the 402 then comes from the redirected host.
-                if claimed is None or not same_site_host(claimed, host):
-                    return Decision(
-                        "block",
-                        host,
-                        [
-                            Reason(
-                                "resource_url_mismatch",
-                                f"the 402's resource.url ({resource_url}) does not name the host being paid ({host}); refusing to pay",
-                                "block",
-                            )
-                        ],
+                if claimed is None or not same_site_host(claimed, paid_host):
+                    detail = (
+                        f"the 402's resource.url names {claimed}, not {paid_host}, the host being paid."
+                        if claimed
+                        else f"the 402's resource.url has no valid host; the host being paid is {paid_host}."
                     )
+                    return Decision("block", paid_host, [Reason("resource_url_mismatch", detail, "block")])
             resource_url = request_url
         if not resource_url:
-            eff: Effect = "info" if self.fail_open else "block"
-            return Decision("allow" if self.fail_open else "block", None, [Reason("no_resource_url", "payment has no resource URL", eff)])
-        host = host_of(resource_url)
+            return self._open_or_closed("no_resource_url", "the payment has no resource URL to look up.")
+        host = try_host_of(resource_url)
+        if not host:
+            return self._open_or_closed("invalid_resource_url", "the 402's resource.url has no valid host.")
         if host == self.client.host:
             ok = self.client.is_reserved_payment(req)
-            reasons = [] if ok else [Reason("botsrated_payment_not_reserved", "payments to BotsRated must go through BotsRatedClient with a budget", "block")]
+            reasons = [] if ok else [Reason("botsrated_payment_not_reserved", "payments to BotsRated must go through BotsRatedClient with a budget.", "block")]
             return Decision("allow" if ok else "block", host, reasons)
         try:
-            pre = self.client.preflight(resource_url)
-            facts = facts_from(pre.body, host, "preflight")
-            extra: list[Reason] = []
-            if (
-                pre.found
-                and self.paid_threshold is not None
-                and is_atomic_amount(str(req.get("amount", "")))
-                and int(req["amount"]) >= usd_to_atomic(self.paid_threshold)
-            ):
-                try:
-                    facts = facts_from(self.client.check(host), host, "check")
-                except BotsRatedError as e:
-                    extra.append(Reason("paid_check_skipped", str(e), "info"))
-            d = evaluate_payment(facts, req, resource_url, self.policy)
-            d.reasons.extend(extra)
-            return d
-        except BotsRatedError as e:
-            eff = "info" if self.fail_open else "block"
-            return Decision("allow" if self.fail_open else "block", host, [Reason("botsrated_unavailable", str(e), eff)])
+            # Host name only: the path and query of resource_url never leave this process.
+            pre = self.client.preflight(host)
+        except BotsRatedError:
+            return self._open_or_closed("botsrated_unreachable", "BotsRated's preflight could not be reached in time.", host)
+        facts = facts_from(pre.body, host, "preflight")
+        extra: list[Reason] = []
+        if (
+            pre.found
+            and self.paid_threshold is not None
+            and is_atomic_amount(str(req.get("amount", "")))
+            and int(req["amount"]) >= usd_to_atomic(self.paid_threshold)
+        ):
+            try:
+                facts = facts_from(self.client.check(host), host, "check")
+            except BotsRatedError as e:
+                extra.append(Reason("paid_check_skipped", clean_text(e), "info"))
+        d = evaluate_payment(facts, req, resource_url, self.policy)
+        d.reasons.extend(extra)
+        return d
 
     def x402_hook(self, context: Any) -> Any:
         """Hook for ``x402Client(Sync).on_before_payment_creation``. Returns ``AbortResult`` to block.
@@ -292,24 +336,35 @@ class PrePaymentGuard:
 
         return guarded_get
 
-    def _hook(self, context: Any, request_url: str | None) -> Any:
+    def _hook_decision(self, context: Any, request_url: str | None) -> Decision:
         pr = context.payment_required
         resource = getattr(pr, "resource", None)
         url = getattr(resource, "url", None) if resource is not None else None
+        url = url if isinstance(url, str) else None
         if not request_url and self.policy.require_request_url:
-            d = Decision("block", None, [Reason("no_request_url", "the URL being paid is unknown; wrap the request with paying_request(url)", "block")])
+            d = Decision("block", None, [Reason("no_request_url", "the URL being paid is unknown; wrap the request with paying_request(url).", "block")])
         else:
             d = self.decide(url, context.selected_requirements, request_url=request_url)
         paid_url = request_url or url
-        if paid_url and d.action == "allow" and host_of(paid_url) == self.client.host:
+        if paid_url and d.action == "allow" and try_host_of(paid_url) == self.client.host:
             # A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an
-            # ERC-20 approval of Permit2) and never hand any extensions to the signer.
+            # ERC-20 approval of Permit2) and never hand any extensions to the signer. Only BotsRated's own quote.
             if not extensions_ok(getattr(pr, "extensions", None)):
-                d = Decision("block", d.host, [Reason("botsrated_payment_extensions", "BotsRated quotes must not carry payment extensions", "block")])
+                d = Decision("block", d.host, [Reason("botsrated_payment_extensions", "BotsRated quotes must not carry payment extensions.", "block")])
             else:
                 pr.extensions = None
+        return d
+
+    def _hook(self, context: Any, request_url: str | None) -> Any:
+        try:
+            d = self._hook_decision(context, request_url)
+        except Exception:  # noqa: BLE001
+            d = self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
         if self.on_decision:
-            self.on_decision(d)
+            try:
+                self.on_decision(d)
+            except Exception:  # noqa: BLE001, S110 - caller callback errors are ignored
+                pass
         if d.action == "block":
             from x402 import AbortResult  # optional dependency: botsrated[x402]
 
