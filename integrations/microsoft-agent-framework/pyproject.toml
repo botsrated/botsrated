@@ -5,7 +5,7 @@ description = "BotsRated pre-payment check for Microsoft Agent Framework: functi
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["agent-framework-core>=1.22,<2", "botsrated>=0.1.5,<0.3"]
+dependencies = ["agent-framework-core>=1.22,<2", "botsrated>=0.1.6,<0.3"]
 keywords = ["agent-framework", "microsoft-agent-framework", "middleware", "x402", "botsrated", "payments", "base", "usdc"]
 
 [project.optional-dependencies]

@@ -10,13 +10,18 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 from agent_framework import FunctionInvocationContext, FunctionMiddleware, FunctionTool, MiddlewareFailure, tool
-from botsrated import BotsRatedClient, Decision, PrePaymentGuard, Reason
+from botsrated import BotsRatedClient, Decision, GuardPolicy, PrePaymentGuard, Reason
 from pydantic import BaseModel, Field
 
 DECISION_METADATA_KEY = "botsrated_decision"
 """Key of the ``botsrated.Decision`` stored in ``FunctionInvocationContext.metadata`` for checked calls."""
 
 DEFAULT_NETWORK = "eip155:8453"
+
+
+# Keeps this package's documented default on every botsrated version: a payTo BotsRated's probes never recorded
+# for the host blocks the payment (botsrated 0.2 made that advice-only by default).
+DEFAULT_POLICY = GuardPolicy(pay_to_mismatch="block")
 
 
 @dataclass(frozen=True)
@@ -114,7 +119,7 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
             self.extractors = {name: default_quote_extractor for name in payment_tools}
         if not self.extractors:
             raise ValueError("payment_tools must name at least one payment function")
-        self.guard = guard or PrePaymentGuard(BotsRatedClient())
+        self.guard = guard or PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)
         self.on_block = on_block
 
     async def process(
@@ -154,7 +159,7 @@ def decision_to_dict(decision: Decision) -> dict[str, Any]:
 
 def botsrated_check_payment_tool(guard: PrePaymentGuard | None = None) -> FunctionTool:
     """A function tool the model can call to check an x402 payment option before paying it (free preflight)."""
-    checker = guard or PrePaymentGuard(BotsRatedClient())
+    checker = guard or PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)
 
     async def botsrated_check_payment(
         url: Annotated[str, Field(description="The seller URL you are about to pay.")],
