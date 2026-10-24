@@ -10,6 +10,7 @@ the user sets.
 [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) (0.1.2).
 npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.4),
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).
+`botsrated` 0.2.0 and `@botsrated/x402-preflight` 0.2.0 (payment guard) are prepared in this repo but not released.
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2
@@ -18,9 +19,9 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 
 | Directory | Package | For |
 |---|---|---|
-| `x402-client/` | `@botsrated/x402-preflight` (npm) | `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
+| `x402-client/` | `@botsrated/x402-preflight` (npm) | payment guard (x402 hooks + `payment-identifier` retry key + read-only on-chain state), `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
 | `vercel-ai-sdk/` | `@botsrated/ai-sdk` (npm) | Vercel AI SDK `tool()`s |
-| `python-core/` | `botsrated` (PyPI) | client + guard + Python `x402` `on_before_payment_creation` hook |
+| `python-core/` | `botsrated` (PyPI) | payment guard, client + guard + Python `x402` `on_before_payment_creation` hook |
 | `langchain/` | `langchain-botsrated` (PyPI) | LangChain tools |
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
