@@ -4,7 +4,7 @@
  * What it does, and nothing more:
  * - Before your agent signs: looks up facts BotsRated measured about the seller's HOST (only the host name is sent to
  *   botsrated.com) and compares them locally with the payment request. Advice-only by default: it reports facts and
- *   stops a payment only when you choose a blocking policy (e.g. `policies.strict`).
+ *   stops a payment only when you choose a blocking policy (e.g. `policies.carefulBuyer`, an alias of `policies.strict`).
  * - While the payload is built: adds a random x402 `payment-identifier` retry key, only when the seller advertises
  *   that extension, through x402's extension mechanism.
  * - After: records the payment locally (never the signature) and offers a read-only on-chain check of whether it
@@ -55,31 +55,63 @@ export interface PaymentGuardPolicy {
   stale?: RuleEffect;
 }
 
-/** Named presets. Choosing one is your decision; the zero-config default is `policies.warn`. */
+const warnPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
+  payToMismatch: "warn",
+  payToInvalid: "warn",
+  priceAboveObserved: "warn",
+  resourceHostMismatch: "warn",
+  paidUrlUnknown: "warn",
+  notCovered: "allow",
+  stale: "allow",
+});
+
+/**
+ * Stops a payment when the payTo wasn't observed, is invalid, the 402 names another host, or the URL being paid is
+ * unknown (use `wrapFetch`). A price above the last observed amount still warns. An uncovered or stale host stays
+ * informational.
+ */
+const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
+  payToMismatch: "block",
+  payToInvalid: "block",
+  priceAboveObserved: "warn",
+  resourceHostMismatch: "block",
+  paidUrlUnknown: "block",
+  notCovered: "allow",
+  stale: "allow",
+});
+
+/** Rule-effect tables. Choosing one is your decision; the zero-config default is `policies.warn`. */
 export const policies = Object.freeze({
   /** Advice only: never stops a payment. The default. */
-  warn: Object.freeze<Required<PaymentGuardPolicy>>({
-    payToMismatch: "warn",
-    payToInvalid: "warn",
-    priceAboveObserved: "warn",
-    resourceHostMismatch: "warn",
-    paidUrlUnknown: "warn",
-    notCovered: "allow",
-    stale: "allow",
-  }),
+  warn: warnPolicy,
+  /** Same effects as {@link policies.carefulBuyer}. */
+  strict: strictPolicy,
   /**
-   * Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, the 402 names another
-   * host, or the URL being paid is unknown (use `wrapFetch`).
+   * Friendly alias of {@link policies.strict}.
+   * Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown.
    */
-  strict: Object.freeze<Required<PaymentGuardPolicy>>({
-    payToMismatch: "block",
-    payToInvalid: "block",
-    priceAboveObserved: "warn",
-    resourceHostMismatch: "block",
-    paidUrlUnknown: "block",
-    notCovered: "allow",
-    stale: "allow",
-  }),
+  carefulBuyer: strictPolicy,
+});
+
+/** Option bag for {@link createPaymentGuard}. `dry-run-only` logs `wouldBlock` and never stops a payment. */
+export interface PaymentGuardPreset {
+  policy?: PaymentGuardPolicy;
+  dryRun?: boolean;
+}
+
+export type PaymentGuardPresetName = "warn" | "carefulBuyer" | "dry-run-only";
+
+/**
+ * Named ways to start the guard. Spread one into {@link createPaymentGuard}, or pass its name as `preset`.
+ * `carefulBuyer` is the stricter rule table. `dry-run-only` is advice: it does not add a new rule.
+ */
+export const presets = Object.freeze({
+  /** Zero-config behavior, named: advice only. */
+  warn: Object.freeze<PaymentGuardPreset>({ policy: policies.warn }),
+  /** Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. */
+  carefulBuyer: Object.freeze<PaymentGuardPreset>({ policy: policies.carefulBuyer }),
+  /** Log `wouldBlock`, never stop a payment, add no retry key. The rule table stays {@link policies.warn} unless you pass another. */
+  "dry-run-only": Object.freeze<PaymentGuardPreset>({ dryRun: true, policy: policies.warn }),
 });
 
 export interface GuardReason {
@@ -92,6 +124,7 @@ export interface GuardReason {
   fact: string;
 }
 
+/** Facts the guard compared: measurements and, when present, a receipt link. No score and no grade. */
 export interface GuardFacts {
   covered: boolean;
   host: string;
@@ -123,9 +156,18 @@ export interface GuardDecision {
 export type PreflightFn = (host: string) => Promise<{ found: boolean; body: Record<string, any> }>;
 
 export interface PaymentGuardOptions {
+  /**
+   * Named preset: `warn` (advice only), `carefulBuyer` (same stops as `policies.strict`), or `dry-run-only`
+   * (log `wouldBlock`, never stop a payment). `dry-run-only` forces dry-run even when `dryRun` is also passed.
+   * An explicit `policy` replaces the preset's rule table field by field. The zero-config default is `warn`.
+   */
+  preset?: PaymentGuardPresetName;
   /** Which facts warn or stop a payment. Default {@link policies.warn} (advice only). */
   policy?: PaymentGuardPolicy;
-  /** Log decisions and change nothing: no payment is stopped and no retry key is added. Recommended first setting. */
+  /**
+   * Log decisions and change nothing: no payment is stopped and no retry key is added.
+   * Ignored when `preset` is `dry-run-only` (that preset always dry-runs).
+   */
   dryRun?: boolean;
   /** Call BotsRated's free hosted preflight. Default true. With false, nothing is sent to botsrated.com. */
   hosted?: boolean;
@@ -348,12 +390,21 @@ function randomId(): string {
   return "pay_" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Creates a payment guard. Zero-config: advice only, hosted host-name lookup, fail-open, retry key where advertised. */
+function presetOf(name: PaymentGuardPresetName): PaymentGuardPreset {
+  if (!Object.hasOwn(presets, name)) {
+    throw new RangeError(`Unknown payment guard preset "${String(name)}". Expected warn, carefulBuyer, or dry-run-only.`);
+  }
+  return presets[name];
+}
+
+/** Creates a payment guard. Zero-config: advice only (`policies.warn`), hosted host-name lookup, fail-open, retry key where advertised. */
 export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGuard {
   const opts: PaymentGuardOptions = { ...options };
   if (opts.onchain) rpcListOf(opts.onchain); // configuration errors (more than 3 RPCs) surface here, not mid-payment
-  const policy: PaymentGuardPolicy = { ...policies.warn, ...(opts.policy ?? {}) };
-  const dryRun = opts.dryRun === true;
+  const named = opts.preset !== undefined ? presetOf(opts.preset) : undefined;
+  const policy: PaymentGuardPolicy = { ...policies.warn, ...(named?.policy ?? {}), ...(opts.policy ?? {}) };
+  // `dry-run-only` forces advice: log wouldBlock, never stop a payment, even if dryRun is also passed as false.
+  const dryRun = opts.preset === "dry-run-only" ? true : opts.dryRun === true;
   const hosted = opts.hosted !== false;
   const failOpen = opts.failOpen !== false;
   const retryKeyOn = opts.retryKey !== false && !dryRun;
@@ -649,4 +700,13 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       return checkPaymentState(full, opts.onchain ?? {});
     },
   };
+}
+
+/**
+ * Named preset `dry-run-only`. Logs `wouldBlock` and never stops a payment, even if `options.policy` would.
+ * Dry-run is forced; there is no `dryRun` argument to turn it off. The rule table stays {@link policies.warn}
+ * unless you pass `policy` (for example {@link policies.carefulBuyer}, to log the stops that preset would make).
+ */
+export function dryRunOnly(options: Omit<PaymentGuardOptions, "dryRun" | "preset"> = {}): PaymentGuard {
+  return createPaymentGuard({ ...options, preset: "dry-run-only" });
 }

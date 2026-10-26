@@ -11,7 +11,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.2.0 is not released yet. The latest version on npm is
+**Status: 0.2.1 is not released yet. The latest version on npm is
 [`@botsrated/x402-preflight` 0.1.4](https://www.npmjs.com/package/@botsrated/x402-preflight), which does not
 include the payment guard.**
 
@@ -28,21 +28,41 @@ npm install @botsrated/x402-preflight @x402/core @x402/evm @x402/fetch
 The package has no runtime dependencies. `@x402/*` are yours; the guard only uses the hook and extension points
 of the x402 client you pass in.
 
-## Payment Guard: Start With Dry-Run
+## Payment Guard: Pick A Preset
+
+You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
+one, a receipt link. It does not return a score or a grade.
+
+Pick a named preset. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
+Dry-run is optional: it logs `wouldBlock` and still never stops a payment.
+
+| Name | How to select it | What you get |
+|---|---|---|
+| `warn` | `createPaymentGuard()` or `{ preset: "warn" }` or `{ policy: policies.warn }` | Advice only. The default. |
+| `carefulBuyer` | `{ preset: "carefulBuyer" }` or `{ policy: policies.carefulBuyer }` | Same rule effects as `policies.strict`. Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. |
+| `strict` | `{ policy: policies.strict }` | The same stops as `carefulBuyer`. |
+| `dry-run-only` | `dryRunOnly(...)`, `{ preset: "dry-run-only" }`, or `presets["dry-run-only"]` | Logs `wouldBlock` and never stops a payment. No retry key. `preset: "dry-run-only"` and `dryRunOnly()` force dry-run. |
 
 ```ts
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
-import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
+import { createPaymentGuard, dryRunOnly, policies } from "@botsrated/x402-preflight/payment-guard";
 
 const client = new x402Client();
 registerExactEvmScheme(client, { signer });
 
-// Recommended first setting: log what the guard sees, change nothing.
-const guard = createPaymentGuard({ dryRun: true, onDecision: (d) => console.log(d.message) });
-guard.install(client); // before/after/response hooks (+ the retry-key extension when not in dry-run)
+// Install one of these. `guard` stops payments; `looking` only logs.
+// 1. Pick a named preset. This one stops the four cases above.
+const guard = createPaymentGuard({
+  preset: "carefulBuyer",
+  onDecision: (d) => console.log(d.message, d.facts),
+});
 
-const paidFetch = guard.wrapFetch(wrapFetchWithPayment(fetch, client)); // tells the guard which URL is being paid
+// 2. Or look first: log wouldBlock for those same stops, and never stop a payment.
+const looking = dryRunOnly({ policy: policies.carefulBuyer, onDecision: (d) => console.log(d.wouldBlock, d.message) });
+
+looking.install(client); // before/after/response hooks (+ the retry-key extension when not in dry-run)
+const paidFetch = looking.wrapFetch(wrapFetchWithPayment(fetch, client)); // tells the guard which URL is being paid
 await paidFetch("https://seller.example/api");
 ```
 
@@ -50,17 +70,12 @@ Import from `@botsrated/x402-preflight/payment-guard` (or `/onchain`) for the gu
 no signing code. The package root also exports `BotsRatedClient`, which can sign BotsRated's own paid lookups.
 
 Always wrap the paying fetch with `guard.wrapFetch`. Without it the guard only knows the host the seller's 402
-*claims* (`resource.url`), so it reports `paid_url_unknown` (a warning by default; `policies.strict` stops the
-payment).
+*claims* (`resource.url`), so it reports `paid_url_unknown` (a warning under `policies.warn`; `policies.carefulBuyer`
+and `policies.strict` stop the payment).
 
-When the log looks right, drop `dryRun`. The zero-config setting (`createPaymentGuard()`) is advice only: it
-reports facts and never stops a payment. To stop payments, choose a policy yourself:
-
-```ts
-import { createPaymentGuard, policies } from "@botsrated/x402-preflight/payment-guard";
-
-const guard = createPaymentGuard({ policy: policies.strict }); // your choice
-```
+`policies.carefulBuyer` is `policies.strict` (one rule table, two names). A price above the last observed amount
+still warns. An uncovered host and a stale probe stay informational. To stop payments on your own mix, pass a
+policy yourself: `{ ...policies.carefulBuyer, priceAboveObserved: "block" }`.
 
 A stopped payment throws `Payment creation aborted:` with text like:
 
@@ -68,7 +83,7 @@ A stopped payment throws `Payment creation aborted:` with text like:
 
 ### Rules And Defaults
 
-| Rule (`policy.…`) | Reason code | `policies.warn` (default) | `policies.strict` |
+| Rule (`policy.…`) | Reason code | `policies.warn` (default) | `policies.carefulBuyer` / `policies.strict` |
 |---|---|---|---|
 | `payToMismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
 | `payToInvalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
@@ -81,17 +96,41 @@ A stopped payment throws `Payment creation aborted:` with text like:
 | After payment: the seller did not report a settled payment | `payment_state_unknown` | warn | warn |
 
 Each rule takes `"allow"`, `"warn"` or `"block"`, e.g. `policy: { ...policies.warn, payToMismatch: "block" }`.
-A custom policy is laid over `policies.warn`, so `paidUrlUnknown` stays `"warn"` unless you set it: add
-`paidUrlUnknown: "block"` (as `policies.strict` does) if an unknown paid URL should stop the payment.
+A custom policy is laid over `policies.warn`, or over the preset's table when you pass `preset`, so `paidUrlUnknown`
+stays at that table's effect unless you set it: add `paidUrlUnknown: "block"` (as `policies.carefulBuyer` /
+`policies.strict` do) if an unknown paid URL should stop the payment.
 Every decision carries `reasons` (code, effect, rule, fact), `facts`, `policyRule`, `disputeUrl` and a `message`.
 Reason texts state facts only; seller text is never echoed except a parsed host name.
+
+### Facts Bundle
+
+`decision.facts` is the bundle the guard compared. It is measurements plus a receipt link. It has no score and no grade.
+
+| Field | What it is |
+|---|---|
+| `covered` | Whether BotsRated has a probe record for the host |
+| `host` | Host that was looked up (only the host name was sent) |
+| `knownPayTos` | payTo addresses BotsRated's probes recorded |
+| `listingPayTo` | payTo from a directory listing, when present. A listing is not a probe observation |
+| `observedNetwork` | Network the probes recorded |
+| `observedAmount` | Last amount recorded on the probed route, in atomic units |
+| `stale` | True when the latest probe is older than 24 hours |
+| `receiptUrl` | `https://botsrated.com/receipt/...` when the preflight included a receipt on botsrated.com |
+
+`reasons` lists each fact (`code`, `effect` of `info`, `warn` or `block`, `rule`, `fact`). `disputeUrl` is
+https://botsrated.com/disputes. `wouldBlock` is true when a rule's effect is `block`, including in dry-run, where
+`action` stays `allow`.
+
+The hosted preflight body is larger (see the MCP facts bundle in the repository README). The guard keeps this
+smaller local bundle and does not copy a score out of it, because the response has none.
 
 ### Options
 
 | Option | Default | Meaning |
 |---|---|---|
-| `policy` | `policies.warn` | Which facts warn and which stop a payment |
-| `dryRun` | `false` | Log decisions, stop nothing, add no retry key. Recommended first setting |
+| `preset` | omitted (behaves as `warn`) | `warn`, `carefulBuyer`, or `dry-run-only`. `dry-run-only` forces dry-run |
+| `policy` | `policies.warn` | Which facts warn and which stop a payment. Laid over the preset's rule table |
+| `dryRun` | `false` | Log decisions, stop nothing, add no retry key. Forced on for preset `dry-run-only` |
 | `hosted` | `true` | `false`: nothing is sent to botsrated.com |
 | `failOpen` | `true` | `false`: stop the payment when BotsRated can't be reached or the guard errors |
 | `retryKey` | `true` | Add a `payment-identifier` id where the seller advertises it |

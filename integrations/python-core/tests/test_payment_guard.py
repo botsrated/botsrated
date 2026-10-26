@@ -13,6 +13,7 @@ import pytest
 
 from botsrated import (
     POLICIES,
+    PRESETS,
     STRICT_GUARD_POLICY,
     USER_AGENT,
     VERSION,
@@ -20,6 +21,7 @@ from botsrated import (
     PaymentGuard,
     PaymentGuardPolicy,
     PrePaymentGuard,
+    dry_run_only,
     evaluate_payment,
     facts_from,
 )
@@ -149,6 +151,110 @@ def test_botsrated_note_only_for_real_botsrated_request(found):
 def test_policies_expose_paid_url_unknown():
     assert POLICIES["warn"].paid_url_unknown == "warn"
     assert POLICIES["strict"].paid_url_unknown == "block"
+    assert POLICIES["carefulBuyer"].paid_url_unknown == "block"
+
+
+def _policy_table() -> dict:
+    return json.loads((Path(__file__).resolve().parents[2] / "fixtures" / "payment-guard-policies.json").read_text())
+
+
+def _effects(table: dict, name: str) -> dict:
+    spec = table["presets"][name]
+    return table["presets"]["strict"] if spec == "strict" else spec
+
+
+def test_careful_buyer_matches_the_shared_rule_table():
+    from dataclasses import fields
+
+    table = _policy_table()
+    assert POLICIES["carefulBuyer"] is POLICIES["strict"]
+    assert {f.name for f in fields(PaymentGuardPolicy)} == set(table["pythonFields"].values())
+    for name in ("warn", "strict", "carefulBuyer"):
+        for field, py_name in table["pythonFields"].items():
+            assert getattr(POLICIES[name], py_name) == _effects(table, name)[field]
+    assert PRESETS["carefulBuyer"]["policy"] is POLICIES["carefulBuyer"]
+    assert PRESETS["dry-run-only"] == {"dry_run": True, "policy": POLICIES["warn"]}
+
+
+def test_careful_buyer_stops_the_four_strict_cases(found):
+    pytest.importorskip("x402")
+    url = found["latest_probe"]["url"]
+    seen = []
+    g, _ = guard_with(found, preset="carefulBuyer", on_decision=seen.append)
+    with g.request(url):
+        out = g.before_payment_creation(ctx(url, req(found, payTo=DEAD)))
+    assert out is not None and seen[0].policy_rule == "payToMismatch"
+    assert seen[0].facts.covered is True and seen[0].facts.host == "blockrun.ai"
+    assert seen[0].facts.receipt_url == found["latest_probe"]["receipt_url"]
+    assert not hasattr(seen[0].facts, "score") and not hasattr(seen[0].facts, "grade")
+
+    with g.request(url):
+        assert g.before_payment_creation(ctx(url, req(found, payTo="junk"))) is not None
+    assert seen[1].policy_rule == "payToInvalid"
+
+    with g.request(url):
+        assert g.before_payment_creation(ctx("https://other.example/x", req(found))) is not None
+    assert seen[2].policy_rule == "resourceHostMismatch"
+
+    assert g.before_payment_creation(ctx(url, req(found))) is not None
+    assert seen[3].policy_rule == "paidUrlUnknown"
+
+    with g.request(url):
+        assert g.before_payment_creation(ctx(url, req(found, amount="999999"))) is None
+    assert seen[4].action == "allow" and not seen[4].would_block
+    assert any(r.code == "price_above_observed" and r.effect == "warn" for r in seen[4].reasons)
+
+    uncovered, _ = guard_with(
+        found,
+        answer=lambda r: httpx.Response(404, json={"error": {"code": "host_not_covered"}}),
+        policy=POLICIES["carefulBuyer"],
+        on_decision=seen.append,
+    )
+    with uncovered.request("https://x.example/a"):
+        assert uncovered.before_payment_creation(ctx("https://x.example/a", req(found))) is None
+    assert seen[5].action == "allow"
+    assert any(r.code == "not_covered" and r.effect == "info" for r in seen[5].reasons)
+
+
+def test_dry_run_only_logs_would_block_and_never_stops(found):
+    pytest.importorskip("x402")
+    url = found["latest_probe"]["url"]
+    seen = []
+    rec = Recorder(lambda r: httpx.Response(200, json=found))
+    g = dry_run_only(policy=POLICIES["carefulBuyer"], dry_run=False, http=httpx.Client(transport=httpx.MockTransport(rec)), on_decision=seen.append)
+    assert g.dry_run is True and g.preset == "dry-run-only"
+    with g.request(url):
+        assert g.before_payment_creation(ctx(url, req(found, payTo=DEAD))) is None
+    assert seen[0].action == "allow" and seen[0].would_block and seen[0].dry_run and seen[0].policy_rule == "payToMismatch"
+    assert seen[0].message.startswith("Dry run: your payment policy would stop this payment")
+    calls: list[str] = []
+    client = SimpleNamespace(
+        on_before_payment_creation=lambda h: calls.append("before"),
+        on_after_payment_creation=lambda h: calls.append("after"),
+        on_payment_response=lambda h: calls.append("response"),
+        register_extension=lambda e: calls.append("extension"),
+    )
+    g.install(client, asynchronous=False)
+    assert calls == ["before", "after", "response"]
+
+    forced, _ = guard_with(found, preset="dry-run-only", dry_run=False, policy=POLICIES["carefulBuyer"], on_decision=seen.append)
+    assert forced.dry_run is True
+    with forced.request(url):
+        assert forced.before_payment_creation(ctx(url, req(found, payTo=DEAD))) is None
+    assert seen[1].action == "allow" and seen[1].would_block and seen[1].dry_run
+
+    spread = PaymentGuard(**{**PRESETS["dry-run-only"], "http": httpx.Client(transport=httpx.MockTransport(rec)), "on_decision": seen.append})
+    with spread.request(url):
+        assert spread.before_payment_creation(ctx(url, req(found, payTo=DEAD))) is None
+    assert seen[2].action == "allow" and seen[2].dry_run and not seen[2].would_block
+    assert any(r.code == "payto_not_observed" and r.effect == "warn" for r in seen[2].reasons)
+
+
+def test_unknown_preset_is_a_configuration_error_and_zero_config_stays_warn():
+    with pytest.raises(ValueError, match='Unknown payment guard preset "nope"'):
+        PaymentGuard(preset="nope", hosted=False)
+    g = PaymentGuard(hosted=False)
+    assert g.preset is None and g.dry_run is False and g.policy is POLICIES["warn"]
 
 
 def test_no_lookup_says_no_seller_facts_were_checked(found):

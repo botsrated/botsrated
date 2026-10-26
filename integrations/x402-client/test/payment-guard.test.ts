@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { createPaymentGuard, evaluateFacts, guardFactsFrom, policies, type GuardDecision } from "../src/payment-guard";
+import { createPaymentGuard, dryRunOnly, evaluateFacts, guardFactsFrom, policies, presets, type GuardDecision } from "../src/payment-guard";
 import { FOUND, OTHER_PAYTO, PAYMENT_IDENTIFIER_DECL, SELLER_PAYTO, SELLER_URL, deepFreeze, json, pr, recordingFetch, req } from "./helpers";
 
 const ctx = (resourceUrl: unknown, r = req(), extensions?: Record<string, unknown>) => {
@@ -183,6 +184,82 @@ describe("M4-R1: strict needs the real request URL; the 402's own fields never s
   it("policies expose the rule: warn warns, strict blocks", () => {
     expect(policies.warn.paidUrlUnknown).toBe("warn");
     expect(policies.strict.paidUrlUnknown).toBe("block");
+    expect(policies.carefulBuyer.paidUrlUnknown).toBe("block");
+  });
+});
+
+describe("named presets: carefulBuyer and dry-run-only", () => {
+  const table = JSON.parse(readFileSync(new URL("../../fixtures/payment-guard-policies.json", import.meta.url), "utf8"));
+  const effects = (name: string) => (table.presets[name] === "strict" ? table.presets.strict : table.presets[name]);
+
+  it("carefulBuyer is the strict rule table, shared with Python", () => {
+    expect(policies.carefulBuyer).toBe(policies.strict);
+    expect(Object.keys(policies.warn).sort()).toEqual([...table.fields].sort());
+    for (const name of ["warn", "strict", "carefulBuyer"] as const) {
+      for (const field of table.fields as string[]) expect(policies[name][field as keyof typeof policies.warn]).toBe(effects(name)[field]);
+    }
+    expect(presets.carefulBuyer.policy).toBe(policies.carefulBuyer);
+    expect(presets["dry-run-only"]).toEqual({ dryRun: true, policy: policies.warn });
+  });
+
+  it("carefulBuyer stops when payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown", async () => {
+    const { f } = recordingFetch();
+    const { decisions, onDecision } = collect();
+    const g = createPaymentGuard({ fetch: f, preset: "carefulBuyer", onDecision });
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toMatchObject({ abort: true });
+    expect(decisions[0].policyRule).toBe("payToMismatch");
+    expect(decisions[0].facts).toMatchObject({ covered: true, host: "blockrun.ai", receiptUrl: FOUND.latest_probe.receipt_url });
+    expect(decisions[0].facts).not.toHaveProperty("score");
+    expect(decisions[0].facts).not.toHaveProperty("grade");
+
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ payTo: "junk" })))).toMatchObject({ abort: true });
+    expect(decisions[1].policyRule).toBe("payToInvalid");
+
+    expect(await beforeFor(g, SELLER_URL, ctx("https://other.example/x"))).toMatchObject({ abort: true });
+    expect(decisions[2].policyRule).toBe("resourceHostMismatch");
+
+    expect(await g.hooks.beforePaymentCreation(ctx(SELLER_URL))).toMatchObject({ abort: true });
+    expect(decisions[3].policyRule).toBe("paidUrlUnknown");
+
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ amount: "999999" })))).toBeUndefined();
+    expect(decisions[4].action).toBe("allow");
+    expect(decisions[4].wouldBlock).toBe(false);
+    expect(decisions[4].reasons).toContainEqual(expect.objectContaining({ code: "price_above_observed", effect: "warn" }));
+
+    const nc = recordingFetch(() => json({ error: { code: "host_not_covered" } }, 404));
+    const uncovered = createPaymentGuard({ fetch: nc.f, policy: policies.carefulBuyer, onDecision });
+    expect(await beforeFor(uncovered, "https://x.example/a", ctx("https://x.example/a"))).toBeUndefined();
+    expect(decisions[5].action).toBe("allow");
+    expect(decisions[5].reasons).toContainEqual(expect.objectContaining({ code: "not_covered", effect: "info" }));
+  });
+
+  it("dry-run-only logs wouldBlock and never stops a payment", async () => {
+    const { f } = recordingFetch();
+    const { decisions, onDecision } = collect();
+    const g = dryRunOnly({ fetch: f, policy: policies.carefulBuyer, onDecision });
+    expect(await beforeFor(g, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
+    expect(decisions[0]).toMatchObject({ action: "allow", wouldBlock: true, dryRun: true, policyRule: "payToMismatch" });
+    expect(decisions[0].message).toMatch(/^Dry run: your payment policy would stop this payment/);
+    const client = { onBeforePaymentCreation: vi.fn(), onAfterPaymentCreation: vi.fn(), onPaymentResponse: vi.fn(), registerExtension: vi.fn() };
+    g.install(client);
+    expect(client.registerExtension).not.toHaveBeenCalled();
+
+    const forced = createPaymentGuard({ fetch: f, preset: "dry-run-only", dryRun: false, policy: policies.carefulBuyer, onDecision });
+    expect(await beforeFor(forced, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
+    expect(decisions[1]).toMatchObject({ action: "allow", wouldBlock: true, dryRun: true, policyRule: "payToMismatch" });
+
+    const spread = createPaymentGuard({ ...presets["dry-run-only"], fetch: f, onDecision });
+    expect(await beforeFor(spread, SELLER_URL, ctx(SELLER_URL, req({ payTo: OTHER_PAYTO })))).toBeUndefined();
+    expect(decisions[2]).toMatchObject({ action: "allow", wouldBlock: false, dryRun: true });
+    expect(decisions[2].reasons.find((r) => r.code === "payto_not_observed")!.effect).toBe("warn");
+  });
+
+  it("an unknown preset name is a configuration error, and zero-config stays warn", () => {
+    expect(() => createPaymentGuard({ preset: "nope" as never })).toThrow(/Unknown payment guard preset "nope"/);
+    const g = createPaymentGuard({ hosted: false });
+    expect(g.options.preset).toBeUndefined();
+    expect(g.options.policy).toBeUndefined();
+    expect(g.options.dryRun).toBeUndefined();
   });
 });
 

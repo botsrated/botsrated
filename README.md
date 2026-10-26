@@ -23,7 +23,7 @@ This repository documents the **remote** MCP server. There is nothing to install
 ## Tools
 | Tool | Price | What it returns |
 |---|---|---|
-| `preflight` | free, unlimited | Latest stored unpaid probe for an x402 seller (host or URL): status, valid 402, quoted vs listed price, payTo vs listing, timestamp |
+| `preflight` | free, unlimited | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. No score and no grade. See below |
 | `find` | free (uses 1 of the 100 free daily checks) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
@@ -31,6 +31,29 @@ This repository documents the **remote** MCP server. There is nothing to install
 | `check` | $0.001 (x402, USDC on Base); first 100/day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
 | `report` | $0.002 (x402); first 10/day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
+
+## Facts bundle (`preflight` and `check`)
+
+`preflight` (the MCP tool and `GET /v1/preflight?url=<host>`) returns measurements and receipt links. You set your own
+thresholds. The response has no score and no grade.
+
+| Field | What you get back |
+|---|---|
+| `found`, `host` | Whether this host is in the probe record, and the host name |
+| `latest_probe` | Latest unpaid probe: `ts`, `status`, `valid_402`, `latency_ms`, observed amount (`live_amount`), observed payTo (`live_payTo`), `live_network` |
+| `latest_probe.receipt_url` | Link to the signed receipt for that probe (`https://botsrated.com/receipt/...`). The receipt is the record |
+| `freshness` | `last_probe_at`, `age_seconds`, `stale` (older than 24 h) |
+| `listing` | Directory price and payTo. Directory data is not a probe observation |
+| `recent_window` | Probe count, how many returned a valid 402, latency. A count in a window, not a grade |
+| `note` | Facts only |
+
+`check` (paid, after the free daily quota) adds measured facts for one host and the last receipts. Those are still
+measurements and receipt links, not a score.
+
+The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller local bundle from this response
+(`covered`, `host`, `knownPayTos` / `known_pay_tos`, `listingPayTo` / `listing_pay_to`, `observedNetwork` /
+`observed_network`, `observedAmount` / `observed_amount`, `stale`, `receiptUrl` / `receipt_url`). Pick a named preset
+(`warn`, `carefulBuyer`, or `dry-run-only`) there. The guard does not invent a score from these fields.
 
 The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
 

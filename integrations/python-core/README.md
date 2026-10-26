@@ -11,7 +11,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.2.0 is not released yet. The latest version on PyPI is
+**Status: 0.2.1 is not released yet. The latest version on PyPI is
 [`botsrated` 0.1.6](https://pypi.org/project/botsrated/), which does not include the payment guard.**
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
@@ -27,7 +27,20 @@ pip install "botsrated[x402]"
 Runtime dependencies: `httpx>=0.27,<1` (and, with the `x402` extra, `x402[httpx,evm]>=2.25,<3`). The guard only
 uses the hook and extension points of the x402 client you pass in.
 
-## Payment Guard: Start With Dry-Run
+## Payment Guard: Pick A Preset
+
+You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
+one, a receipt link. It does not return a score or a grade.
+
+Pick a named preset. The zero-config call (`PaymentGuard()`) is `warn`: advice only, it never stops a payment.
+Dry-run is optional: it logs `would_block` and still never stops a payment.
+
+| Name | How to select it | What you get |
+|---|---|---|
+| `warn` | `PaymentGuard()` or `preset="warn"` or `policy=POLICIES["warn"]` | Advice only. The default. |
+| `carefulBuyer` | `preset="carefulBuyer"` or `policy=POLICIES["carefulBuyer"]` | Same rule effects as `POLICIES["strict"]`. Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. |
+| `strict` | `policy=POLICIES["strict"]` | The same stops as `carefulBuyer`. |
+| `dry-run-only` | `dry_run_only(...)`, `preset="dry-run-only"`, or `PaymentGuard(**PRESETS["dry-run-only"])` | Logs `would_block` and never stops a payment. No retry key. `preset="dry-run-only"` and `dry_run_only()` force dry-run. |
 
 ```python
 import httpx
@@ -35,17 +48,21 @@ from x402 import x402Client
 from x402.http.clients.httpx import x402AsyncTransport
 from x402.mechanisms.evm import EthAccountSigner
 from x402.mechanisms.evm.exact import ExactEvmScheme
-from botsrated import PaymentGuard
+from botsrated import POLICIES, PaymentGuard, dry_run_only
 
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=EthAccountSigner(account)))
 
-# Recommended first setting: log what the guard sees, change nothing.
-guard = PaymentGuard(dry_run=True, on_decision=lambda d: print(d.message))
-guard.install(client)  # before/after/response hooks (+ the retry-key extension when not in dry-run)
+# Install one of these. `guard` stops payments; `looking` only logs.
+# 1. Pick a named preset. This one stops the four cases above.
+guard = PaymentGuard(preset="carefulBuyer", on_decision=lambda d: print(d.message, d.facts))
 
+# 2. Or look first: log would_block for those same stops, and never stop a payment.
+looking = dry_run_only(policy=POLICIES["carefulBuyer"], on_decision=lambda d: print(d.would_block, d.message))
+
+looking.install(client)  # before/after/response hooks (+ the retry-key extension when not in dry-run)
 http = httpx.AsyncClient(transport=x402AsyncTransport(client, httpx.AsyncHTTPTransport()))
-paid_get = guard.wrap_async_get(http.get)  # tells the guard which URL is being paid
+paid_get = looking.wrap_async_get(http.get)  # tells the guard which URL is being paid
 await paid_get("https://seller.example/api")
 ```
 
@@ -58,16 +75,12 @@ you use it.
 
 Always tell the guard the URL being paid (`wrap_async_get`, `wrap_get` or `with guard.request(url):`). Without it
 the guard only knows the host the seller's 402 *claims* (`resource.url`), so it reports `paid_url_unknown` (a
-warning by default; `POLICIES["strict"]` stops the payment).
+warning by default; `POLICIES["carefulBuyer"]` and `POLICIES["strict"]` stop the payment).
 
-When the log looks right, drop `dry_run`. The zero-config setting (`PaymentGuard()`) is advice only: it reports
-facts and never stops a payment. To stop payments, choose a policy yourself:
-
-```python
-from botsrated import POLICIES, PaymentGuard
-
-guard = PaymentGuard(policy=POLICIES["strict"])  # your choice
-```
+`POLICIES["carefulBuyer"]` is `POLICIES["strict"]` (one rule table, two names). A price above the last observed
+amount still warns. An uncovered host and a stale probe stay informational. To stop payments on your own mix,
+pass a policy yourself: `dataclasses.replace(POLICIES["carefulBuyer"], price_above_observed="block")`. An explicit
+`policy=` replaces the preset's rule table.
 
 A stopped payment raises the x402 abort error with text like:
 
@@ -75,7 +88,7 @@ A stopped payment raises the x402 abort error with text like:
 
 ### Rules And Defaults
 
-| Rule (`PaymentGuardPolicy(...)`) | Reason code | `POLICIES["warn"]` (default) | `POLICIES["strict"]` |
+| Rule (`PaymentGuardPolicy(...)`) | Reason code | `POLICIES["warn"]` (default) | `POLICIES["carefulBuyer"]` / `POLICIES["strict"]` |
 |---|---|---|---|
 | `pay_to_mismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
 | `pay_to_invalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
@@ -89,17 +102,40 @@ A stopped payment raises the x402 abort error with text like:
 
 Each rule takes `"allow"`, `"warn"` or `"block"`, e.g.
 `dataclasses.replace(POLICIES["warn"], pay_to_mismatch="block")`. A custom `PaymentGuardPolicy(...)` leaves
-`paid_url_unknown` at `"warn"` unless you set it: add `paid_url_unknown="block"` (as `POLICIES["strict"]` does) if an
-unknown paid URL should stop the payment. Every decision carries `reasons` (code, effect,
+`paid_url_unknown` at `"warn"` unless you set it: add `paid_url_unknown="block"` (as `POLICIES["carefulBuyer"]` /
+`POLICIES["strict"]` do) if an unknown paid URL should stop the payment. Every decision carries `reasons` (code, effect,
 rule, fact), `facts`, `policy_rule`, `dispute_url` and a `message`. Reason texts state facts only; seller text is
 never echoed except a parsed host name.
+
+### Facts Bundle
+
+`decision.facts` is the bundle the guard compared. It is measurements plus a receipt link. It has no score and no grade.
+
+| Field | What it is |
+|---|---|
+| `covered` | Whether BotsRated has a probe record for the host |
+| `host` | Host that was looked up (only the host name was sent) |
+| `known_pay_tos` | payTo addresses BotsRated's probes recorded |
+| `listing_pay_to` | payTo from a directory listing, when present. A listing is not a probe observation |
+| `observed_network` | Network the probes recorded |
+| `observed_amount` | Last amount recorded on the probed route, in atomic units |
+| `stale` | True when the latest probe is older than 24 hours |
+| `receipt_url` | `https://botsrated.com/receipt/...` when the preflight included a receipt on botsrated.com |
+
+`reasons` lists each fact (`code`, `effect` of `info`, `warn` or `block`, `rule`, `fact`). `dispute_url` is
+https://botsrated.com/disputes. `would_block` is true when a rule's effect is `block`, including in dry-run, where
+`action` stays `allow`.
+
+The hosted preflight body is larger (see the MCP facts bundle in the repository README). The guard keeps this
+smaller local bundle and does not copy a score out of it, because the response has none.
 
 ### Options
 
 | Option | Default | Meaning |
 |---|---|---|
-| `policy` | `POLICIES["warn"]` | Which facts warn and which stop a payment |
-| `dry_run` | `False` | Log decisions, stop nothing, add no retry key. Recommended first setting |
+| `preset` | omitted (behaves as `warn`) | `warn`, `carefulBuyer`, or `dry-run-only`. `dry-run-only` forces dry-run |
+| `policy` | `POLICIES["warn"]` | Which facts warn and which stop a payment. Replaces the preset's rule table when set |
+| `dry_run` | `False` | Log decisions, stop nothing, add no retry key. Forced on for preset `dry-run-only` |
 | `hosted` | `True` | `False`: nothing is sent to botsrated.com |
 | `fail_open` | `True` | `False`: stop the payment when BotsRated can't be reached or the guard errors |
 | `retry_key` | `True` | Add a `payment-identifier` id where the seller advertises it |
