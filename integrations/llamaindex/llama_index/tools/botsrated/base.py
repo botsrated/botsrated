@@ -22,7 +22,7 @@ PAYMENT_POLICY = GuardPolicy(pay_to_mismatch="block")
 class BotsRatedToolSpec(BaseToolSpec):
     """Look up BotsRated measurements of an x402 seller before paying it.
 
-    ``preflight`` is free. ``paid_check`` ($0.001 USDC on Base; first 100 per day free) is only exposed when the client
+    ``preflight`` is free. ``paid_check`` ($0.001 USDC on Base; first 25 per UTC day free) is only exposed when the client
     was created with ``budget_usd`` and ``x402_client`` (an ``x402ClientSync``; the client signs only a validated
     quote rebuilt from allowlisted fields). The older ``paying_get`` re-reads the 402 itself and is not recommended.
     """
@@ -69,7 +69,7 @@ class BotsRatedToolSpec(BaseToolSpec):
         return out
 
     def paid_check(self, host: str) -> dict[str, Any]:
-        """Paid: $0.001 USDC on Base (first 100 per day free, nothing charged), within the user's budget. Full BotsRated facts for one seller host.
+        """Paid: $0.001 USDC on Base (first 25 per UTC day free, nothing charged), within the user's budget. Full BotsRated facts for one seller host.
 
         Args:
             host: The seller host or URL.

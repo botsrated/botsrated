@@ -32,7 +32,7 @@ with botsrated:
 ```
 
 Tools: `preflight`, `coverage`, `sample`, `history` (free), and `check`, `report`, `best` (paid x402 routes:
-$0.001, $0.002 and $0.01 USDC on Base; the first 100 checks and 10 reports per client per UTC day are free).
+$0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per client per UTC day are free).
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 

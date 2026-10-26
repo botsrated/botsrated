@@ -42,8 +42,8 @@ __all__ = [
 BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349"
 # Published prices (since 2026-10-23) in atomic USDC. Quotes above these are refused.
 PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 1000, "report": 2000, "best": 10000}
-# Free calls per client (IP) per UTC day. Inside the quota BotsRated answers 200 with charged: false, no 402.
-FREE_DAILY_QUOTA: dict[str, int] = {"check": 100, "report": 10, "best": 0}
+# Free calls per client (IP) per UTC day: 25 checks, 3 reports. Inside the quota BotsRated answers 200 with charged: false, no 402.
+FREE_DAILY_QUOTA: dict[str, int] = {"check": 25, "report": 3, "best": 0}
 # Longest payment authorization window accepted for a BotsRated payment.
 MAX_TIMEOUT_SECONDS = 600
 # EIP-3009 needs only the token's EIP-712 domain name/version. Any other ``extra`` key (e.g.
@@ -254,11 +254,11 @@ class BotsRatedClient:
         return result
 
     def check(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.001; first 100/day free). Facts, paid test-buys and recent receipts for one host."""
+        """Paid ($0.001; first 25 per UTC day free). Facts, paid test-buys and recent receipts for one host."""
         return self._paid(f"/v1/check?host={quote(host_of(url_or_host), safe='')}", "check")
 
     def report(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.002; first 10/day free). Full receipt history for one host."""
+        """Paid ($0.002; first 3 per UTC day free). Full receipt history for one host."""
         return self._paid(f"/v1/report/{quote(host_of(url_or_host), safe='')}", "report")
 
     def best(self, task: str, sort: str | None = None, max_price_usd: float | None = None) -> dict[str, Any]:
