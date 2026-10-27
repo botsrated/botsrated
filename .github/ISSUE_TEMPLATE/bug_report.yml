@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Security issue? Do not file it here. See SECURITY.md (botsrated@gmail.com, subject "Security").
-        Wrong data about a seller or MCP server? Use https://botsrated.com/disputes instead.
+        A measurement to reply to? Use https://botsrated.com/disputes instead. A measurement is a signed record, not a finding about the seller.
   - type: dropdown
     id: component
     attributes:

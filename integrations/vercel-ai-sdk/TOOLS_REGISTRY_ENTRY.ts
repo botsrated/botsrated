@@ -1,12 +1,12 @@
 // Prepared entry for vercel/ai content/tools-registry/registry.ts (PR title: "feat(tools-registry): add botsrated").
-// Submitted as vercel/ai#23894 (2026-10-23, from amcc8q; the PR uses isStepCount per registry convention). npm: @botsrated/ai-sdk; docs: https://botsrated.com/docs/ai-sdk
+// Submitted as vercel/ai#23894 (2026-10-23; the PR uses isStepCount per registry convention). npm: @botsrated/ai-sdk; docs: https://botsrated.com/docs/ai-sdk
   {
     slug: 'botsrated',
     name: 'BotsRated',
     description:
-      'Pre-payment check for x402 sellers. Free preflight returns the latest unpaid, signed probe of a seller (status, valid 402, latency, observed price and payTo) and flags a payTo never seen for that host. Optional check ($0.001 USDC on Base, first 25 per UTC day free) with a user-set budget.',
+      'Pre-payment check for x402 sellers. Free preflight (no key, rate limits) returns the latest unpaid, signed probe of a seller (status, valid 402, latency, observed price and payTo) and reports a payTo never seen for that host. Optional check ($0.001 USDC on Base, first 25 per client IP per UTC day free) with a user-set budget. Measurements and signed receipts only.',
     packageName: '@botsrated/ai-sdk',
-    tags: ['payments', 'x402', 'trust'],
+    tags: ['payments', 'x402'],
     installCommand: {
       pnpm: 'pnpm add @botsrated/ai-sdk',
       npm: 'npm install @botsrated/ai-sdk',

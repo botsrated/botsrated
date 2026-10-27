@@ -12,8 +12,8 @@ name: Publish npm package (trusted publishing)
 #   3. review writes "What you are approving" to the run's Summary page: package@version, the commit, a compare link
 #      and commit list since the commit of the last version published on npm (its gitHead or provenance commit, not
 #      the newest tag; tags whose version isn't on npm are flagged), and the sha256 of the tarball to be published.
-#   4. A real publish waits in the "npm-publish" environment until a required reviewer (Anton) approves it. GitHub
-#      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
+#   4. A real publish waits in the "npm-publish" environment until a required reviewer (the org owner) approves it. GitHub
+#      checks 2FA when that reviewer signs in, not on each approval, and an approval made through the API with a token needs
 #      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
 #      account. Dry runs don't use the environment and need no approval.
 #   5. After a successful (non-dry-run) publish, the tag job creates the annotated tag <name>-v<version> on that
@@ -39,7 +39,8 @@ name: Publish npm package (trusted publishing)
 # Only publish has id-token. Every npm job installs the npm CLI only from a tarball whose sha512 matches
 # NPM_CLI_INTEGRITY below (same value as the registry's dist.integrity for that version).
 #
-# Before the first real run (repo owner): see docs/drafts/README.md ("What Anton sets up").
+# Before the first real run (repo owner): see docs/drafts/README.md ("Production publish (OIDC only)" and "Setup (once)").
+# Production publishes use this workflow's OIDC trusted publishing only. Do not run npm publish from a shared machine.
 # Publish order: x402-client first, then vercel-ai-sdk (it depends on @botsrated/x402-preflight from npm).
 # Provenance note: npm provenance names this workflow run on main and its commit (the same commit the tag gets).
 
@@ -52,7 +53,7 @@ on:
         type: choice
         options: [x402-client, vercel-ai-sdk]
       version:
-        description: "Version to release; must equal package.json's version on main, e.g. 0.2.0"
+        description: "Version to release; must equal package.json's version on main, e.g. 0.2.1"
         required: true
         type: string
       dry_run:

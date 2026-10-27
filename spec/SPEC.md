@@ -5,7 +5,7 @@
 | Status | Draft for comment (v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4; v0.2.1: reference schedules, MCP retention and receipt URLs, §3.4 and §5; no format change). Not stable: fields may still change before 1.0 (see §11). |
 | Date | 2026-10-23 |
 | Editors | BotsRated (https://botsrated.com) |
-| Reference implementation | https://botsrated.com (beta). Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
+| Reference implementation | https://botsrated.com. Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
 | Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs) |
 | License | Text CC BY 4.0. Schema, examples and code MIT (§12) |
 
@@ -264,6 +264,7 @@ The producer MUST NOT post a composite score that §5 does not define.
 - Show `stale`.
 
 ## 9. Disputes and corrections
+A dispute is a seller's reply about a measurement. It is not a finding about the seller. The signed receipt is the record.
 - **Channel.** `POST https://botsrated.com/v1/dispute` with JSON `{host, statement, receipt_id?, contact?}`. It is free and returns `202 {dispute_id}`. Disputes are stored for 90 days.
 - **Re-test.** The producer re-tests within 48 h and publishes the seller's reply next to the data.
 - **72-hour notice.** A failing or doubtful paid result (not delivered, empty, failed check, or `looks_correct` not yet `true`) MUST be held privately (`status_flag: pending_notice`) and re-tested first. The seller MUST be notified and given **72 hours** to respond before the result is published. The hold MUST NOT be published or anchored on-chain while it lasts.

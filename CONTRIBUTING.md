@@ -8,8 +8,8 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 
 - **Bugs:** open an issue with the [bug report form](https://github.com/botsrated/botsrated/issues/new/choose).
 - **Security issues:** do not open a public issue. See [SECURITY.md](SECURITY.md).
-- **Wrong data about a seller or MCP server:** use https://botsrated.com/disputes (free). It is re-tested and the
-  reply is published next to the data.
+- **A measurement to reply to:** use https://botsrated.com/disputes (free). It is re-checked and the
+  reply is published next to the data. A measurement is a signed record, not a finding about the seller.
 - **Pull requests:** welcome for the integrations, the spec and the docs. For anything larger than a small fix,
   please open an issue first so we can agree on the approach.
 

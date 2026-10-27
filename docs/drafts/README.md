@@ -2,11 +2,18 @@
 
 `publish-npm.yml` and `publish-pypi.yml` belong in `.github/workflows/`. They are kept here because the token
 that prepared them has no `workflow` scope. To enable them, a maintainer copies them into `.github/workflows/`
-(e.g. through the GitHub web UI) after the setup below.
+(e.g. through the GitHub web UI) after the setup below. The copies in `.github/workflows/` are the ones that run.
+
+## Production publish (OIDC only)
+
+Production releases go through these workflows' Trusted Publishing (OIDC) only. Do not run `npm publish` or
+`twine upload` from a shared machine for a production release. Do not put an npm or PyPI token on a shared
+machine or in this repo. npm publishing access should require two-factor authentication and disallow tokens.
+PyPI should use a trusted publisher, with API tokens removed.
 
 ## The release gate (phone-friendly, no signed tags)
 
-Anton releases from the GitHub iPhone app, so the gate doesn't need GPG or SSH signing:
+Releases are started from the GitHub iPhone app, so the gate doesn't need GPG or SSH signing:
 
 1. **Manual run on main only.** The workflows run only by `workflow_dispatch`. The first job (`gate`) fails unless
    the event is `workflow_dispatch` and the ref is `refs/heads/main`. Dry run is on by default.
@@ -30,7 +37,7 @@ Anton releases from the GitHub iPhone app, so the gate doesn't need GPG or SSH s
    The approval screen itself shows no diff, so open the run's Summary first.
    The publish job checks that the files it uploads have exactly those checksums.
 5. **A reviewer approves.** Only a real publish uses the `npm-publish` / `pypi-publish` environment, which has
-   Anton as the required reviewer. Dry runs never wait for approval. The publish job is the only one with
+   the org owner as the required reviewer. Dry runs never wait for approval. The publish job is the only one with
    `id-token: write`.
 6. **CI tags the release.** After a successful real publish, a final `tag` job creates the annotated tag
    `<package>-v<version>` on that commit with the `GITHUB_TOKEN`. It's the only job with `contents: write`. It
@@ -54,17 +61,17 @@ and a fingerprint allowlist in `signers.txt`) and its self-test `test-verify-tag
 
 ## Setup (once)
 
-Decided: the bot has its own GitHub account, **`botsrated-bot`**, and **Anton (`amcc8q`) is the only owner and
-the only reviewer**. Anton starts releases himself.
+Decided: the bot has its own GitHub account, **`botsrated-bot`**, and **the org owner account is the only owner and
+the only reviewer**. The org owner starts releases.
 
 **Accounts:**
 - `botsrated-bot`: member of the `botsrated` org and a **Write** collaborator on this repo (not Maintain or Admin).
   Its only credential on the box is a fine-grained token for this repo only, with **Contents** and **Pull
   requests** read/write. No Administration, Workflows, Actions, Deployments, Environments, Secrets or Commit
-  statuses access. It can push branches and open PRs; it can't merge to main without Anton's approval, change
-  workflows, start a release or approve a deployment. Its 2FA (passkey or TOTP) and recovery codes stay with Anton,
-  not on the box.
-- `amcc8q` (Anton): the only org owner and repo admin, and the only required reviewer on both environments. The box
+  statuses access. It can push branches and open PRs; it can't merge to main without the org owner's approval, change
+  workflows, start a release or approve a deployment. Its 2FA (passkey or TOTP) and recovery codes stay with the org
+  owner, not on the box.
+- The org owner account: the only org owner and repo admin, and the only required reviewer on both environments. The box
   and the bot's connectors must hold **no** credential for this account. Otherwise the bot could open a PR as one
   account and approve it as the other.
 
@@ -75,12 +82,12 @@ the only reviewer**. Anton starts releases himself.
 - require the **8 CI checks** (`Python …` ×3, `Node … (…)` ×4, `Receipt spec verifier`), each pinned to the
   **GitHub Actions** source, so a commit status posted by a token can't stand in for a check.
 
-So the bot's PRs need Anton's approval, and Anton's own PRs need an approval from the other Write account, the bot.
-That one is a formality, not a review, since Anton wrote the change.
+So the bot's PRs need the org owner's approval, and the org owner's own PRs need an approval from the other Write account, the bot.
+That one is a formality, not a review, since the org owner wrote the change.
 
-**Environments** `npm-publish` and `pypi-publish`: Anton is the only required reviewer and **"Allow administrators
-to bypass configured protection rules" is off**. Prevent self-review stays off, because Anton starts the runs he
-approves.
+**Environments** `npm-publish` and `pypi-publish`: the org owner is the only required reviewer and **"Allow administrators
+to bypass configured protection rules" is off**. Prevent self-review stays off, because the org owner starts the runs
+they approve.
 
 **Tags:** a tag ruleset for `*-v*` with only GitHub Actions as a bypass isn't possible (GitHub rejected the Actions
 integration as a bypass actor). Anyone with Write, including the bot, can therefore create a `<package>-v*` tag.
@@ -89,7 +96,7 @@ published.
 
 **Checklist (Settings):**
 - **Environments** `npm-publish` and `pypi-publish` (Settings → Environments):
-  - required reviewer: Anton only;
+  - required reviewer: the org owner only;
   - **untick "Allow administrators to bypass configured protection rules"**, otherwise an admin can start the
     waiting job without an approval;
   - deployment branches: selected, `main` only. npm and PyPI trusted publishing bind to the workflow file and the
@@ -114,16 +121,16 @@ published.
   checking that before tapping Approve. Mitigation: the main ruleset requires a pull request approved by the other
   account, with no bypass.
 - **The approval is only as strong as the reviewer account.** 2FA is checked at sign-in, not per approval, and a
-  token with the right scope can approve through the API without 2FA. Keep the account signed in only on Anton's
+  token with the right scope can approve through the API without 2FA. Keep the account signed in only on the org owner's
   own devices, and keep tokens for that account at the smallest scope.
 - **Admin bypass.** An admin can bypass environment rules and rulesets unless bypass is switched off. Untick it on
   both environments.
 - **Workflows approving PRs.** With "Allow GitHub Actions to create and approve pull requests" on, a workflow
   could open and approve a PR into main. Keep it off.
-- **Two accounts, one human.** `botsrated-bot` and `amcc8q` are separate, so GitHub records who did what, but the
-  review is only independent while the box holds no `amcc8q` credential. Anton's own PRs are approved by the bot,
-  which is a formality. A repo admin or org owner (Anton) can still edit or delete the ruleset and the environment
-  rules in Settings; the audit log is the only record, so keep that role on Anton's own devices.
+- **Two accounts, one human.** `botsrated-bot` and the org owner account are separate, so GitHub records who did what, but the
+  review is only independent while the box holds no credential for the org owner account. The org owner's own PRs are approved by the bot,
+  which is a formality. A repo admin or org owner can still edit or delete the ruleset and the environment
+  rules in Settings; the audit log is the only record, so keep that role on the org owner's own devices.
 - **Tags can be created by anyone with Write.** There's no tag ruleset (see Setup). The approval summary doesn't
   trust tags: its base comes from the registry, and unpublished or moved tags show as a WARNING.
 - **No independent signature.** Without signed tags nothing outside GitHub vouches for the commit. npm

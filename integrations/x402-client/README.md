@@ -11,13 +11,11 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.2.1 is not released yet. The latest version on npm is
-[`@botsrated/x402-preflight` 0.1.4](https://www.npmjs.com/package/@botsrated/x402-preflight), which does not
-include the payment guard.**
+**Status: published on npm as [`@botsrated/x402-preflight` 0.2.1](https://www.npmjs.com/package/@botsrated/x402-preflight).**
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
-**Hosted checks.** By default (`hosted: true`) this package calls BotsRated's free API (`https://botsrated.com/v1/preflight`) and sends it **only the seller's host name** (never the path, query, wallet, amount, nonce, payment header or request body). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT license. `hosted: false` turns hosted checks off: nothing is then sent to botsrated.com, and only the local checks, the retry key and the on-chain check (which goes only to the RPCs you set) run.
+**Hosted checks.** By default (`hosted: true`) this package calls BotsRated's preflight (`https://botsrated.com/v1/preflight`; free, no key, rate limits) and sends it **only the seller's host name** (never the path, query, wallet, amount, nonce, payment header or request body). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT license. `hosted: false` turns hosted checks off: nothing is then sent to botsrated.com, and only the local checks, the retry key and the on-chain check (which goes only to the RPCs you set) run.
 
 ## Install
 
@@ -332,8 +330,8 @@ const botsrated = new BotsRatedClient({
 const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 0.25 });
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
-await botsrated.check("seller.example");            // $0.001 (first 25 per UTC day free)
-await botsrated.report("seller.example");           // $0.002 (first 3 per UTC day free)
+await botsrated.check("seller.example");            // $0.001 (first 25 per client IP per UTC day free)
+await botsrated.report("seller.example");           // $0.002 (first 3 per client IP per UTC day free)
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 
@@ -344,11 +342,11 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   settle and the reservation is released (`payment_not_created`). The older
   `fetchWithPayment: wrapFetchWithPayment(fetch, client)` still works, but it re-reads the 402 itself, so
   register the guard on the same `x402Client` so that re-served 402 is checked again before signing.
-- Free daily quota (`FREE_DAILY_QUOTA`): BotsRated serves the first 25 `/v1/check` and 3 `/v1/report` calls per client
+- Free daily quota (`FREE_DAILY_QUOTA`): BotsRated serves the first 25 `/v1/check` and 3 `/v1/report` calls per client IP
   per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
   even without `paid` until the quota is used up (then they throw `paid_disabled`).
-  `client.lastFreeQuota` shows the remaining quota. `/v1/best` has no free quota. Preflight stays free and unlimited.
+  `client.lastFreeQuota` shows the remaining quota. `/v1/best` has no free quota. Preflight stays free, no key, rate limits.
 - Otherwise the client reads the 402 quote unpaid first. It accepts it only if **every** option is `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - Only a one-shot EIP-3009 payment is accepted: an option whose `extra` holds anything beyond the token's
@@ -374,7 +372,7 @@ npm run build && node scripts/smoke-free.mjs   # live, free routes only
 ## Notes
 
 - The guard reports facts BotsRated measured. It does not rate or endorse any seller, and it is not a finding about
-  one. Sellers can dispute a measurement at https://botsrated.com/disputes.
+  one. A seller can send a reply about a measurement at https://botsrated.com/disputes.
 - Security reports: [SECURITY.md](https://github.com/botsrated/botsrated/blob/main/SECURITY.md).
 - Terms: https://botsrated.com/terms. Privacy: https://botsrated.com/privacy.
 - License: MIT.

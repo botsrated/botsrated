@@ -94,7 +94,7 @@ async with botsrated_mcp:
 ```
 
 The paid lookups (`check` $0.001, `report` $0.002, `best` $0.01 USDC on Base; the first 25 checks and 3 reports per
-client per UTC day are free) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard.
+client IP per UTC day are free) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard.
 
 ## Run the example and tests
 
