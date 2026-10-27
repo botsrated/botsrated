@@ -5,6 +5,8 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Payment guard 0.2.1 (both packages; not published). Named presets on the existing rule tables. Publish waits for
+  Anton's approval in `npm-publish` / `pypi-publish`. See 0.2.1 below.
 - Public docs and `FREE_DAILY_QUOTA`: 25 checks and 3 reports per client per UTC day. Prices unchanged ($0.001 check, $0.002 report, $0.01 best). Preflight stays free and unlimited. The payment guard still asks unpaid first and does not enforce the quota itself. No package version bump.
 
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
@@ -39,6 +41,21 @@ All notable changes to the packages in this repository. Each package has its own
   build byte for byte; the npm CLI is installed only from a checksum-verified tarball.
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
+
+## 0.2.1 (both packages; prepared, not released)
+
+`@botsrated/x402-preflight` 0.2.1 and `botsrated` 0.2.1 add named payment-guard presets on top of the prepared 0.2.0
+guard. This does not publish. A real npm or PyPI upload still waits for Anton's approval.
+
+Added (both):
+- `policies.carefulBuyer` / `POLICIES["carefulBuyer"]`: alias of `strict`. Stops a payment when the payTo wasn't
+  observed, is invalid, the 402 names another host, or the URL being paid is unknown. A price above the last observed
+  amount still warns. An uncovered or stale host stays informational.
+- `presets["dry-run-only"]` / `PRESETS["dry-run-only"]` and `dryRunOnly()` / `dry_run_only()`: dry-run advice. Logs
+  `wouldBlock` / `would_block` and never stops a payment. `preset: "dry-run-only"` / `preset="dry-run-only"` forces
+  dry-run. No new rule axis.
+- Docs: pick a named preset, optionally dry-run. Decisions and `preflight` return facts and receipt links. No score
+  and no grade. The zero-config default stays `policies.warn` / `POLICIES["warn"]`.
 
 ## 0.2.0 (both packages; prepared, not released)
 

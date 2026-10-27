@@ -6,7 +6,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 # Sent on hosted BotsRated calls. No install id, wallet or other user identifier.
 USER_AGENT = f"botsrated-python/{VERSION}"
 BOTSRATED_BASE_URL = "https://botsrated.com"

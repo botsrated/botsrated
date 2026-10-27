@@ -1,0 +1,42 @@
+{
+  "description": "Shared payment-guard rule effects for TypeScript policies and Python POLICIES. carefulBuyer is an alias of strict. You set these thresholds. The guard returns facts and receipt links, not a score or a grade.",
+  "fields": [
+    "payToMismatch",
+    "payToInvalid",
+    "priceAboveObserved",
+    "resourceHostMismatch",
+    "paidUrlUnknown",
+    "notCovered",
+    "stale"
+  ],
+  "pythonFields": {
+    "payToMismatch": "pay_to_mismatch",
+    "payToInvalid": "pay_to_invalid",
+    "priceAboveObserved": "price_above_observed",
+    "resourceHostMismatch": "resource_host_mismatch",
+    "paidUrlUnknown": "paid_url_unknown",
+    "notCovered": "not_covered",
+    "stale": "stale"
+  },
+  "presets": {
+    "warn": {
+      "payToMismatch": "warn",
+      "payToInvalid": "warn",
+      "priceAboveObserved": "warn",
+      "resourceHostMismatch": "warn",
+      "paidUrlUnknown": "warn",
+      "notCovered": "allow",
+      "stale": "allow"
+    },
+    "strict": {
+      "payToMismatch": "block",
+      "payToInvalid": "block",
+      "priceAboveObserved": "warn",
+      "resourceHostMismatch": "block",
+      "paidUrlUnknown": "block",
+      "notCovered": "allow",
+      "stale": "allow"
+    },
+    "carefulBuyer": "strict"
+  }
+}

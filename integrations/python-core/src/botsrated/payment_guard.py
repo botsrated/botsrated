@@ -4,7 +4,8 @@ What it does, and nothing more:
 
 - Before your agent signs: looks up facts BotsRated measured about the seller's HOST (only the host name is sent to
   botsrated.com) and compares them locally with the payment request. Advice-only by default: it reports facts and
-  stops a payment only when you choose a blocking policy (e.g. ``POLICIES["strict"]``).
+  stops a payment only when you choose a blocking policy (e.g. ``POLICIES["carefulBuyer"]``, an alias of
+  ``POLICIES["strict"]``).
 - While the payload is built: adds a random x402 ``payment-identifier`` retry key, only when the seller advertises
   that extension, through x402's extension mechanism.
 - After: records the payment locally (never the signature) and offers a read-only on-chain check of whether it
@@ -71,18 +72,35 @@ class PaymentGuardPolicy:
     price_above_observed: RuleEffect = "warn"  # same route, amount above the last one recorded
     resource_host_mismatch: RuleEffect = "warn"  # 402 resource.url names another host (checked locally)
     # The URL being paid is unknown to the guard (no ``guard.request(url)`` / ``wrap_get``), so the host comes only
-    # from the seller's own 402. Advice by default; POLICIES["strict"] blocks.
+    # from the seller's own 402. Advice by default; POLICIES["strict"] / POLICIES["carefulBuyer"] block.
     paid_url_unknown: RuleEffect = "warn"
     not_covered: RuleEffect = "allow"  # reported as info
     stale: RuleEffect = "allow"  # reported as info
 
 
+_WARN = PaymentGuardPolicy()
+# Stops a payment when the payTo wasn't observed, is invalid, the 402 names another host, or the URL being paid is
+# unknown (use guard.request(url) or wrap_get). A price above the last observed amount still warns.
+_STRICT = PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", resource_host_mismatch="block", paid_url_unknown="block")
+
+# Rule-effect tables. Choosing one is your decision; the zero-config default is POLICIES["warn"].
 POLICIES: dict[str, PaymentGuardPolicy] = {
     # Advice only: never stops a payment. The default.
-    "warn": PaymentGuardPolicy(),
-    # Stops a payment when the payTo was not recorded by BotsRated's probes, is not an address, the 402 names another
-    # host, or the URL being paid is unknown (use guard.request(url) or wrap_get).
-    "strict": PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", resource_host_mismatch="block", paid_url_unknown="block"),
+    "warn": _WARN,
+    # Same effects as "carefulBuyer".
+    "strict": _STRICT,
+    # Friendly alias of "strict". Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid
+    # URL is unknown.
+    "carefulBuyer": _STRICT,
+}
+
+# Named ways to start the guard. Unpack one into PaymentGuard(...), or pass its name as preset=.
+# carefulBuyer is the stricter rule table. "dry-run-only" is advice: it does not add a new rule.
+PRESETS: dict[str, dict[str, Any]] = {
+    "warn": {"policy": POLICIES["warn"]},
+    "carefulBuyer": {"policy": POLICIES["carefulBuyer"]},
+    # Log would_block, never stop a payment, add no retry key. The rule table stays warn unless you pass another.
+    "dry-run-only": {"dry_run": True, "policy": POLICIES["warn"]},
 }
 
 _RULE_NAMES = {
@@ -106,6 +124,8 @@ class GuardReason:
 
 @dataclass
 class GuardFacts:
+    """Facts the guard compared: measurements and, when present, a receipt link. No score and no grade."""
+
     covered: bool
     host: str
     known_pay_tos: list[str] = field(default_factory=list)
@@ -342,8 +362,12 @@ class PaymentGuard:
     """Payment guard. Zero-config: advice only, hosted host-name lookup, fail-open, retry key where advertised.
 
     Args:
+        preset: ``warn`` (advice only), ``carefulBuyer`` (same stops as ``POLICIES["strict"]``), or ``dry-run-only``
+            (log ``would_block``, never stop a payment). ``dry-run-only`` forces dry-run even when ``dry_run=False``.
+            An explicit ``policy`` replaces the preset's rule table. The zero-config default is ``warn``.
         policy: Which facts warn or stop a payment. Default ``POLICIES["warn"]`` (advice only).
-        dry_run: Log decisions and change nothing (no payment stopped, no retry key added). Recommended first setting.
+        dry_run: Log decisions and change nothing (no payment stopped, no retry key added). Ignored when
+            ``preset`` is ``dry-run-only`` (that preset always dry-runs).
         hosted: Call BotsRated's free hosted preflight. With False nothing is sent to botsrated.com.
         fail_open: When BotsRated can't be reached (or the guard errors): True allows (default), False stops.
         retry_key: Add a ``payment-identifier`` id where the seller advertises it. Default True.
@@ -357,6 +381,7 @@ class PaymentGuard:
     def __init__(
         self,
         *,
+        preset: str | None = None,
         policy: PaymentGuardPolicy | None = None,
         dry_run: bool = False,
         hosted: bool = True,
@@ -371,11 +396,16 @@ class PaymentGuard:
         preflight: Callable[[str], tuple[bool, dict[str, Any]]] | None = None,
         on_decision: Callable[[GuardDecision], None] | None = None,
     ) -> None:
-        self.policy = policy or POLICIES["warn"]
-        self.dry_run = dry_run
+        if preset is not None and preset not in PRESETS:
+            raise ValueError(f'Unknown payment guard preset "{preset}". Expected warn, carefulBuyer, or dry-run-only.')
+        named = PRESETS[preset] if preset is not None else {}
+        # An explicit policy replaces the preset's rule table. dry-run-only forces advice even if dry_run=False.
+        self.preset = preset
+        self.policy = policy if policy is not None else named.get("policy", POLICIES["warn"])
+        self.dry_run = True if preset == "dry-run-only" else dry_run
         self.hosted = hosted
         self.fail_open = fail_open
-        self.retry_key = retry_key and not dry_run
+        self.retry_key = retry_key and not self.dry_run
         if onchain:  # configuration errors (more than 3 RPCs) surface here, not mid-payment
             rpc_list_of(onchain.get("rpcs", DEFAULT_BASE_RPCS), onchain.get("extra_rpc"))
         self.onchain = onchain
@@ -820,6 +850,17 @@ class PaymentGuard:
         if json.dumps(check, sort_keys=True) != json.dumps(dump(payload), sort_keys=True):
             return payload
         return out
+
+
+def dry_run_only(**kwargs: Any) -> PaymentGuard:
+    """Named preset ``dry-run-only``. Logs ``would_block`` and never stops a payment, even if ``policy`` would.
+
+    Dry-run is forced; passing ``dry_run=False`` does not turn it off. The rule table stays ``POLICIES["warn"]``
+    unless you pass ``policy`` (for example ``POLICIES["carefulBuyer"]``, to log the stops that preset would make).
+    """
+    kwargs.pop("dry_run", None)
+    kwargs["preset"] = "dry-run-only"
+    return PaymentGuard(**kwargs)
 
 
 def decision_as_dict(d: GuardDecision) -> dict[str, Any]:

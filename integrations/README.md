@@ -10,7 +10,7 @@ the user sets.
 [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) (0.1.2).
 npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (0.1.4),
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).
-`botsrated` 0.2.0 and `@botsrated/x402-preflight` 0.2.0 (payment guard) are prepared in this repo but not released.
+`botsrated` 0.2.1 and `@botsrated/x402-preflight` 0.2.1 (payment guard, named presets) are prepared in this repo but not released. Publishing waits for Anton's approval. 0.2.0 was the prepared payment-guard cut and is not on the registries either.
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2
