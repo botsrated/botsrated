@@ -7,6 +7,8 @@ All notable changes to the packages in this repository. Each package has its own
 
 - Payment guard 0.2.1 (both packages; not published). Named presets on the existing rule tables. Publish waits for
   Anton's approval in `npm-publish` / `pypi-publish`. See 0.2.1 below.
+- Public docs and `FREE_DAILY_QUOTA`: 25 checks and 3 reports per client per UTC day. Prices unchanged ($0.001 check, $0.002 report, $0.01 best). Preflight stays free and unlimited. The payment guard still asks unpaid first and does not enforce the quota itself. No package version bump.
+
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
   packages); viem dev dependency 2.57.11.

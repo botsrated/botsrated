@@ -301,8 +301,8 @@ botsrated = BotsRatedClient(budget_usd="0.05", x402_client=client)   # signs onl
 guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
-botsrated.check("seller.example")     # $0.001 (first 100/day free)
-botsrated.report("seller.example")    # $0.002 (first 10/day free)
+botsrated.check("seller.example")     # $0.001 (first 25 per UTC day free)
+botsrated.report("seller.example")    # $0.002 (first 3 per UTC day free)
 botsrated.best("web search")          # $0.01
 ```
 
@@ -314,10 +314,11 @@ the allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSe
 itself, so register the guard on the same x402 client so the re-served 402 is checked again before signing.
 
 How paid calls work:
-- Free daily quota: the first 100 `/v1/check` and 10 `/v1/report` calls per client per UTC day are
+- Free daily quota (`FREE_DAILY_QUOTA`): the first 25 `/v1/check` and 3 `/v1/report` calls per client per UTC day are
   served free (200 with `charged: false` and a `free_quota` block). The client asks unpaid first, so
   inside the quota nothing is paid and the budget is untouched; `check()`/`report()` also work without
   a budget until the quota is used up (then `paid_disabled`). `client.last_free_quota` shows what is left.
+  `/v1/best` has no free quota. Preflight stays free and unlimited.
 - Otherwise the client reads the 402 quote unpaid first. It accepts the quote only if **every** option is `exact` USDC on Base to BotsRated's payTo
   `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying. If the paid call fails or raises, it stays counted

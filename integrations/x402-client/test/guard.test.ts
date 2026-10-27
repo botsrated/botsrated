@@ -262,7 +262,7 @@ describe("paid routes (opt-in, budgeted)", () => {
     const c = new BotsRatedClient({ fetch: f, paid: { budgetUsd: 0.005, fetchWithPayment: pay } });
     const out = await c.check("www.ax1.vc");
     expect(out.charged).toBe(false);
-    expect(out.free_quota.limit).toBe(100);
+    expect(out.free_quota.limit).toBe(100); // 2026-10-23 capture; current quota is FREE_DAILY_QUOTA.check
     expect(pay).not.toHaveBeenCalled();
     expect(c.budget!.spentAtomic).toBe(0n);
     expect(c.budget!.remainingAtomic).toBe(5000n);

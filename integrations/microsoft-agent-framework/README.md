@@ -93,8 +93,8 @@ async with botsrated_mcp:
     result = await Agent(client=chat_client, tools=[botsrated_mcp]).run("Is blockrun.ai a known x402 seller?")
 ```
 
-The paid lookups (`check` $0.001, `report` $0.002, `best` $0.01 USDC on Base; the first 100 checks and 10 reports per
-client per day are free) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard.
+The paid lookups (`check` $0.001, `report` $0.002, `best` $0.01 USDC on Base; the first 25 checks and 3 reports per
+client per UTC day are free) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard.
 
 ## Run the example and tests
 

@@ -227,7 +227,7 @@ def test_free_quota_answer_is_not_charged(found, free_check):
         m.get("/v1/check").respond(200, json=free_check)
         c = BotsRatedClient(budget_usd="0.005", paying_get=lambda u: pytest.fail("must not pay"))
         out = c.check("www.ax1.vc")
-        assert out["charged"] is False and out["free_quota"]["limit"] == 100
+        assert out["charged"] is False and out["free_quota"]["limit"] == 100  # 2026-10-23 capture; current quota is FREE_DAILY_QUOTA["check"]
         assert c.budget.spent_atomic == 0 and c.budget.remaining_atomic == 5000
         assert c.last_free_quota["remaining"] == out["free_quota"]["remaining"]
         # works without a paid config while the quota lasts
