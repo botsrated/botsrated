@@ -57,7 +57,7 @@ The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller
 `observed_network`, `observedAmount` / `observed_amount`, `stale`, `receiptUrl` / `receipt_url`). Pick a named preset
 (`warn`, `carefulBuyer`, or `dry-run-only`) there. The guard does not invent a score from these fields.
 
-The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
+Paid MCP tools: an unpaid call returns an x402 v2 PaymentRequired tool error (nothing is charged), and an x402-aware client retries with the payment in `_meta["x402/payment"]`. The same data is on the HTTP routes, which any x402 client can pay, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
 
 Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
