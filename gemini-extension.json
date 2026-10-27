@@ -1,0 +1,10 @@
+{
+  "name": "botsrated",
+  "version": "0.4.0-beta",
+  "description": "Beta. Signed, timestamped measurements of paid x402 sellers on Base and remote MCP servers, before your agent pays. Free tool: preflight.",
+  "mcpServers": {
+    "botsrated": {
+      "httpUrl": "https://botsrated.com/mcp"
+    }
+  }
+}
