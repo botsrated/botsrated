@@ -8,7 +8,7 @@ BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent 
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
 - paid test-buys, each with its on-chain tx hash.
 
-It reports facts only. No grade or index is shown until a host has 3 paid test-buys on 3 different days.
+It reports facts and signed receipts only; no scores or grades.
 
 This repository documents the **remote** MCP server. There is nothing to install or run locally.
 
@@ -79,14 +79,16 @@ One x402 USDC payment on Base buys one 30-day period. There is no balance and no
 
 | Plan | Price per 30 days | What you get |
 |---|---|---|
-| `alerts-free` | free | 1 host; one signed webhook digest per UTC day when its facts change |
+| `alerts-free` | free | 1 host; one digest per UTC day when its facts change (signed webhook, or Slack/Discord channel webhook). Up to 3 free alert subscriptions per client IP, 1,000 in total |
 | `alerts-10` | $9 | Up to 10 hosts; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
 | `alerts-50` | $29 | Up to 50 hosts; same events |
 | `data-starter` | $49 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (60 requests/min) |
-| `data-pro` | $199 | Same, 600 requests/min |
-| custom | from $499/month | Volume, SLA or bulk delivery: botsrated@gmail.com |
+| `data-pro` | $199 | Same, 600 requests/min, plus the change-event export (`GET /v1/export/changes.ndjson?host=`) |
+| `botpulse-indie` | $5 | BotPulse digests (separate product) to 1 signed webhook |
+| `botpulse-business` | $49 | BotPulse digests to up to 5 endpoints, Discord included |
+| custom | $499+ per 30 days | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
 
-Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Alerts are webhooks only, never email, signed with Ed25519 (`botsrated-prober-1`, see below) over `{"m":"<timestamp>.<raw body>"}`. Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
+Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Alerts go to a signed webhook (Ed25519, `botsrated-prober-1`, see below, over `{"m":"<timestamp>.<raw body>"}`), a Slack incoming webhook or Discord channel webhook (plain text, not signed), or, for alert plans, an email address (one confirmation link first, then plain-text alerts from alerts@botsrated.com). Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
 
 ## Install
 
