@@ -1,8 +1,10 @@
-# BotsRated (beta): MCP server
+# BotsRated: MCP server
 
 **Signed checks of paid AI services, before your agent pays.**
 
-BotsRated (beta) publishes timestamped, receipt-backed measurements of paid x402 agent services on Base:
+BotsRated measures paid AI-agent services with signed receipts. BotPulse is a separate digest and alerts product; these measurements do not claim coverage of every delivery outcome.
+
+BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent services on Base:
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
 - paid test-buys, each with its on-chain tx hash.
 
@@ -23,13 +25,13 @@ This repository documents the **remote** MCP server. There is nothing to install
 ## Tools
 | Tool | Price | What it returns |
 |---|---|---|
-| `preflight` | free, unlimited | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. No score and no grade. See below |
-| `find` | free (uses 1 of the 25 free checks per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
+| `preflight` | free, no key, rate limits | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. No score and no grade. See below |
+| `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
 | `history` | free | Signed daily aggregates for one host, newest first |
-| `check` | $0.001 (x402, USDC on Base); first 25 per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
-| `report` | $0.002 (x402); first 3 per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
+| `check` | $0.001 (x402, USDC on Base); first 25 per client IP per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `report` | $0.002 (x402); first 3 per client IP per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
 
 ## Facts bundle (`preflight` and `check`)
@@ -57,13 +59,13 @@ The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller
 
 The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
 
-Free daily quota: the first 25 checks and 3 reports per client (IP address; IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free and unlimited. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
+Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
 ## Free HTTP endpoints and pages
 
 | | |
 |---|---|
-| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the 25 free checks per UTC day, shared with `/v1/check`) |
+| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the 25 free checks per client IP per UTC day, shared with `/v1/check`) |
 | `GET https://botsrated.com/v1/pulse` | Live totals (cached 60 s): services watched, working in the last 24 h, down or failed in 7 days, checks run in 7 days. Never names a seller |
 | `GET https://botsrated.com/v1/savings-rates` | Measured rates (offline, payTo changes, price vs listing) with sample size, dates and source |
 | https://botsrated.com/sellers | Browse and filter every covered seller and MCP server |
@@ -73,7 +75,7 @@ Free daily quota: the first 25 checks and 3 reports per client (IP address; IPv6
 
 ## Plans (seller alerts and data plans)
 
-One x402 USDC payment on Base buys one 30-day period. There is no balance, no auto-renewal and no refund held; cancelling stops delivery. The dataset stays free.
+One x402 USDC payment on Base buys one 30-day period. There is no balance and no auto-renewal. Cancelling stops delivery. The dataset stays free.
 
 | Plan | Price per 30 days | What you get |
 |---|---|---|
@@ -107,14 +109,14 @@ VS Code (`.vscode/mcp.json`):
 ```
 
 ## Changelog
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md). Catalog listing copy (not submitted from this file): [SUBMISSIONS.md](SUBMISSIONS.md).
 
 ## Security
 Report security issues privately: see [SECURITY.md](SECURITY.md) (botsrated@gmail.com, subject "Security"). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Methodology, disputes
+## Methodology, replies
 - Methodology: https://botsrated.com/methodology
-- Sellers can reply or dispute for free: https://botsrated.com/disputes (`POST /v1/dispute`)
+- A seller can send a reply about a measurement for free: https://botsrated.com/disputes (`POST /v1/dispute`). The measurement is re-checked and the reply is published next to the data. A measurement is a signed record, not a finding about the seller.
 - Dataset signature: https://botsrated.com/dataset.sig.json. Key set: https://botsrated.com/.well-known/botsrated-key
 - Receipt format v0.2.1 (draft; `mcp_probe` receipts for remote MCP servers; v0.2.1 updates reference schedules and MCP retention) and verifier: [`spec/SPEC.md`](spec/SPEC.md), `node spec/verify.mjs <receipt.json|url>`
 
@@ -128,4 +130,4 @@ Raw 32-byte public keys, base64. Fingerprint = sha256 of the raw key bytes. A si
 | `botsrated-prober-1` | active | 2026-10-23T12:00:00Z | (none) | cron probe receipts, daily aggregates, archive manifests | `G5aD8mz2rkbpLPQuEC2t50AaJpMjGcflTXuRmeJETsE=` | `805e75f8795ff38c4805653962ba75991fc8bdcaef3f80441e0775e405a3a628` |
 | `botsrated-staging-1` | retired (verify only) | 2026-10-22T00:00:00Z | 2026-10-23T15:00:00Z | dataset snapshots generated before 2026-10-23T15:00:00Z | `OfGrLtyJYCC1K9jjhvq0Zduwgqq68DvzR1StOo5ZpO0=` | `71db9690ef765ce6b923d63fc71e1a65474e87ee1073532eafb9099b1e6f0288` |
 
-Beta. Payments are USDC on Base mainnet.
+Payments are USDC on Base mainnet.

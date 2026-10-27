@@ -254,11 +254,11 @@ class BotsRatedClient:
         return result
 
     def check(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.001; first 25 per UTC day free). Facts, paid test-buys and recent receipts for one host."""
+        """Paid ($0.001; first 25 per client IP per UTC day free). Facts, paid test-buys and recent receipts for one host."""
         return self._paid(f"/v1/check?host={quote(host_of(url_or_host), safe='')}", "check")
 
     def report(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.002; first 3 per UTC day free). Full receipt history for one host."""
+        """Paid ($0.002; first 3 per client IP per UTC day free). Full receipt history for one host."""
         return self._paid(f"/v1/report/{quote(host_of(url_or_host), safe='')}", "report")
 
     def best(self, task: str, sort: str | None = None, max_price_usd: float | None = None) -> dict[str, Any]:

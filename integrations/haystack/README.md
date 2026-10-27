@@ -1,6 +1,6 @@
 # BotsRated for Haystack
 
-[BotsRated](https://botsrated.com) (beta) checks an x402 seller before your agent pays it. It probes about
+[BotsRated](https://botsrated.com) checks an x402 seller before your agent pays it. It probes about
 4,800 x402 seller hosts on Base, and the remote MCP servers in the Official MCP Registry, without paying them,
 and records each probe (HTTP status, valid 402 challenge, latency, quoted price and payTo) as a signed
 receipt. It also makes real paid test-buys and publishes their transaction links.
@@ -33,14 +33,14 @@ agent = Agent(
     ),
 )
 result = agent.run(messages=[ChatMessage.from_user(
-    "Is https://blockrun.ai/api/v1/chat/completions safe to pay right now?")])
+    "What measurements does BotsRated have for https://blockrun.ai/api/v1/chat/completions?")])
 print(result["last_message"].text)
 botsrated.close()
 ```
 
 Free tools: `preflight`, `coverage`, `sample`, `history`. The server also lists `check`, `report` and `best`,
 which are paid x402 routes ($0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per
-client per UTC day are free). Leave them out of `tool_names` unless your agent can pay x402.
+client IP per UTC day are free). Leave them out of `tool_names` unless your agent can pay x402.
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 

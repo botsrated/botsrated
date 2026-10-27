@@ -13,8 +13,8 @@ name: Publish PyPI package (Trusted Publishing)
 #   3. review writes "What you are approving" to the run's Summary page: project and version, the commit, a compare
 #      link and commit list since the last version published on PyPI (the tag of PyPI's latest version, not the
 #      newest tag; tags whose version isn't on PyPI are flagged), and the sha256 of each file to be uploaded.
-#   4. A real upload waits in the "pypi-publish" environment until a required reviewer (Anton) approves it. GitHub
-#      checks 2FA when he signs in, not on each approval, and an approval made through the API with a token needs
+#   4. A real upload waits in the "pypi-publish" environment until a required reviewer (the org owner) approves it. GitHub
+#      checks 2FA when that reviewer signs in, not on each approval, and an approval made through the API with a token needs
 #      no 2FA at all, so this gate is only as strong as who can sign in as, or hold a token for, a reviewer
 #      account. Dry runs stop after review and need no approval.
 #   5. After a successful upload, the tag job creates the annotated tag <project>-v<version> on that commit with
@@ -33,7 +33,8 @@ name: Publish PyPI package (Trusted Publishing)
 #             files' sha256 against the approval summary and uploads the built files only.
 #   tag     - after a real upload only: creates the release tag (contents: write, no checkout, no id-token).
 #
-# Before the first real run (repo owner): see docs/drafts/README.md ("What Anton sets up").
+# Before the first real run (repo owner): see docs/drafts/README.md ("Production publish (OIDC only)" and "Setup (once)").
+# Production publishes use this workflow's OIDC Trusted Publishing only. Do not run twine upload from a shared machine.
 
 on:
   workflow_dispatch:
@@ -44,7 +45,7 @@ on:
         type: choice
         options: [python-core, langchain, llamaindex, microsoft-agent-framework]
       version:
-        description: "Version to release; must equal pyproject.toml's version on main, e.g. 0.2.0"
+        description: "Version to release; must equal pyproject.toml's version on main, e.g. 0.2.1"
         required: true
         type: string
       dry_run:

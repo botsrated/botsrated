@@ -11,12 +11,11 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.2.1 is not released yet. The latest version on PyPI is
-[`botsrated` 0.1.6](https://pypi.org/project/botsrated/), which does not include the payment guard.**
+**Status: published on PyPI as [`botsrated` 0.2.1](https://pypi.org/project/botsrated/).**
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
-**Hosted checks.** By default (`hosted=True`) this package calls BotsRated's free API (`https://botsrated.com/v1/preflight`) and sends it **only the seller's host name** (never the path, query, wallet, amount, nonce, payment header or request body). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT license. `hosted=False` turns hosted checks off: nothing is then sent to botsrated.com, and only the local checks, the retry key and the on-chain check (which goes only to the RPCs you set) run.
+**Hosted checks.** By default (`hosted=True`) this package calls BotsRated's preflight (`https://botsrated.com/v1/preflight`; free, no key, rate limits) and sends it **only the seller's host name** (never the path, query, wallet, amount, nonce, payment header or request body). Those calls are covered by the BotsRated Terms (https://botsrated.com/terms) and Privacy Policy (https://botsrated.com/privacy), not by the MIT license. `hosted=False` turns hosted checks off: nothing is then sent to botsrated.com, and only the local checks, the retry key and the on-chain check (which goes only to the RPCs you set) run.
 
 ## Install
 
@@ -301,8 +300,8 @@ botsrated = BotsRatedClient(budget_usd="0.05", x402_client=client)   # signs onl
 guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
-botsrated.check("seller.example")     # $0.001 (first 25 per UTC day free)
-botsrated.report("seller.example")    # $0.002 (first 3 per UTC day free)
+botsrated.check("seller.example")     # $0.001 (first 25 per client IP per UTC day free)
+botsrated.report("seller.example")    # $0.002 (first 3 per client IP per UTC day free)
 botsrated.best("web search")          # $0.01
 ```
 
@@ -314,11 +313,11 @@ the allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSe
 itself, so register the guard on the same x402 client so the re-served 402 is checked again before signing.
 
 How paid calls work:
-- Free daily quota (`FREE_DAILY_QUOTA`): the first 25 `/v1/check` and 3 `/v1/report` calls per client per UTC day are
+- Free daily quota (`FREE_DAILY_QUOTA`): the first 25 `/v1/check` and 3 `/v1/report` calls per client IP per UTC day are
   served free (200 with `charged: false` and a `free_quota` block). The client asks unpaid first, so
   inside the quota nothing is paid and the budget is untouched; `check()`/`report()` also work without
   a budget until the quota is used up (then `paid_disabled`). `client.last_free_quota` shows what is left.
-  `/v1/best` has no free quota. Preflight stays free and unlimited.
+  `/v1/best` has no free quota. Preflight stays free, no key, rate limits.
 - Otherwise the client reads the 402 quote unpaid first. It accepts the quote only if **every** option is `exact` USDC on Base to BotsRated's payTo
   `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - The amount is reserved from the budget before paying. If the paid call fails or raises, it stays counted

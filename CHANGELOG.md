@@ -5,9 +5,9 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
-- Payment guard 0.2.1 (both packages; not published). Named presets on the existing rule tables. Publish waits for
-  Anton's approval in `npm-publish` / `pypi-publish`. See 0.2.1 below.
-- Public docs and `FREE_DAILY_QUOTA`: 25 checks and 3 reports per client per UTC day. Prices unchanged ($0.001 check, $0.002 report, $0.01 best). Preflight stays free and unlimited. The payment guard still asks unpaid first and does not enforce the quota itself. No package version bump.
+- Public copy: preflight is described as free, no key, rate limits (it stays free), including client tool text. Free daily quota wording is 25 checks and 3 reports per client IP per UTC day. BotPulse is named as a separate digest and alerts product. No package version bump.
+- Payment guard 0.2.1 is on npm (`@botsrated/x402-preflight`, 2026-10-27) and PyPI (`botsrated`, 2026-10-27). Named presets are under 0.2.1 below. `0.2.0` is also on both registries (2026-10-25).
+- Public docs and `FREE_DAILY_QUOTA`: 25 checks and 3 reports per client IP per UTC day. Prices unchanged ($0.001 check, $0.002 report, $0.01 best). Preflight stays free, no key, rate limits. The payment guard still asks unpaid first and does not enforce the quota itself. No package version bump.
 
 - Dev tooling (no package release): vitest 3.2 -> 4.1.12 in `integrations/x402-client` and `integrations/vercel-ai-sdk`
   (GHSA-5gmw-xhrv-c9v3 tinypool, GHSA-82fw-gwwq-j7x9 / GHSA-qxg6-89mg-rqv8 vitest; test-only, not in the published
@@ -32,7 +32,7 @@ All notable changes to the packages in this repository. Each package has its own
     "Allow GitHub Actions to create and approve pull requests" setting.
 - Release drafts: the release gate no longer needs signed tags. A run is a manual `workflow_dispatch` from main
   whose `version` input must match the package manifest. Everything is built from the run's exact commit, and
-  publishing waits for Anton's approval in the `npm-publish` / `pypi-publish` environment. After a successful
+  publishing waits for the required reviewer's approval in the `npm-publish` / `pypi-publish` environment. After a successful
   publish, CI creates the `<package>-v<version>` tag itself. `verify-tag.sh` stays as an optional check. See
   `docs/drafts/README.md`.
 - Release drafts (no package release; `docs/drafts/`, not installed): tag signatures are verified only against
@@ -42,10 +42,10 @@ All notable changes to the packages in this repository. Each package has its own
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
 
-## 0.2.1 (both packages; prepared, not released)
+## 0.2.1 (both packages; published)
 
-`@botsrated/x402-preflight` 0.2.1 and `botsrated` 0.2.1 add named payment-guard presets on top of the prepared 0.2.0
-guard. This does not publish. A real npm or PyPI upload still waits for Anton's approval.
+`@botsrated/x402-preflight` 0.2.1 and `botsrated` 0.2.1 add named payment-guard presets on top of the 0.2.0
+guard. Published on npm and PyPI on 2026-10-27.
 
 Added (both):
 - `policies.carefulBuyer` / `POLICIES["carefulBuyer"]`: alias of `strict`. Stops a payment when the payTo wasn't
@@ -57,10 +57,10 @@ Added (both):
 - Docs: pick a named preset, optionally dry-run. Decisions and `preflight` return facts and receipt links. No score
   and no grade. The zero-config default stays `policies.warn` / `POLICIES["warn"]`.
 
-## 0.2.0 (both packages; prepared, not released)
+## 0.2.0 (both packages; published)
 
 `@botsrated/x402-preflight` 0.2.0 and `botsrated` 0.2.0 add the **payment guard** and change existing decision
-logic. Read the items marked **Decision logic** before upgrading.
+logic. Published on npm and PyPI on 2026-10-25. Read the items marked **Decision logic** before upgrading.
 
 Why: agents that resend a payment after an ambiguous error can pay twice (AgentKit
 [#1547](https://github.com/coinbase/agentkit/issues/1547) measured it; [#1483](https://github.com/coinbase/agentkit/issues/1483)

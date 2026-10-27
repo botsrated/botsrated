@@ -1,6 +1,6 @@
 # llama-index-tools-botsrated
 
-A LlamaIndex tool spec for [BotsRated](https://botsrated.com) (beta). Use it as a pre-payment check
+A LlamaIndex tool spec for [BotsRated](https://botsrated.com). Use it as a pre-payment check
 before an agent pays an x402 seller.
 
 **Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.2.**
@@ -20,7 +20,7 @@ from botsrated import BotsRatedClient
 # x402_client: an x402.x402ClientSync with your signer; it only signs BotsRated's quote rebuilt from
 # allowlisted fields (no Permit2, no payment extensions).
 tools = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.02", x402_client=x402_client)).to_tool_list()
-# ["preflight", "paid_check"]: paid_check costs $0.001 (first 25 per UTC day free, charged: false) and stops at the budget
+# ["preflight", "paid_check"]: paid_check costs $0.001 (first 25 per client IP per UTC day free, charged: false) and stops at the budget
 ```
 
 `preflight(url, pay_to=None, network=None, amount=None)` returns the latest probe. When `pay_to` is given,

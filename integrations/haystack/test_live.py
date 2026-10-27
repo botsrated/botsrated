@@ -97,7 +97,7 @@ def test_agent_with_mcp_toolset_end_to_end():
     toolset = MCPToolset(server_info=StreamableHttpServerInfo(url="https://botsrated.com/mcp"), tool_names=FREE_TOOLS)
     try:
         agent = Agent(chat_generator=ScriptedPreflightGenerator(), tools=toolset)
-        result = agent.run(messages=[ChatMessage.from_user(f"Is {SELLER} safe to pay right now?")])
+        result = agent.run(messages=[ChatMessage.from_user(f"What measurements does BotsRated have for {SELLER}?")])
         body = json.loads(json.loads(result["last_message"].text)["content"][0]["text"])
         assert body["found"] is True
     finally:

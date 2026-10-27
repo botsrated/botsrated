@@ -2,8 +2,8 @@
  * @botsrated/x402-preflight
  *
  * Ask BotsRated (https://botsrated.com) about an x402 seller before paying it.
- * The default path only uses the free `GET /v1/preflight` route. Paid BotsRated
- * routes (`/v1/check` $0.001, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 25 checks + 3 reports per UTC day free) are
+ * The default path only uses `GET /v1/preflight` (free, no key, rate limits). Paid BotsRated
+ * routes (`/v1/check` $0.001, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 25 checks and 3 reports per client IP per UTC day free) are
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
@@ -327,12 +327,12 @@ export class BotsRatedClient {
     return value;
   }
 
-  /** Paid ($0.001; first 25 per UTC day free). Facts, paid test-buys and recent receipts for one host. Free within the daily quota; after that requires `paid`. */
+  /** Paid ($0.001; first 25 per client IP per UTC day free). Facts, paid test-buys and recent receipts for one host. Free within the daily quota; after that requires `paid`. */
   check(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/check?host=${encodeURIComponent(hostOf(urlOrHost))}`, "check");
   }
 
-  /** Paid ($0.002; first 3 per UTC day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
+  /** Paid ($0.002; first 3 per client IP per UTC day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
   report(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/report/${encodeURIComponent(hostOf(urlOrHost))}`, "report");
   }

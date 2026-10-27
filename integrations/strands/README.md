@@ -1,6 +1,6 @@
 # BotsRated for Strands Agents
 
-[BotsRated](https://botsrated.com) (beta) checks an x402 seller before your agent pays it. It probes about
+[BotsRated](https://botsrated.com) checks an x402 seller before your agent pays it. It probes about
 4,800 x402 seller hosts on Base and the remote MCP servers in the Official MCP Registry without paying them,
 and records each probe (HTTP status, valid 402 challenge, latency, quoted price and payTo) as a signed
 receipt. It also makes real paid test-buys and publishes their transaction links.
@@ -28,11 +28,11 @@ with botsrated:
             "Do not pay if the payTo you are about to pay differs from the payTo BotsRated observed."
         ),
     )
-    agent("Is https://blockrun.ai/api/v1/chat/completions safe to pay right now?")
+    agent("What measurements does BotsRated have for https://blockrun.ai/api/v1/chat/completions?")
 ```
 
 Tools: `preflight`, `coverage`, `sample`, `history` (free), and `check`, `report`, `best` (paid x402 routes:
-$0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per client per UTC day are free).
+$0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per client IP per UTC day are free).
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 
