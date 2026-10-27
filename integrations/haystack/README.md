@@ -39,7 +39,7 @@ botsrated.close()
 ```
 
 Free tools: `preflight`, `coverage`, `sample`, `history`. The server also lists `check`, `report` and `best`,
-which are paid x402 routes ($0.001, $0.002 and $0.01 USDC on Base; the first 100 checks and 10 reports per
+which are paid x402 routes ($0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per
 client per UTC day are free). Leave them out of `tool_names` unless your agent can pay x402.
 
 ## 2. A pre-payment tool backed by the `botsrated` package

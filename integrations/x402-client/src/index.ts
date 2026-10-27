@@ -3,7 +3,7 @@
  *
  * Ask BotsRated (https://botsrated.com) about an x402 seller before paying it.
  * The default path only uses the free `GET /v1/preflight` route. Paid BotsRated
- * routes (`/v1/check` $0.001, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 100 checks + 10 reports per day free) are
+ * routes (`/v1/check` $0.001, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 25 checks + 3 reports per UTC day free) are
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
@@ -46,8 +46,8 @@ export * from "./onchain.js";
 export const BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349";
 /** Published prices of the paid routes (since 2026-10-23), in atomic USDC (6 decimals). Quotes above these are refused. */
 export const PAID_ROUTE_MAX_ATOMIC = { check: 1000n, report: 2000n, best: 10000n } as const;
-/** Free daily quota per client (IP) per UTC day. Within it BotsRated answers 200 with `charged: false` and no 402. */
-export const FREE_DAILY_QUOTA = { check: 100, report: 10, best: 0 } as const;
+/** Free daily quota per client (IP) per UTC day: 25 checks, 3 reports. Within it BotsRated answers 200 with `charged: false` and no 402. */
+export const FREE_DAILY_QUOTA = { check: 25, report: 3, best: 0 } as const;
 export type PaidRoute = keyof typeof PAID_ROUTE_MAX_ATOMIC;
 /** Longest payment authorization window accepted for a BotsRated payment. */
 export const MAX_TIMEOUT_SECONDS = 600;
@@ -327,12 +327,12 @@ export class BotsRatedClient {
     return value;
   }
 
-  /** Paid ($0.001; first 100/day free). Facts, paid test-buys and recent receipts for one host. Free within the daily quota; after that requires `paid`. */
+  /** Paid ($0.001; first 25 per UTC day free). Facts, paid test-buys and recent receipts for one host. Free within the daily quota; after that requires `paid`. */
   check(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/check?host=${encodeURIComponent(hostOf(urlOrHost))}`, "check");
   }
 
-  /** Paid ($0.002; first 10/day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
+  /** Paid ($0.002; first 3 per UTC day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
   report(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/report/${encodeURIComponent(hostOf(urlOrHost))}`, "report");
   }
@@ -661,7 +661,7 @@ export interface GuardOptions {
   policy?: GuardPolicy;
   /** Allow the payment when BotsRated cannot be reached (or the guard errors). Default true. */
   failOpen?: boolean;
-  /** Run a check for payments at or above this USD amount: free within the daily quota (100/day), then a $0.001 paid check if the client is paid-enabled (otherwise skipped). */
+  /** Run a check for payments at or above this USD amount: free within the daily quota (25 per UTC day), then a $0.001 paid check if the client is paid-enabled (otherwise skipped). */
   paidCheckAtOrAboveUsd?: number;
   onDecision?: (decision: Decision, req: PaymentRequirementsLike) => void;
 }

@@ -1,7 +1,7 @@
 # BotsRated integrations (pre-payment checks for x402 buyers)
 
 These are small client packages that check an x402 seller with BotsRated before an agent pays it. The free
-preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 100 free per day) is opt-in and stays within a budget
+preflight runs by default. The `/v1/check` ($0.001 USDC on Base after 25 free per UTC day) is opt-in and stays within a budget
 the user sets.
 
 **Status: published.** PyPI: [`botsrated`](https://pypi.org/project/botsrated/) (0.1.6),

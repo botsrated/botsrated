@@ -221,7 +221,7 @@ class PrePaymentGuard:
         policy: What to block or warn on.
         fail_open: Allow the payment when BotsRated is unreachable. Default True.
         paid_check_at_or_above_usd: Run a check for payments at or above this: free within the daily quota
-            (100/day), then a $0.001 paid check with a paid-enabled client (skipped otherwise).
+            (25 per UTC day), then a $0.001 paid check with a paid-enabled client (skipped otherwise).
         on_decision: Called with every decision.
     """
 

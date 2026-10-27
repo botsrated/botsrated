@@ -293,8 +293,8 @@ const botsrated = new BotsRatedClient({
 const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 0.25 });
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
-await botsrated.check("seller.example");            // $0.001 (first 100/day free)
-await botsrated.report("seller.example");           // $0.002 (first 10/day free)
+await botsrated.check("seller.example");            // $0.001 (first 25 per UTC day free)
+await botsrated.report("seller.example");           // $0.002 (first 3 per UTC day free)
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 
@@ -305,11 +305,11 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   settle and the reservation is released (`payment_not_created`). The older
   `fetchWithPayment: wrapFetchWithPayment(fetch, client)` still works, but it re-reads the 402 itself, so
   register the guard on the same `x402Client` so that re-served 402 is checked again before signing.
-- Free daily quota: BotsRated serves the first 100 `/v1/check` and 10 `/v1/report` calls per client
+- Free daily quota (`FREE_DAILY_QUOTA`): BotsRated serves the first 25 `/v1/check` and 3 `/v1/report` calls per client
   per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
   even without `paid` until the quota is used up (then they throw `paid_disabled`).
-  `client.lastFreeQuota` shows the remaining quota.
+  `client.lastFreeQuota` shows the remaining quota. `/v1/best` has no free quota. Preflight stays free and unlimited.
 - Otherwise the client reads the 402 quote unpaid first. It accepts it only if **every** option is `exact` USDC on Base (`eip155:8453`)
   to BotsRated's payTo `0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349`, at or below the published price.
 - Only a one-shot EIP-3009 payment is accepted: an option whose `extra` holds anything beyond the token's

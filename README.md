@@ -24,23 +24,23 @@ This repository documents the **remote** MCP server. There is nothing to install
 | Tool | Price | What it returns |
 |---|---|---|
 | `preflight` | free, unlimited | Latest stored unpaid probe for an x402 seller (host or URL): status, valid 402, quoted vs listed price, payTo vs listing, timestamp |
-| `find` | free (uses 1 of the 100 free daily checks) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
+| `find` | free (uses 1 of the 25 free checks per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
 | `history` | free | Signed daily aggregates for one host, newest first |
-| `check` | $0.001 (x402, USDC on Base); first 100/day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
-| `report` | $0.002 (x402); first 10/day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
+| `check` | $0.001 (x402, USDC on Base); first 25 per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `report` | $0.002 (x402); first 3 per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
 
 The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
 
-Free daily quota: the first 100 checks and 10 reports per client (IP address; IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
+Free daily quota: the first 25 checks and 3 reports per client (IP address; IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free and unlimited. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
 ## Free HTTP endpoints and pages
 
 | | |
 |---|---|
-| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 free daily check, shared with `/v1/check`) |
+| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the 25 free checks per UTC day, shared with `/v1/check`) |
 | `GET https://botsrated.com/v1/pulse` | Live totals (cached 60 s): services watched, working in the last 24 h, down or failed in 7 days, checks run in 7 days. Never names a seller |
 | `GET https://botsrated.com/v1/savings-rates` | Measured rates (offline, payTo changes, price vs listing) with sample size, dates and source |
 | https://botsrated.com/sellers | Browse and filter every covered seller and MCP server |
