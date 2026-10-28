@@ -1,10 +1,22 @@
-# agent-framework-botsrated: BotsRated pre-payment check for Microsoft Agent Framework (Python)
+# agent-framework-botsrated
 
-Function middleware for [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) that checks an
-x402 payment with [BotsRated](https://botsrated.com) **before a payment tool runs**. BotsRated probes x402 sellers on
-Base and records which `payTo` wallet each one actually quoted. The middleware asks BotsRated's free preflight
-(no API key, no wallet) whether the `payTo` your agent is about to pay was observed for that seller, and stops the call
-if it wasn't.
+## Default install
+
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard path is not published. From a checkout: `pip install -e integrations/microsoft-agent-framework` (guard needs `botsrated` 0.2.1 or newer).
+
+```python
+from agent_framework_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+```
+
+Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to fail open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+
+## What it checks
+
+Function middleware and a payment-client hook for [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) that check an
+x402 payment with [BotsRated](https://botsrated.com) **before pay**. BotsRated probes x402 sellers on
+Base and records which `payTo` wallet each one actually quoted. The check asks BotsRated's free preflight
+(no API key, no wallet) whether the `payTo` your agent is about to pay was observed for that seller.
 
 Maintained by BotsRated, not by Microsoft. Issues: https://github.com/botsrated/botsrated/issues/new
 
@@ -19,6 +31,32 @@ pip install "agent-framework-botsrated[mcp]"
 Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.6+ (below 0.3; from agent-framework-botsrated 0.1.3).
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
+
+## Middleware and token
+
+`attach_payment_guard` is the hook. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block.
+
+```python
+import os
+from agent_framework import Agent
+from agent_framework_botsrated import BotsRatedPaymentMiddleware, attach_payment_guard
+
+guard = attach_payment_guard(
+    x402_client,
+    preset="carefulBuyer",
+    fail_mode="open",
+    token=os.getenv("BOTSRATED_TOKEN"),
+)
+agent = Agent(
+    client=chat_client,
+    tools=[paid_tool],
+    middleware=[BotsRatedPaymentMiddleware(["paid_tool"], guard=guard)],
+)
+```
+
+`BotsRatedPaymentMiddleware(["paid_tool"], preset="carefulBuyer", fail_mode="open", token=...)` builds that same guard when you do not already have one. It does not register x402 hooks. Only the named payment tools are checked. On a block, `on_block="raise"` raises `BotsRatedPaymentBlocked`. The default returns the blocked reason and does not run the tool. `botsrated_check_payment_tool()` is the free preflight and does not attach a guard.
+
+`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked.
 
 ## Middleware: check payments before they run
 
@@ -58,12 +96,10 @@ Default policy (from `botsrated.GuardPolicy`, configurable through `guard=PrePay
 | Host not covered, or data older than 24 h | allowed (info) |
 | BotsRated unreachable | allowed (`fail_open=True`); set `PrePaymentGuard(fail_open=False)` to block |
 
-The middleware checks what the payment tool was asked to pay. If your tool fetches the 402 itself and signs it, also
-register `botsrated.PrePaymentGuard(policy=botsrated.GuardPolicy(pay_to_mismatch="block")).x402_hook` on your
-`x402Client`'s `on_before_payment_creation` so the check runs on the exact quote being signed (without that policy,
-botsrated 0.2's guard only warns about an unobserved payTo), and make the request through `guard.wrap_get(...)` (or inside
-`with botsrated.paying_request(url):`) so the guard checks the host actually being paid rather than the
-seller-supplied 402 `resource.url` (botsrated 0.1.5+).
+The middleware checks what the payment tool was asked to pay. If your tool fetches the 402 itself and signs it, wrap
+that client with `attach_payment_guard` so the check runs on the quote being signed. Call `guard.request(url)` or
+`guard.wrap_get(...)` around the paying request so the guard sees the host actually being paid, rather than only the
+seller-supplied 402 `resource.url`.
 
 ## Tool: let the model check a payment option
 
@@ -74,7 +110,7 @@ agent = Agent(client=chat_client, tools=[botsrated_check_payment_tool(), pay_x40
 ```
 
 `botsrated_check_payment(url, pay_to, amount, network)` returns JSON with `action` (`allow`/`block`), `reasons` and
-`receipt_url`. It uses the free preflight only.
+`receipt_url`. It uses the free preflight only. It does not attach a guard.
 
 ## Hosted MCP server (no package needed)
 
@@ -99,9 +135,9 @@ client IP per UTC day are free) are not used by this package unless you pass a p
 ## Run the example and tests
 
 ```bash
-pip install -e ".[mcp]" pytest pytest-asyncio
+pip install -e ".[mcp]" pytest pytest-asyncio respx
 python examples/quickstart.py   # scripted model, real free preflight, stub payment
-pytest -m "not live"            # offline
+pytest -m "not live"            # offline; no network and no provider call
 pytest -m live                  # real free BotsRated preflight + hosted MCP server; nothing is paid
 ```
 

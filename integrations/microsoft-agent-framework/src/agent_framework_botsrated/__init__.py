@@ -12,6 +12,7 @@ from agent_framework_botsrated._middleware import (
     decision_to_dict,
     default_quote_extractor,
 )
+from agent_framework_botsrated.guard import attach_payment_guard
 
 BOTSRATED_MCP_URL = "https://botsrated.com/mcp"
 """BotsRated's remote MCP server (streamable HTTP, no auth). Free tools: preflight, coverage, sample, history."""
@@ -23,6 +24,7 @@ __all__ = [
     "BotsRatedPaymentMiddleware",
     "PaymentQuote",
     "QuoteExtractor",
+    "attach_payment_guard",
     "botsrated_check_payment_tool",
     "decision_to_dict",
     "default_quote_extractor",

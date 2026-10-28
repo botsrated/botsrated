@@ -30,7 +30,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
-| `microsoft-agent-framework/` | `agent-framework-botsrated` (PyPI) | Microsoft Agent Framework (Python): `FunctionMiddleware` that checks a payment tool's payTo before it runs, a check tool, and the hosted MCP server |
+| [`microsoft-agent-framework/`](microsoft-agent-framework/) | `agent-framework-botsrated` (PyPI; guard path not published) | Microsoft Agent Framework: `attach_payment_guard` on the caller's x402 client, plus the existing `BotsRatedPaymentMiddleware` for named payment tools. Pairs with Microsoft Agent Framework; not an agent or workflow runtime. Omit `preset` for advice only |
 | [`openai-agents/`](openai-agents/) | `botsrated-openai-agents` (not published) | OpenAI Agents SDK: `attach_payment_guard` on the caller's x402 client. Pairs with the SDK; not an Agent or Runner. Omit `preset` for advice only |
 | `fixtures/` | | real BotsRated responses used by the tests |
 
@@ -55,5 +55,7 @@ Default guard policy:
 [`llama-stack/`](llama-stack/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)) and passes `token` as `remote_policy` from [PR #15](https://github.com/botsrated/botsrated/pull/15). Omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with Llama Stack as a payment-client wrap. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred.
 
 [`openai-agents/`](openai-agents/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`.
+
+[`microsoft-agent-framework/`](microsoft-agent-framework/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)) and passes `token` as `remote_policy` from [PR #15](https://github.com/botsrated/botsrated/pull/15). Omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with Microsoft Agent Framework. It is not an agent or workflow runtime. The existing `BotsRatedPaymentMiddleware` accepts that same guard for named payment tools. The guard path is not published.
 
 Results are measurements, not endorsements. API spec: [`spec/SPEC.md`](../spec/SPEC.md).
