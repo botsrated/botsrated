@@ -1,5 +1,15 @@
 # agent-framework-botsrated
 
+## Install in 3 steps
+
+1. Install. `pip install agent-framework-botsrated` gets PyPI 0.1.2 (middleware and tool; no `attach_payment_guard`). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/microsoft-agent-framework` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client:
+```python
+from agent_framework_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+```
+3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+
 ## Default install
 
 Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard path is not published. From a checkout: `pip install -e integrations/microsoft-agent-framework` (guard needs `botsrated>=0.3.0,<0.4`).
@@ -28,13 +38,13 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) 0.1.6+ (below 0.3; from agent-framework-botsrated 0.1.3).
+Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4` (agent-framework-botsrated 0.1.3+).
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 
 ## Middleware and token
 
-`attach_payment_guard` is the hook. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block.
+`attach_payment_guard` is the hook. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` (botsrated>=0.3.0,<0.4 has `parse_remote_policy`). A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block.
 
 ```python
 import os

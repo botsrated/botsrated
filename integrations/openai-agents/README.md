@@ -1,5 +1,15 @@
 # botsrated-openai-agents
 
+## Install in 3 steps
+
+1. Install. `botsrated-openai-agents` is publishing soon (not on PyPI yet). From a checkout: `pip install -e integrations/openai-agents` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client:
+```python
+from botsrated_openai_agents import attach_payment_guard
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+```
+3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+
 ## Default install
 
 Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not published. From a checkout: `pip install -e integrations/openai-agents` (needs `botsrated>=0.3.0,<0.4`).

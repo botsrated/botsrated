@@ -1,5 +1,15 @@
 # llama-index-tools-botsrated
 
+## Install in 3 steps
+
+1. Install. `pip install llama-index-tools-botsrated` gets PyPI 0.1.2 (tools only). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/llamaindex` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client:
+```python
+from llama_index.tools.botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+```
+3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com). Use it as a pre-payment check
 before an agent pays an x402 seller.
 

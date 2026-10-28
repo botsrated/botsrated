@@ -1,5 +1,15 @@
 # langchain-botsrated
 
+## Install in 3 steps
+
+1. Install. `pip install langchain-botsrated` gets PyPI 0.1.2 (tools only). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/langchain` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client:
+```python
+from langchain_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+```
+3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+
 LangChain tools for [BotsRated](https://botsrated.com). Use them as a pre-payment check before
 an agent pays an x402 seller.
 
@@ -37,7 +47,7 @@ from langchain_botsrated import attach_payment_guard, botsrated_tools
 
 tools = botsrated_tools()  # free preflight only; no guard attached
 guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
-# token=... is local-only until PaymentGuard accepts remote_policy
+# token=... sends a private policy check (botsrated>=0.3.0,<0.4)
 ```
 
 `preset` is yours: `warn` (advice only; the default when you omit it), `carefulBuyer`, or `strict` (same stops
