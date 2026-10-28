@@ -11,7 +11,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: published on npm as [`@botsrated/x402-preflight` 0.2.1](https://www.npmjs.com/package/@botsrated/x402-preflight).**
+**Status: published on npm as [`@botsrated/x402-preflight` 0.2.1](https://www.npmjs.com/package/@botsrated/x402-preflight).** 0.3.0 (adds `remotePolicy` / `remote_policy`) is pending release.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -150,6 +150,8 @@ smaller local bundle and does not copy a score out of it, because the response h
 ### Remote Policy
 
 Optional. Set `remotePolicy` to ask your private policy on BotsRated before a payment. The guard merges that answer with the local rules. A remote block stops the payment. A remote pass does not clear a local block. `createPrePaymentGuard({ remotePolicy })` uses the same check.
+
+This is the path that makes `BOTSRATED_TOKEN` work in framework attaches. The token is optional. The guard defaults to advice-only with no key, so anyone can install it as a default. The client enforces. BotsRated holds no funds, signs nothing, and has no escrow.
 
 ```ts
 const guard = createPaymentGuard({

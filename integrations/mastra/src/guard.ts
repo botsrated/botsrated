@@ -68,20 +68,11 @@ export function paymentGuardModule(): PaymentGuardModule {
 }
 
 /**
- * `remotePolicy` when this PaymentGuard implements it, `remote_policy` when only that name
- * appears, otherwise undefined (the token is not sent).
+ * `remotePolicy` when `normalizeRemotePolicy` is exported. That function is the only
+ * capability gate. Source text is not inspected. Otherwise undefined.
  */
-export function remotePolicyKey(api: PaymentGuardModule): "remotePolicy" | "remote_policy" | undefined {
-  if (typeof api.normalizeRemotePolicy === "function") return "remotePolicy";
-  let src = "";
-  try {
-    src = Function.prototype.toString.call(api.createPaymentGuard);
-  } catch {
-    src = "";
-  }
-  if (src.includes("remotePolicy")) return "remotePolicy";
-  if (src.includes("remote_policy")) return "remote_policy";
-  return undefined;
+export function remotePolicyKey(api: PaymentGuardModule): "remotePolicy" | undefined {
+  return typeof api.normalizeRemotePolicy === "function" ? "remotePolicy" : undefined;
 }
 
 /** Explicit `token` wins. Omit it to read `BOTSRATED_TOKEN`. `""` means unset and does not fall through. */
@@ -123,10 +114,16 @@ export function attachPaymentGuard<T extends X402HookTarget>(x402Client: T, opti
 
   const bearer = tokenFrom(token);
   const key = remotePolicyKey(api);
+  if (bearer && !key) {
+    throw new TypeError(
+      "token is set but this @botsrated/x402-preflight install has no normalizeRemotePolicy. " +
+        "Install @botsrated/x402-preflight@^0.3.0 so the token is sent. The token was not dropped.",
+    );
+  }
   if (key && bearer) {
     const mode: FailMode = failMode === "closed" ? "closed" : "open";
     // A mapping, never a bare token string. PaymentGuard rejects a string.
-    createOptions[key] = key === "remotePolicy" ? { token: bearer, failMode: mode } : { token: bearer, fail_mode: mode };
+    createOptions.remotePolicy = { token: bearer, failMode: mode };
   }
 
   const guard = api.createPaymentGuard(createOptions);

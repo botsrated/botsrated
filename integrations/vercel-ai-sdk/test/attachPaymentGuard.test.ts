@@ -257,25 +257,19 @@ describe("attachPaymentGuard", () => {
     expect(decisions[0].remote_decision).toBeUndefined();
   });
 
-  it("passes a mapping only when PaymentGuard accepts remotePolicy", () => {
+  it("passes a mapping only when normalizeRemotePolicy is present", () => {
     const recorded: unknown[] = [];
     function withRemote(options?: PaymentGuardOptions) {
       recorded.push(options);
       return { install() {}, options } as unknown as PaymentGuard;
     }
-    function withSnake(options?: PaymentGuardOptions) {
+    function withoutNormalizer(options?: PaymentGuardOptions) {
       recorded.push(options);
       return { install() {}, options } as unknown as PaymentGuard;
     }
-    const snakeSrc = function createPaymentGuard(options?: PaymentGuardOptions) {
-      recorded.push(options);
-      recorded.push("remote_policy");
-      return { install() {}, options } as unknown as PaymentGuard;
-    };
 
     expect(remotePolicyKey({ createPaymentGuard: withRemote, policies, normalizeRemotePolicy() {} })).toBe("remotePolicy");
-    expect(remotePolicyKey({ createPaymentGuard: snakeSrc, policies })).toBe("remote_policy");
-    expect(remotePolicyKey({ createPaymentGuard: withSnake, policies })).toBeUndefined();
+    expect(remotePolicyKey({ createPaymentGuard: withoutNormalizer, policies })).toBeUndefined();
     expect(tokenFrom(undefined)).toBeUndefined();
     expect(tokenFrom("")).toBeUndefined();
 
@@ -285,32 +279,19 @@ describe("attachPaymentGuard", () => {
     expect(typeof (recorded.at(-1) as { remotePolicy?: unknown }).remotePolicy).toBe("object");
 
     recorded.length = 0;
-    usePaymentGuardModule({ createPaymentGuard: snakeSrc, policies });
-    attachPaymentGuard(new RecordingClient(), { token: "abc" });
-    expect(recorded.filter((item) => item && typeof item === "object").at(-1)).toMatchObject({ remote_policy: { token: "abc", fail_mode: "open" } });
-
-    recorded.length = 0;
-    usePaymentGuardModule({ createPaymentGuard: withSnake, policies });
-    const guard = attachPaymentGuard(new RecordingClient(), { preset: "warn", token: TOKEN, failMode: "closed" });
-    expect(recorded.at(-1)).not.toHaveProperty("remotePolicy");
-    expect(recorded.at(-1)).not.toHaveProperty("remote_policy");
-    expect(JSON.stringify(guard.options)).not.toContain(TOKEN);
+    usePaymentGuardModule({ createPaymentGuard: withoutNormalizer, policies });
+    expect(() => attachPaymentGuard(new RecordingClient(), { preset: "warn", token: TOKEN, failMode: "closed" })).toThrow(/normalizeRemotePolicy/);
+    expect(recorded).toEqual([]);
   });
 
-  it("does not call remote policy when the installed PaymentGuard lacks it", async () => {
-    const published = (await import("../node_modules/@botsrated/x402-preflight/dist/payment-guard.js")) as PaymentGuardModule;
-    expect(remotePolicyKey(published)).toBeUndefined();
-    usePaymentGuardModule(published);
-    const calls = installFetch(() => json({ decision: "pass" }));
-    const client = new RecordingClient();
-    const guard = attachPaymentGuard(client, { preset: "warn", token: TOKEN, failMode: "closed" });
-    const out = await runBefore(guard, OBSERVED);
-    const sent = calls.map((call) => call.url + JSON.stringify(call.init ?? {})).join("\n");
-    expect(sent).not.toContain(TOKEN);
-    expect(policyCalls(calls)).toEqual([]);
-    expect(JSON.stringify(guard.options)).not.toContain(TOKEN);
-    expect(out).toBeUndefined();
-    expect(client.calls).not.toContain("sign");
+  it("throws when a token is set and normalizeRemotePolicy is absent", () => {
+    function createPaymentGuard(options?: PaymentGuardOptions) {
+      return { install() {}, options } as unknown as PaymentGuard;
+    }
+    const installed: PaymentGuardModule = { createPaymentGuard, policies };
+    expect(remotePolicyKey(installed)).toBeUndefined();
+    usePaymentGuardModule(installed);
+    expect(() => attachPaymentGuard(new RecordingClient(), { preset: "warn", token: TOKEN, failMode: "closed" })).toThrow(/normalizeRemotePolicy/);
   });
 
   it("reads BOTSRATED_TOKEN when token is omitted, and an explicit token wins", () => {

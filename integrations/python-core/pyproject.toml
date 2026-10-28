@@ -1,6 +1,6 @@
 [project]
 name = "botsrated"
-version = "0.2.1"
+version = "0.3.0"
 description = "Payment guard for x402 agents: checks facts BotsRated measured about a seller before paying (advice-only by default), adds a payment-identifier retry key where supported, and checks on chain, read-only, whether a payment settled once. Not affiliated with Coinbase or the x402 Foundation."
 readme = "README.md"
 license = "MIT"

@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard path is not published. From a checkout: `pip install -e integrations/microsoft-agent-framework` (guard needs `botsrated` 0.2.1 or newer).
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard path is not published. From a checkout: `pip install -e integrations/microsoft-agent-framework` (guard needs `botsrated>=0.3.0,<0.4`).
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
@@ -56,7 +56,7 @@ agent = Agent(
 
 `BotsRatedPaymentMiddleware(["paid_tool"], preset="carefulBuyer", fail_mode="open", token=...)` builds that same guard when you do not already have one. It does not register x402 hooks. Only the named payment tools are checked. On a block, `on_block="raise"` raises `BotsRatedPaymentBlocked`. The default returns the blocked reason and does not run the tool. `botsrated_check_payment_tool()` is the free preflight and does not attach a guard.
 
-`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked.
+`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked. Setting `fail_mode` or `token` without a `preset` keeps that payTo block. It does not switch the default to advice-only. `preset="warn"` is advice only when selected.
 
 ## Middleware: check payments before they run
 

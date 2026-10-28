@@ -32,7 +32,7 @@
     "directory": "integrations/mastra"
   },
   "dependencies": {
-    "@botsrated/x402-preflight": "^0.2.1"
+    "@botsrated/x402-preflight": "^0.3.0"
   },
   "peerDependencies": {
     "@mastra/core": ">=1.49.0 <2"

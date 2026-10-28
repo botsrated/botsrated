@@ -7,7 +7,6 @@ This registers the guard's before-payment hook on that client. It does not repla
 
 from __future__ import annotations
 
-import inspect
 from typing import Any, Literal
 
 PresetName = Literal["carefulBuyer", "warn", "strict"]
@@ -15,8 +14,6 @@ FailMode = Literal["open", "closed"]
 
 _PRESETS = ("carefulBuyer", "warn", "strict")
 _FAIL_MODES = ("open", "closed")
-# Names the core SDK may add. The token is passed only when one of these is a real parameter.
-_REMOTE_POLICY_PARAMS = ("remote_policy", "remotePolicy")
 
 
 def _payment_guard() -> tuple[Any, type]:
@@ -27,22 +24,45 @@ def _payment_guard() -> tuple[Any, type]:
     return POLICIES, PaymentGuard
 
 
-def _remote_policy_kwargs(
-    guard_cls: type, token: str | None, fail_mode: FailMode | None = None
-) -> dict[str, dict[str, str]]:
-    """Pass ``token`` as a remote policy mapping only when PaymentGuard accepts it.
+_MISSING = object()
 
-    The mapping is ``{"token": token, "fail_mode": fail_mode}``. ``fail_mode`` defaults to
-    ``open``, matching the guard's fail-open default. Until that parameter exists, the token
-    is dropped. Nothing is sent.
+
+def _parse_remote_policy() -> Any:
+    """Return ``parse_remote_policy`` when this install has it, else None.
+
+    That function is the capability gate. A constructor signature is not consulted.
+    """
+    try:
+        from botsrated import payment_guard as payment_guard_mod
+    except ImportError:
+        return None
+    normalizer = getattr(payment_guard_mod, "parse_remote_policy", None)
+    return normalizer if callable(normalizer) else None
+
+
+def _remote_policy_kwargs(
+    token: str | None,
+    fail_mode: FailMode | None = None,
+    *,
+    normalizer: Any = _MISSING,
+) -> dict[str, dict[str, str]]:
+    """Pass ``token`` as ``remote_policy`` only when ``parse_remote_policy`` exists.
+
+    The value is ``{"token": token, "fail_mode": "open"|"closed"}``, never a bare string.
+    When ``token`` is set and the normalizer is missing, raise. The token is not dropped.
+    Omitted ``fail_mode`` is ``open``.
     """
     if not token:
         return {}
-    params = inspect.signature(guard_cls.__init__).parameters
-    for name in _REMOTE_POLICY_PARAMS:
-        if name in params:
-            return {name: {"token": token, "fail_mode": fail_mode or "open"}}
-    return {}
+    if normalizer is _MISSING:
+        normalizer = _parse_remote_policy()
+    if not callable(normalizer):
+        raise TypeError(
+            "token is set but this botsrated install has no parse_remote_policy. "
+            "Install botsrated>=0.3.0,<0.4 so the token is sent. The token was not dropped."
+        )
+    mode: FailMode = fail_mode if fail_mode in _FAIL_MODES else "open"
+    return {"remote_policy": {"token": token, "fail_mode": mode}}
 
 
 def attach_payment_guard(
@@ -62,8 +82,9 @@ def attach_payment_guard(
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
     When the hosted preflight cannot be reached, closed stops the payment and open allows it.
     ``token`` (for example ``os.getenv("BOTSRATED_TOKEN")``) is forwarded as ``remote_policy``
-    (or ``remotePolicy``), as ``{"token": token, "fail_mode": fail_mode or "open"}``, only when ``PaymentGuard`` accepts that argument. Otherwise the attach
-    stays on the local preset and the token is not sent.
+    (or ``remotePolicy``), as ``{"token": token, "fail_mode": fail_mode or "open"}``, only when
+    ``parse_remote_policy`` is present. A configured token on an install without that normalizer
+    raises and is not dropped.
 
     The guard calls the free preflight at ``https://botsrated.com``. It does not sign a payment
     and it does not hold funds. Sync clients are those whose class name ends with ``Sync``;
@@ -86,7 +107,7 @@ def attach_payment_guard(
         kwargs["fail_open"] = False
     elif fail_mode == "open":
         kwargs["fail_open"] = True
-    kwargs.update(_remote_policy_kwargs(payment_guard, token, fail_mode))
+    kwargs.update(_remote_policy_kwargs(token, fail_mode))
     guard = payment_guard(**kwargs)
     guard.install(x402_client)
     return guard

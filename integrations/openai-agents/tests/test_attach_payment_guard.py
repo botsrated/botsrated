@@ -11,7 +11,7 @@ import httpx
 import pytest
 
 from botsrated_openai_agents import attach_payment_guard, botsrated_preflight_tools
-from botsrated_openai_agents.guard import _REMOTE_POLICY_PARAMS, _remote_policy_kwargs
+from botsrated_openai_agents.guard import _remote_policy_kwargs
 
 FX = Path(__file__).resolve().parents[2] / "fixtures"
 FOUND = json.loads((FX / "preflight-found.json").read_text())
@@ -253,47 +253,43 @@ def test_without_token_makes_no_remote_policy_http(api):
         assert "policy" not in target
 
 
-def test_token_is_forwarded_only_when_the_constructor_accepts_it():
-    class WithSnake:
-        def __init__(self, remote_policy: str | None = None) -> None:
-            del remote_policy
+def test_token_is_forwarded_only_when_parse_remote_policy_exists():
+    """parse_remote_policy is the gate. A constructor signature is not consulted."""
 
-    class WithCamel:
-        def __init__(self, remotePolicy: str | None = None) -> None:
-            del remotePolicy
+    def normalizer(value: object) -> object:
+        return value
 
-    class WithNeither:
-        def __init__(self, preset: str | None = None) -> None:
-            del preset
-
-    assert _remote_policy_kwargs(WithSnake, "abc") == {"remote_policy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithCamel, "abc", "closed") == {"remotePolicy": {"token": "abc", "fail_mode": "closed"}}
-    assert _remote_policy_kwargs(WithNeither, "abc") == {}
-    assert _remote_policy_kwargs(WithSnake, None) == {}
+    assert _remote_policy_kwargs("abc", normalizer=normalizer) == {
+        "remote_policy": {"token": "abc", "fail_mode": "open"},
+    }
+    assert _remote_policy_kwargs("abc", "closed", normalizer=normalizer) == {
+        "remote_policy": {"token": "abc", "fail_mode": "closed"},
+    }
+    assert _remote_policy_kwargs(None, normalizer=normalizer) == {}
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        _remote_policy_kwargs("abc", normalizer=None)
 
 
-def test_token_is_local_only_until_remote_policy_exists(api):
+
+def test_token_is_sent_as_remote_policy_mapping(api):
     token = "policy-token-example"
+    api.post("/v1/policy/check").respond(200, json={"decision": "pass"})
     client = RecordingClientSync()
     guard = attach_payment_guard(client, preset="warn", token=token)
-    params = inspect.signature(type(guard).__init__).parameters
-    supported = any(name in params for name in _REMOTE_POLICY_PARAMS)
-    expected: dict[str, dict[str, str]] = {}
-    mapping = {"token": token, "fail_mode": "open"}
-    if "remote_policy" in params:
-        expected = {"remote_policy": mapping}
-    elif "remotePolicy" in params:
-        expected = {"remotePolicy": mapping}
-    assert _remote_policy_kwargs(type(guard), token) == expected
-    assert _remote_policy_kwargs(type(guard), None) == {}
+    assert _remote_policy_kwargs(token) == {"remote_policy": {"token": token, "fail_mode": "open"}}
+    assert not isinstance(guard.remote_policy, str)
+    assert guard.remote_policy.token == token
     url = FOUND["latest_probe"]["url"]
     with guard.request(url):
         guard.decide(_ctx(FOUND["latest_probe"]["live_payTo"]))
-    sent = " ".join(str(call.request.url) + str(call.request.content) + str(call.request.headers) for call in api.calls)
-    assert token not in sent
-    assert "/v1/policy" not in sent
-    if not supported:
-        assert token not in repr(guard.__dict__)
+    preflight = [call for call in api.calls if "/v1/preflight" in str(call.request.url)]
+    policy = [call for call in api.calls if "/v1/policy" in str(call.request.url)]
+    assert preflight
+    assert all(token not in str(call.request.url) for call in preflight)
+    assert policy
+    assert policy[0].request.headers["authorization"] == f"Bearer {token}"
+    assert "sign" not in client.calls
+
 
 
 def test_attach_source_does_not_sign_or_call_remote_policy():

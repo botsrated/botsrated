@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not published. From a checkout: `pip install -e integrations/openai-agents` (needs `botsrated` 0.2.1 or newer).
+Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not published. From a checkout: `pip install -e integrations/openai-agents` (needs `botsrated>=0.3.0,<0.4`).
 
 ```python
 from botsrated_openai_agents import attach_payment_guard
@@ -31,7 +31,7 @@ guard = attach_payment_guard(
 |---|---|---|
 | `preset` | Advice only (`warn`). An unobserved payTo is reported and the payment is not stopped. | `warn` (same advice), `carefulBuyer`, or `strict`. `carefulBuyer` and `strict` are the same stops: an unobserved payTo, an invalid payTo, a host mismatch, or an unknown paid URL blocks. `strict` is passed as that policy table because `PaymentGuard` preset names are `warn`, `carefulBuyer`, and `dry-run-only`. |
 | `fail_mode` | Fail-open. | `"open"` or `"closed"`. When the free preflight cannot be reached, closed stops the payment on the client hook and open allows it. A missing decision is not turned into a pass while closed. |
-| `token` | Nothing extra is sent. | Passed as `remote_policy` or `remotePolicy` only when `PaymentGuard.__init__` accepts that keyword. botsrated 0.2.1 does not, so the value (including one you read from `BOTSRATED_TOKEN`) stays local. This package does not call `/v1/policy/check`. |
+| `token` | Nothing extra is sent. | Passed as `remote_policy` when `parse_remote_policy` is present. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without that normalizer raises and is not dropped. |
 
 The guard's lookup is the free preflight at `https://botsrated.com` (host name only). It does not sign a payment, does not custody funds, and does not add a payment-creation-failure hook. The client enforces a block by honoring the x402 `AbortResult` from `on_before_payment_creation`. Tell the guard which URL is being paid with `guard.request(url)` or `guard.wrap_get` on that client, the same way `PaymentGuard` documents it.
 

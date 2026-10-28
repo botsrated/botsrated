@@ -29,7 +29,7 @@
     "directory": "integrations/vercel-ai-sdk"
   },
   "dependencies": {
-    "@botsrated/x402-preflight": "^0.2.1"
+    "@botsrated/x402-preflight": "^0.3.0"
   },
   "peerDependencies": {
     "ai": ">=5",
