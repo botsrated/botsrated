@@ -20,6 +20,7 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 | `integrations/python-core` | `botsrated` (PyPI) | Python >= 3.10 |
 | `integrations/langchain` | `langchain-botsrated` (PyPI) | Python |
 | `integrations/langgraph` | `langgraph-botsrated` (not published) | Python |
+| `integrations/google-adk` | `google-adk-botsrated` (not published) | Python |
 | `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI) | Python |
 | `integrations/microsoft-agent-framework` | `agent-framework-botsrated` (PyPI) | Python |
 | `integrations/openai-agents` | `botsrated-openai-agents` (not published) | Python |
@@ -37,10 +38,11 @@ Python (from the repository root):
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install pytest respx pytest-asyncio langchain-tests ruff
-pip install -e "integrations/python-core[x402]" -e integrations/langchain -e integrations/llamaindex -e integrations/microsoft-agent-framework -e integrations/openai-agents -e integrations/langgraph
+pip install -e "integrations/python-core[x402]" -e integrations/langchain -e integrations/llamaindex -e integrations/microsoft-agent-framework -e integrations/openai-agents -e integrations/langgraph -e integrations/google-adk
 (cd integrations/python-core && pytest -m "not live" tests)
 (cd integrations/langchain && pytest -m "not live" tests)
 (cd integrations/langgraph && pytest -m "not live" tests)
+(cd integrations/google-adk && pytest -m "not live" tests)
 (cd integrations/llamaindex && pytest -m "not live" tests)
 (cd integrations/microsoft-agent-framework && pytest -m "not live" tests)
 (cd integrations/openai-agents && pytest -m "not live" tests)
