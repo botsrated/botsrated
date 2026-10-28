@@ -7,9 +7,7 @@ construction to LangGraph. It does not sign, send, or hold a payment.
 
 from __future__ import annotations
 
-import inspect
 import os
-from collections.abc import Mapping
 from typing import Any, Literal
 
 PresetName = Literal["carefulBuyer", "warn", "strict"]
@@ -17,8 +15,6 @@ FailMode = Literal["open", "closed"]
 
 _PRESETS = ("carefulBuyer", "warn", "strict")
 _FAIL_MODES = ("open", "closed")
-# Names the core SDK may add. The token is passed only when one of these is a real parameter.
-_REMOTE_POLICY_PARAMS = ("remote_policy", "remotePolicy")
 _TOKEN_ENV = "BOTSRATED_TOKEN"
 
 
@@ -40,25 +36,45 @@ def _token_from(token: str | None) -> str | None:
     return token
 
 
-def _remote_policy_kwargs(
-    guard_cls: type, token: str | None, fail_mode: FailMode | None
-) -> dict[str, Mapping[str, str]]:
-    """Pass ``token`` as a remote-policy mapping only when PaymentGuard accepts it.
+_MISSING = object()
 
-    The value is ``{"token": token, "fail_mode": "open"|"closed"}``. PaymentGuard from the
-    remote-policy SDK TypeErrors on a bare token string, so a string is never passed. When
-    the parameter is absent (botsrated 0.2.1), the token is dropped and nothing is sent.
+
+def _parse_remote_policy() -> Any:
+    """Return ``parse_remote_policy`` when this install has it, else None.
+
+    That function is the capability gate. A constructor signature is not consulted.
+    """
+    try:
+        from botsrated import payment_guard as payment_guard_mod
+    except ImportError:
+        return None
+    normalizer = getattr(payment_guard_mod, "parse_remote_policy", None)
+    return normalizer if callable(normalizer) else None
+
+
+def _remote_policy_kwargs(
+    token: str | None,
+    fail_mode: FailMode | None = None,
+    *,
+    normalizer: Any = _MISSING,
+) -> dict[str, dict[str, str]]:
+    """Pass ``token`` as ``remote_policy`` only when ``parse_remote_policy`` exists.
+
+    The value is ``{"token": token, "fail_mode": "open"|"closed"}``, never a bare string.
+    When ``token`` is set and the normalizer is missing, raise. The token is not dropped.
     Omitted ``fail_mode`` is ``open``.
     """
     if not token:
         return {}
-    params = inspect.signature(guard_cls.__init__).parameters
+    if normalizer is _MISSING:
+        normalizer = _parse_remote_policy()
+    if not callable(normalizer):
+        raise TypeError(
+            "token is set but this botsrated install has no parse_remote_policy. "
+            "Install botsrated>=0.3.0,<0.4 so the token is sent. The token was not dropped."
+        )
     mode: FailMode = fail_mode if fail_mode in _FAIL_MODES else "open"
-    mapping = {"token": token, "fail_mode": mode}
-    for name in _REMOTE_POLICY_PARAMS:
-        if name in params:
-            return {name: mapping}
-    return {}
+    return {"remote_policy": {"token": token, "fail_mode": mode}}
 
 
 def attach_payment_guard(
@@ -80,8 +96,8 @@ def attach_payment_guard(
     transport failure), closed stops the payment and open reports info. A missing
     decision is not turned into a pass.
     ``token`` (or ``BOTSRATED_TOKEN`` when ``token`` is omitted) is forwarded as
-    ``remote_policy={"token", "fail_mode"}`` only when ``PaymentGuard`` accepts that
-    argument. Otherwise the attach stays on the local preset and the token is not sent.
+    ``remote_policy={"token", "fail_mode"}`` only when ``parse_remote_policy`` is present.
+    A configured token on an install without that normalizer raises and is not dropped.
 
     The guard calls the free preflight at ``https://botsrated.com``. It does not sign a
     payment and it does not hold funds. Sync clients are those whose class name ends with
@@ -104,7 +120,7 @@ def attach_payment_guard(
         kwargs["fail_open"] = False
     elif fail_mode == "open":
         kwargs["fail_open"] = True
-    kwargs.update(_remote_policy_kwargs(payment_guard, _token_from(token), fail_mode))
+    kwargs.update(_remote_policy_kwargs(_token_from(token), fail_mode))
     guard = payment_guard(**kwargs)
     guard.install(x402_client)
     return guard

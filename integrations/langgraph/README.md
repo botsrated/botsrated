@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with [LangGraph](https://docs.langchain.com/oss/python/langgraph). Payment-client wrap and an optional pre-pay node helper. Not an orchestration framework, and not a StateGraph, checkpoint store, or agent loop. Not published. From a checkout: `pip install -e integrations/langgraph` (needs `botsrated` 0.2.1 or newer).
+Pairs with [LangGraph](https://docs.langchain.com/oss/python/langgraph). Payment-client wrap and an optional pre-pay node helper. Not an orchestration framework, and not a StateGraph, checkpoint store, or agent loop. Not published. From a checkout: `pip install -e integrations/langgraph` (needs `botsrated>=0.3.0,<0.4`).
 
 ```python
 from langgraph_botsrated import attach_payment_guard
@@ -15,6 +15,6 @@ Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an uno
 
 `botsrated_payment_middleware(guard, pay_node, context=read_payment)` runs that same guard before an opaque pay node. On a block it does not call the node and returns only `botsrated_payment_reason`. `botsrated_preflight(url)` is the free preflight and does not attach a guard.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. botsrated 0.2.1 does not accept it, so the token is not sent.
+`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without `parse_remote_policy` raises and is not dropped.
 
 Tests: `pytest -m "not live"` in this directory.

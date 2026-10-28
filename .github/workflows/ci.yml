@@ -95,7 +95,45 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: integrations/${{ matrix.package }}/package-lock.json
-      - run: npm ci
+      - name: npm ci
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.package }}" = "x402-client" ]; then
+            npm ci
+          else
+            # Wedges require @botsrated/x402-preflight ^0.3.0. That version is not on npm
+            # until this release is published. `npm pack --prefix` packs the cwd package,
+            # so build the tarball from integrations/x402-client itself, install that file,
+            # then restore the ^0.3.0 spec. package.json on the branch stays ^0.3.0.
+            core="$GITHUB_WORKSPACE/integrations/x402-client"
+            tarball="$RUNNER_TEMP/botsrated-x402-preflight-0.3.0.tgz"
+            (
+              cd "$core"
+              npm ci
+              npm pack --pack-destination "$RUNNER_TEMP"
+            )
+            test -f "$tarball"
+            cp package.json "$RUNNER_TEMP/package.json.wedge"
+            node -e '
+              const fs = require("fs");
+              const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+              if (pkg.dependencies["@botsrated/x402-preflight"] !== "^0.3.0") {
+                console.error("expected ^0.3.0, got", pkg.dependencies["@botsrated/x402-preflight"]);
+                process.exit(1);
+              }
+              pkg.dependencies["@botsrated/x402-preflight"] = "file:" + process.argv[1];
+              fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            ' "$tarball"
+            npm install --no-audit --no-fund
+            cp "$RUNNER_TEMP/package.json.wedge" package.json
+            node -e '
+              const installed = require("./node_modules/@botsrated/x402-preflight/package.json");
+              if (installed.version !== "0.3.0") {
+                console.error("installed", installed.version);
+                process.exit(1);
+              }
+            '
+          fi
       - run: npm run typecheck
       - run: npm test
 

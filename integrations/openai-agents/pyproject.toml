@@ -5,7 +5,7 @@ description = "Payment-client hook that pairs with the OpenAI Agents SDK. Regist
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["botsrated>=0.2.1,<0.3"]
+dependencies = ["botsrated>=0.3.0,<0.4"]
 keywords = ["openai-agents", "openai", "x402", "botsrated", "payment-guard", "preflight"]
 
 [project.urls]

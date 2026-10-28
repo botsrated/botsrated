@@ -1,6 +1,6 @@
 {
   "name": "@botsrated/x402-preflight",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Payment guard for x402 clients: checks facts BotsRated measured about a seller before your agent signs (advice-only by default), adds a payment-identifier retry key where the seller supports it, and checks on chain, read-only, whether a payment settled once. Not affiliated with Coinbase or the x402 Foundation.",
   "license": "MIT",
   "type": "module",

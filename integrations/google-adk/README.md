@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with [Google ADK](https://google.github.io/adk-docs/). Payment-client wrap and an optional before-tool callback. Not an agent runtime, and not an Agent, Runner, or session service. Not published. From a checkout: `pip install -e integrations/google-adk` (needs `botsrated` 0.2.1 or newer).
+Pairs with [Google ADK](https://google.github.io/adk-docs/). Payment-client wrap and an optional before-tool callback. Not an agent runtime, and not an Agent, Runner, or session service. Not published. From a checkout: `pip install -e integrations/google-adk` (needs `botsrated>=0.3.0,<0.4`).
 
 ```python
 from google_adk_botsrated import attach_payment_guard
@@ -15,6 +15,6 @@ Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an uno
 
 `botsrated_before_tool_callback(guard, ["pay_seller"])` is an ADK `before_tool_callback` for those opaque paid tools. On a block it returns only `botsrated_payment_reason` and does not run the tool. Other tools are unchanged. `botsrated_preflight(url)` is the free preflight and does not attach a guard.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. botsrated 0.2.1 does not accept `remote_policy`, so the token is not sent.
+`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` only when `PaymentGuard` accepts that keyword. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without `parse_remote_policy` raises and is not dropped.
 
 Tests: `pytest -m "not live"` in this directory.

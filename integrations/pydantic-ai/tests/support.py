@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -10,8 +9,6 @@ from typing import Any
 
 import httpx
 import pytest
-
-from pydantic_ai_botsrated.guard import _REMOTE_POLICY_PARAMS
 
 FX = Path(__file__).resolve().parents[2] / "fixtures"
 FOUND = json.loads((FX / "preflight-found.json").read_text())
@@ -72,9 +69,14 @@ def ctx(pay_to: str) -> dict[str, Any]:
     }
 
 
-def supports_remote_policy(guard_cls: type) -> bool:
-    params = inspect.signature(guard_cls.__init__).parameters
-    return any(name in params for name in _REMOTE_POLICY_PARAMS)
+def supports_remote_policy(guard_cls: type | None = None) -> bool:
+    """True when this botsrated exports parse_remote_policy. The class is not inspected."""
+    del guard_cls
+    try:
+        from botsrated.payment_guard import parse_remote_policy
+    except ImportError:
+        return False
+    return callable(parse_remote_policy)
 
 
 def policy_view(guard: Any) -> tuple[str, str] | None:

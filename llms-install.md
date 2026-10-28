@@ -32,3 +32,10 @@ These register a check on the x402 client the app already uses. They are not a s
 - [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md) (`agent-framework-botsrated`; guard path not published): `attach_payment_guard` on your x402 client, plus the existing function middleware for named payment tools. Pairs with Microsoft Agent Framework. Not an agent or workflow runtime.
 - [Pydantic AI](integrations/pydantic-ai/README.md) (`pydantic-ai-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `Hooks` capability for named paid tools. Pairs with Pydantic AI. Not an agent or graph runtime.
 - [Mastra](integrations/mastra/README.md) (`@botsrated/mastra`, not published): `attachPaymentGuard` on your x402 client, plus an optional `hooks.beforeToolCall` for named paid tools. Pairs with Mastra. Not an agent, workflow, or tool runtime.
+
+## Optional: your policy on BotsRated
+
+This is what makes `BOTSRATED_TOKEN` work in framework attaches. The token is optional; with none, the guard stays advice-only. The client enforces. BotsRated holds no funds, signs nothing, and has no escrow.
+TS: `createPaymentGuard({ preset: "carefulBuyer", remotePolicy: { token: process.env.BOTSRATED_TOKEN!, failMode: "open" } })`
+Py: `PaymentGuard(preset="carefulBuyer", remote_policy={"token": os.environ["BOTSRATED_TOKEN"], "fail_mode": "open"})`
+On HTTP 503, 404, or `decision: null`, `open` records info and `closed` stops the payment. A missing decision is not a pass.

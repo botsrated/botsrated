@@ -5,9 +5,8 @@ import { defineConfig } from "vitest/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Published `@botsrated/x402-preflight` 0.2.1 has PaymentGuard and does not accept `remotePolicy`
- * (that behavior is in this repo, publish HOLD). Guard tests that need a remote decision resolve
- * the payment-guard subpath at the in-repo source. The package import stays the published name.
+ * Guard tests resolve `@botsrated/x402-preflight/payment-guard` at the in-repo source
+ * (0.3.0, which exports `normalizeRemotePolicy`). The package import stays that name.
  */
 export default defineConfig({
   test: { environment: "node" },

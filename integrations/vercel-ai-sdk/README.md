@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Not published: from a checkout, `npm install` in `integrations/vercel-ai-sdk` (needs `@botsrated/x402-preflight` 0.2.1 or newer).
+Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Not published: from a checkout, `npm install` in `integrations/vercel-ai-sdk` (needs `@botsrated/x402-preflight` `^0.3.0`).
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
@@ -15,7 +15,7 @@ Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved p
 
 `attach_payment_guard` is the same function as `attachPaymentGuard`.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` only when PaymentGuard accepts `remotePolicy`. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`, so the token is not sent.
+`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` only when PaymentGuard accepts `remotePolicy`. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`; 0.3.0 does. A configured token without `normalizeRemotePolicy` raises and is not dropped.
 
 `botsratedPreflight()`, `botsratedCheck()`, and `botsratedTools()` stay optional and do not attach a guard. Wrap the paying fetch with `guard.wrapFetch` so the guard knows the URL being paid.
 
@@ -38,7 +38,7 @@ const result = await generateText({ model, tools: { ...botsratedTools(), paidToo
 pre-payment check before an agent pays an x402 seller.
 
 **Status: published on npm as [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).** `attachPaymentGuard` is not in that release. The source here depends on
-[`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.2.1`. Docs: https://botsrated.com/docs/ai-sdk
+[`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.3.0`. Docs: https://botsrated.com/docs/ai-sdk
 
 ```bash
 npm install @botsrated/ai-sdk ai zod

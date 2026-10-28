@@ -23,7 +23,6 @@ from support import (
     ensure_remote_policy_guard,
     policy_calls,
     policy_view,
-    supports_remote_policy,
 )
 
 from agent_framework_botsrated import (
@@ -100,19 +99,31 @@ async def test_observed_payto_runs_when_the_request_url_is_known(api):
     assert not any(reason.code == "paid_url_unknown" and reason.effect == "block" for reason in decisions[0].reasons)
 
 
-async def test_omitted_preset_on_the_guard_path_warns_and_runs_the_tool(api):
+async def test_fail_mode_without_preset_keeps_the_unobserved_payto_block(api):
     middleware = BotsRatedPaymentMiddleware(["pay_x402"], fail_mode="open")
-    assert middleware.guard.policy.pay_to_mismatch == "warn"
+    assert middleware.guard.policy.pay_to_mismatch == "block"
     assert middleware.guard.fail_open is True
     decisions: list[Any] = []
     middleware.guard.on_decision = decisions.append
     model = ScriptedModel([("bad", "pay_x402", {"url": SELLER, "pay_to": DEAD, "amount": AMOUNT})])
     out = results(await _agent(model, middleware).run("pay"))
-    assert paid == [DEAD]
-    assert out["bad"] == f"PAID {DEAD}"
-    assert decisions[0].action == "allow"
-    assert any(reason.code == "payto_not_observed" and reason.effect == "warn" for reason in decisions[0].reasons)
+    assert paid == []
+    assert "was not executed" in str(out["bad"])
+    assert decisions[0].action == "block"
+    assert any(reason.code == "payto_not_observed" and reason.effect == "block" for reason in decisions[0].reasons)
     assert policy_calls(api) == []
+
+
+async def test_token_without_preset_keeps_the_unobserved_payto_block(api, monkeypatch: pytest.MonkeyPatch):
+    ensure_remote_policy_guard(monkeypatch)
+    api.post("/v1/policy/check").respond(200, json={"decision": "pass"})
+    middleware = BotsRatedPaymentMiddleware(["pay_x402"], token=TOKEN)
+    assert middleware.guard.policy.pay_to_mismatch == "block"
+    model = ScriptedModel([("bad", "pay_x402", {"url": SELLER, "pay_to": DEAD, "amount": AMOUNT})])
+    out = results(await _agent(model, middleware).run("pay"))
+    assert paid == []
+    assert "was not executed" in str(out["bad"])
+    assert policy_calls(api)
 
 
 @pytest.mark.parametrize("preset", ["carefulBuyer", "strict"])
@@ -213,23 +224,15 @@ async def test_without_token_middleware_makes_no_remote_http(api):
         assert "/v1/policy" not in str(call.request.url)
 
 
-async def test_token_without_remote_policy_parameter_makes_no_policy_call(api, monkeypatch: pytest.MonkeyPatch):
+async def test_token_without_parse_remote_policy_raises(api, monkeypatch: pytest.MonkeyPatch):
     import botsrated.payment_guard as payment_guard
 
-    real = payment_guard.PaymentGuard
-
-    class LocalOnly(real):  # type: ignore[misc]
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-
-    monkeypatch.setattr(payment_guard, "PaymentGuard", LocalOnly)
+    monkeypatch.delattr(payment_guard, "parse_remote_policy")
     api.post("/v1/policy/check").respond(200, json={"decision": "block"})
-    middleware = BotsRatedPaymentMiddleware(["pay_x402"], preset="warn", token=TOKEN)
-    assert not supports_remote_policy(type(middleware.guard))
-    model = ScriptedModel([("good", "pay_x402", {"url": SELLER, "pay_to": OBSERVED, "amount": AMOUNT})])
-    await _agent(model, middleware).run("pay")
-    assert paid == [OBSERVED]
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        BotsRatedPaymentMiddleware(["pay_x402"], preset="warn", token=TOKEN)
     assert policy_calls(api) == []
+    assert paid == []
 
 
 async def test_remote_block_stops_and_remote_pass_does_not_clear_a_local_block(api, monkeypatch: pytest.MonkeyPatch):

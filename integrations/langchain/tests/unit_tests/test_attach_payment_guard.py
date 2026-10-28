@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from langchain_botsrated import attach_payment_guard, botsrated_tools
-from langchain_botsrated.attach import _REMOTE_POLICY_PARAMS, _remote_policy_kwargs
+from langchain_botsrated.attach import _remote_policy_kwargs
 
 FX = Path(__file__).resolve().parents[3] / "fixtures"
 FOUND = json.loads((FX / "preflight-found.json").read_text())
@@ -127,29 +127,25 @@ def test_fail_mode_is_customer_chosen(api):
         attach_payment_guard(RecordingClientSync(), fail_mode="block")  # type: ignore[arg-type]
 
 
-def test_token_is_local_only_until_remote_policy_exists(api):
+def test_token_is_sent_as_remote_policy_mapping(api):
     token = "policy-token-example"
+    api.post("/v1/policy/check").respond(200, json={"decision": "pass"})
     client = RecordingClientSync()
     guard = attach_payment_guard(client, preset="warn", token=token)
-    params = inspect.signature(type(guard).__init__).parameters
-    supported = any(name in params for name in _REMOTE_POLICY_PARAMS)
-    expected: dict[str, dict[str, str]] = {}
-    mapping = {"token": token, "fail_mode": "open"}
-    if "remote_policy" in params:
-        expected = {"remote_policy": mapping}
-    elif "remotePolicy" in params:
-        expected = {"remotePolicy": mapping}
-    assert _remote_policy_kwargs(type(guard), token) == expected
-    if supported:
-        closed = {"token": token, "fail_mode": "closed"}
-        assert next(iter(_remote_policy_kwargs(type(guard), token, "closed").values())) == closed
+    assert _remote_policy_kwargs(token) == {"remote_policy": {"token": token, "fail_mode": "open"}}
+    assert not isinstance(guard.remote_policy, str)
+    assert guard.remote_policy.token == token
     url = FOUND["latest_probe"]["url"]
     with guard.request(url):
         guard.decide(_ctx(FOUND["latest_probe"]["live_payTo"]))
-    sent = " ".join(str(call.request.url) + str(call.request.content) for call in api.calls)
-    assert token not in sent
-    if not supported:
-        assert token not in repr(guard.__dict__)
+    preflight = [call for call in api.calls if "/v1/preflight" in str(call.request.url)]
+    policy = [call for call in api.calls if "/v1/policy" in str(call.request.url)]
+    assert preflight
+    assert all(token not in str(call.request.url) for call in preflight)
+    assert policy
+    assert policy[0].request.headers["authorization"] == f"Bearer {token}"
+    assert "sign" not in client.calls
+
 
 
 def test_strict_uses_the_strict_policy_table():

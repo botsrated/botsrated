@@ -25,7 +25,7 @@ tools = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.02", x402_client=x402_cl
 
 ## Default install
 
-`pip install llama-index-tools-botsrated` (needs `botsrated` 0.2.1+). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. No sign, no custody, no holding funds. `BotsRatedToolSpec()` does not attach a guard.
+`pip install llama-index-tools-botsrated` (needs `botsrated>=0.3.0,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. No sign, no custody, no holding funds. `BotsRatedToolSpec()` does not attach a guard.
 
 ```python
 from llama_index.tools.botsrated import BotsRatedToolSpec, attach_payment_guard
@@ -34,7 +34,7 @@ tools = BotsRatedToolSpec().to_tool_list()  # free preflight only; no guard
 guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when selected. `fail_mode` is `"open"` or `"closed"`; omit it to stay fail-open. `token` is `remote_policy` only if `PaymentGuard` accepts it (0.2.1 does not: local preset, token not sent).
+Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when selected. `fail_mode` is `"open"` or `"closed"`; omit it to stay fail-open. `token` is `remote_policy` only when `parse_remote_policy` is present. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without that normalizer raises and is not dropped.
 
 `preflight(url, pay_to=None, network=None, amount=None)` returns the latest probe. When `pay_to` is given,
 it also returns `decision.action` (`allow` or `block`) and the reasons.

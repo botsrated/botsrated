@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -154,32 +153,23 @@ def test_without_token_makes_no_remote_policy_http(api):
     assert policy_view(guard) is None
 
 
-def test_token_is_a_mapping_only_when_the_constructor_accepts_it():
-    class WithSnake:
-        def __init__(self, remote_policy: Mapping[str, str] | None = None) -> None:
-            if remote_policy is not None and not isinstance(remote_policy, Mapping):
-                raise TypeError("remote_policy must be a mapping")
-            self.remote_policy = remote_policy
+def test_token_is_a_mapping_only_when_parse_remote_policy_exists():
+    """parse_remote_policy is the gate. A constructor signature is not consulted."""
 
-    class WithCamel:
-        def __init__(self, remotePolicy: Mapping[str, str] | None = None) -> None:
-            self.remotePolicy = remotePolicy
+    def normalizer(value: object) -> object:
+        return value
 
-    class WithNeither:
-        def __init__(self, preset: str | None = None) -> None:
-            self.preset = preset
-
-    snake = _remote_policy_kwargs(WithSnake, "abc", "closed")
+    snake = _remote_policy_kwargs("abc", "closed", normalizer=normalizer)
     assert snake == {"remote_policy": {"token": "abc", "fail_mode": "closed"}}
     assert isinstance(snake["remote_policy"], dict)
-    assert _remote_policy_kwargs(WithSnake, "abc", None) == {"remote_policy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithCamel, "abc", "open") == {"remotePolicy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithNeither, "abc", "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, None, "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, "", "closed") == {}
-    WithSnake(**snake)
-    with pytest.raises(TypeError):
-        WithSnake(remote_policy="abc")  # type: ignore[arg-type]
+    assert _remote_policy_kwargs("abc", None, normalizer=normalizer) == {
+        "remote_policy": {"token": "abc", "fail_mode": "open"},
+    }
+    assert _remote_policy_kwargs(None, "closed", normalizer=normalizer) == {}
+    assert _remote_policy_kwargs("", "closed", normalizer=normalizer) == {}
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        _remote_policy_kwargs("abc", "closed", normalizer=None)
+
 
 
 def test_token_without_remote_policy_kwarg_does_not_call_or_raise(api):
@@ -201,27 +191,14 @@ def test_token_without_remote_policy_kwarg_does_not_call_or_raise(api):
     assert "sign" not in client.calls
 
 
-def test_token_when_payment_guard_lacks_remote_policy_makes_no_policy_call(api, monkeypatch: pytest.MonkeyPatch):
+def test_token_raises_when_parse_remote_policy_is_missing(api, monkeypatch: pytest.MonkeyPatch):
     import botsrated.payment_guard as payment_guard
 
-    real = payment_guard.PaymentGuard
-
-    class LocalOnly(real):  # type: ignore[misc]
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-
-    monkeypatch.setattr(payment_guard, "PaymentGuard", LocalOnly)
+    monkeypatch.delattr(payment_guard, "parse_remote_policy")
     api.post("/v1/policy/check").respond(200, json={"decision": "block"})
-    client = RecordingClientSync()
-    guard = attach_payment_guard(client, preset="warn", token=TOKEN, fail_mode="closed")
-    assert "remote_policy" not in inspect.signature(type(guard).__init__).parameters
-    with guard.request(SELLER):
-        decision = guard.decide(ctx(OBSERVED))
-    sent = " ".join(str(call.request.url) + str(call.request.content) + str(call.request.headers) for call in api.calls)
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        attach_payment_guard(RecordingClientSync(), preset="warn", token=TOKEN, fail_mode="closed")
     assert policy_calls(api) == []
-    assert TOKEN not in sent
-    assert decision.action == "allow"
-    assert "sign" not in client.calls
 
 
 def test_env_token_is_used_when_argument_is_omitted(monkeypatch: pytest.MonkeyPatch):

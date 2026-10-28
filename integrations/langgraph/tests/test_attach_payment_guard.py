@@ -19,7 +19,7 @@ from langgraph_botsrated import (
     botsrated_payment_middleware,
     botsrated_preflight,
 )
-from langgraph_botsrated.guard import _REMOTE_POLICY_PARAMS, _remote_policy_kwargs
+from langgraph_botsrated.guard import _remote_policy_kwargs
 
 FX = Path(__file__).resolve().parents[2] / "fixtures"
 FOUND = json.loads((FX / "preflight-found.json").read_text())
@@ -80,9 +80,14 @@ def _ctx(pay_to: str) -> dict[str, Any]:
     }
 
 
-def _supports_remote_policy(guard_cls: type) -> bool:
-    params = inspect.signature(guard_cls.__init__).parameters
-    return any(name in params for name in _REMOTE_POLICY_PARAMS)
+def _supports_remote_policy(guard_cls: type | None = None) -> bool:
+    """True when this botsrated exports parse_remote_policy. The class is not inspected."""
+    del guard_cls
+    try:
+        from botsrated.payment_guard import parse_remote_policy
+    except ImportError:
+        return False
+    return callable(parse_remote_policy)
 
 
 def _policy_view(guard: Any) -> tuple[str, str] | None:
@@ -366,30 +371,23 @@ def test_without_token_makes_no_remote_policy_http(api):
     assert _policy_view(guard) is None
 
 
-def test_token_is_a_mapping_only_when_the_constructor_accepts_it():
-    class WithSnake:
-        def __init__(self, remote_policy: Mapping[str, str] | None = None) -> None:
-            if remote_policy is not None and not isinstance(remote_policy, Mapping):
-                raise TypeError("remote_policy must be a mapping")
-            self.remote_policy = remote_policy
+def test_token_is_a_mapping_only_when_parse_remote_policy_exists():
+    """parse_remote_policy is the gate. A constructor signature is not consulted."""
 
-    class WithCamel:
-        def __init__(self, remotePolicy: Mapping[str, str] | None = None) -> None:
-            self.remotePolicy = remotePolicy
+    def normalizer(value: object) -> object:
+        return value
 
-    class WithNeither:
-        def __init__(self, preset: str | None = None) -> None:
-            self.preset = preset
-
-    snake = _remote_policy_kwargs(WithSnake, "abc", "closed")
+    snake = _remote_policy_kwargs("abc", "closed", normalizer=normalizer)
     assert snake == {"remote_policy": {"token": "abc", "fail_mode": "closed"}}
     assert isinstance(snake["remote_policy"], dict)
-    assert _remote_policy_kwargs(WithSnake, "abc", None) == {"remote_policy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithCamel, "abc", "open") == {"remotePolicy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithNeither, "abc", "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, None, "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, "", "closed") == {}
-    WithSnake(**snake)
+    assert _remote_policy_kwargs("abc", None, normalizer=normalizer) == {
+        "remote_policy": {"token": "abc", "fail_mode": "open"},
+    }
+    assert _remote_policy_kwargs(None, "closed", normalizer=normalizer) == {}
+    assert _remote_policy_kwargs("", "closed", normalizer=normalizer) == {}
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        _remote_policy_kwargs("abc", "closed", normalizer=None)
+
 
 
 def test_token_without_remote_policy_kwarg_does_not_call_or_raise(api):

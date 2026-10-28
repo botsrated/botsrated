@@ -158,32 +158,23 @@ def test_without_token_makes_no_remote_policy_http(api):
     assert policy_view(guard) is None
 
 
-def test_token_is_a_mapping_only_when_the_constructor_accepts_it():
-    class WithSnake:
-        def __init__(self, remote_policy: Mapping[str, str] | None = None) -> None:
-            if remote_policy is not None and not isinstance(remote_policy, Mapping):
-                raise TypeError("remote_policy must be a mapping")
-            self.remote_policy = remote_policy
+def test_token_is_a_mapping_only_when_parse_remote_policy_exists():
+    """parse_remote_policy is the gate. A constructor signature is not consulted."""
 
-    class WithCamel:
-        def __init__(self, remotePolicy: Mapping[str, str] | None = None) -> None:
-            self.remotePolicy = remotePolicy
+    def normalizer(value: object) -> object:
+        return value
 
-    class WithNeither:
-        def __init__(self, preset: str | None = None) -> None:
-            self.preset = preset
-
-    snake = _remote_policy_kwargs(WithSnake, "abc", "closed")
+    snake = _remote_policy_kwargs("abc", "closed", normalizer=normalizer)
     assert snake == {"remote_policy": {"token": "abc", "fail_mode": "closed"}}
     assert isinstance(snake["remote_policy"], dict)
-    assert _remote_policy_kwargs(WithSnake, "abc", None) == {"remote_policy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithCamel, "abc", "open") == {"remotePolicy": {"token": "abc", "fail_mode": "open"}}
-    assert _remote_policy_kwargs(WithNeither, "abc", "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, None, "closed") == {}
-    assert _remote_policy_kwargs(WithSnake, "", "closed") == {}
-    WithSnake(**snake)
-    with pytest.raises(TypeError):
-        WithSnake(remote_policy="abc")  # type: ignore[arg-type]
+    assert _remote_policy_kwargs("abc", None, normalizer=normalizer) == {
+        "remote_policy": {"token": "abc", "fail_mode": "open"},
+    }
+    assert _remote_policy_kwargs(None, "closed", normalizer=normalizer) == {}
+    assert _remote_policy_kwargs("", "closed", normalizer=normalizer) == {}
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        _remote_policy_kwargs("abc", "closed", normalizer=None)
+
 
 
 def test_token_without_remote_policy_kwarg_does_not_call_or_raise(api):
