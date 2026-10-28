@@ -1,0 +1,39 @@
+[project]
+name = "pydantic-ai-botsrated"
+version = "0.1.0"
+description = "Payment-client wrap that pairs with Pydantic AI. Registers BotsRated PaymentGuard on an x402 client and offers an optional before-pay Hooks capability. Not an agent or graph runtime."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = ["botsrated>=0.2.1,<0.3"]
+keywords = ["pydantic-ai", "x402", "botsrated", "payment-guard", "preflight"]
+
+[project.optional-dependencies]
+hooks = ["pydantic-ai-slim>=2.0,<3"]
+
+[project.urls]
+Homepage = "https://botsrated.com"
+Repository = "https://github.com/botsrated/botsrated"
+Documentation = "https://github.com/botsrated/botsrated/blob/main/integrations/pydantic-ai/README.md"
+Issues = "https://github.com/botsrated/botsrated/issues"
+
+[dependency-groups]
+dev = ["pytest>=8", "respx>=0.21", "x402>=2.25,<3"]
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pydantic_ai_botsrated"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+testpaths = ["tests"]
+markers = ["live: calls the real, free BotsRated API (no payment)"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
