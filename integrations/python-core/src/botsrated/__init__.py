@@ -20,6 +20,7 @@ from botsrated.payment_guard import (
     GuardReason,
     PaymentGuard,
     PaymentGuardPolicy,
+    RemotePolicy,
     dry_run_only,
 )
 from botsrated.util import (
@@ -133,6 +134,7 @@ __all__ = [
     "PrePaymentGuard",
     "PreflightResult",
     "Reason",
+    "RemotePolicy",
     "SellerFacts",
     "acheck_payment_state",
     "check_payment_state",
