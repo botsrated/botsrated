@@ -6,10 +6,10 @@ that prepared them has no `workflow` scope. To enable them, a maintainer copies 
 
 ## Production publish (OIDC only)
 
-Production releases go through these workflows' Trusted Publishing (OIDC) only. Do not run `npm publish` or
+Production releases go through these workflows' OIDC publishing only. Do not run `npm publish` or
 `twine upload` from a shared machine for a production release. Do not put an npm or PyPI token on a shared
 machine or in this repo. npm publishing access should require two-factor authentication and disallow tokens.
-PyPI should use a trusted publisher, with API tokens removed.
+PyPI should use an OIDC publisher, with API tokens removed.
 
 ## The release gate (phone-friendly, no signed tags)
 
@@ -52,7 +52,7 @@ Releases are started from the GitHub iPhone app, so the gate doesn't need GPG or
 
 Kept from the security reviews:
 - npm: separate `test`, `pack` and `compare` jobs. The published tarball is built with `npm ci --ignore-scripts`
-  and must match the tested build byte for byte. The npm CLI is installed only from a checksum-verified tarball.
+  and must match the tested build byte for byte. The npm CLI is installed only from a checksum-checked tarball.
 - PyPI: hash-pinned build tools and `--no-isolation`; pinned test dependencies.
 - `persist-credentials: false` on every checkout; inputs reach scripts only through `env`.
 
@@ -99,7 +99,7 @@ published.
   - required reviewer: the org owner only;
   - **untick "Allow administrators to bypass configured protection rules"**, otherwise an admin can start the
     waiting job without an approval;
-  - deployment branches: selected, `main` only. npm and PyPI trusted publishing bind to the workflow file and the
+  - deployment branches: selected, `main` only. npm and PyPI OIDC publishing bind to the workflow file and the
     environment, not the branch, so this setting is what stops a run on another branch from publishing;
   - no secrets and no variables.
 - **Actions settings** (Settings → Actions → General):
@@ -107,10 +107,10 @@ published.
   - untick **"Allow GitHub Actions to create and approve pull requests"**, so a workflow can't open and approve
     its own PR into main.
 - **main ruleset** (Settings → Rules): as above, with no bypass.
-- **npm trusted publisher** for each package: repository `botsrated/botsrated`, workflow `publish-npm.yml`,
+- **npm OIDC publisher** for each package: repository `botsrated/botsrated`, workflow `publish-npm.yml`,
   environment `npm-publish`, and allow `npm publish`. Then set publishing access to "Require two-factor
   authentication and disallow tokens", and delete the old npm tokens.
-- **PyPI trusted publisher** for each project: owner `botsrated`, repository `botsrated`, workflow
+- **PyPI OIDC publisher** for each project: owner `botsrated`, repository `botsrated`, workflow
   `publish-pypi.yml`, environment `pypi-publish`. Then remove the project's API tokens.
 - Secret scanning and push protection on (free for public repos).
 

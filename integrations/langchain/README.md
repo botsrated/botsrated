@@ -2,13 +2,17 @@
 
 ## Install in 3 steps
 
-1. Install. `pip install langchain-botsrated` gets PyPI 0.1.2 (tools only). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/langchain` (pulls `botsrated>=0.3.0,<0.4`).
-2. Attach to your x402 client:
+1. Install the guard from a checkout. Not on PyPI yet (`pip install langchain-botsrated` is 0.1.2, free tools only). In a clean virtualenv: `pip install -e integrations/langchain` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from langchain_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 LangChain tools for [BotsRated](https://botsrated.com). Use them as a pre-payment check before
 an agent pays an x402 seller.
@@ -47,13 +51,13 @@ from langchain_botsrated import attach_payment_guard, botsrated_tools
 
 tools = botsrated_tools()  # free preflight only; no guard attached
 guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
-# token=... sends a private policy check (botsrated>=0.3.0,<0.4)
+# token=... is remote_policy on botsrated 0.3.0+ (see the token paragraph above)
 ```
 
 `preset` is yours: `warn` (advice only; the default when you omit it), `carefulBuyer`, or `strict` (same stops
-as `carefulBuyer`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays fail-open. The guard
+as `carefulBuyer`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays open. The guard
 reports measurements and receipt links. It does not sign a payment and does not hold funds.
 
-`x402_client` is your x402 client. `token` is passed as `remote_policy` only when `parse_remote_policy` is present. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without that normalizer raises and is not dropped.
+`x402_client` is your x402 client. `token` is sent as `remote_policy` on botsrated 0.3.0 and later. A configured token without `parse_remote_policy` raises and is not dropped.
 
 Tests: `pytest tests/unit_tests` runs the tool tests and LangChain's `ToolsUnitTests`.

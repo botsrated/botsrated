@@ -8,7 +8,7 @@ BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent 
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
 - paid test-buys, each with its on-chain tx hash.
 
-It reports facts and signed receipts only; no scores or grades.
+It reports facts and signed receipts only.
 
 This repository documents the **remote** MCP server. There is nothing to install or run locally.
 
@@ -25,7 +25,7 @@ This repository documents the **remote** MCP server. There is nothing to install
 ## Tools
 | Tool | Price | What it returns |
 |---|---|---|
-| `preflight` | free, no key, rate limits | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. No score and no grade. See below |
+| `preflight` | free, no key, rate limits | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. Measurements and a receipt link. See below |
 | `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
@@ -36,7 +36,7 @@ This repository documents the **remote** MCP server. There is nothing to install
 ## Facts bundle (`preflight` and `check`)
 
 `preflight` (the MCP tool and `GET /v1/preflight?url=<host>`) returns measurements and receipt links. You set your own
-thresholds. The response has no score and no grade.
+thresholds. The response is measurements and a receipt link.
 
 | Field | What you get back |
 |---|---|
@@ -45,16 +45,16 @@ thresholds. The response has no score and no grade.
 | `latest_probe.receipt_url` | Link to the signed receipt for that probe (`https://botsrated.com/receipt/...`). The receipt is the record |
 | `freshness` | `last_probe_at`, `age_seconds`, `stale` (older than 24 h) |
 | `listing` | Directory price and payTo. Directory data is not a probe observation |
-| `recent_window` | Probe count, how many returned a valid 402, latency. A count in a window, not a grade |
+| `recent_window` | Probe count, how many returned a valid 402, latency. A count in a window |
 | `note` | Facts only |
 
 `check` (paid, after the free daily quota) adds measured facts for one host and the last receipts. Those are still
-measurements and receipt links, not a score.
+measurements and receipt links.
 
 The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller local bundle from this response
 (`covered`, `host`, `knownPayTos` / `known_pay_tos`, `listingPayTo` / `listing_pay_to`, `observedNetwork` /
 `observed_network`, `observedAmount` / `observed_amount`, `stale`, `receiptUrl` / `receipt_url`). Pick a named preset
-(`warn`, `carefulBuyer`, or `dry-run-only`) there. The guard does not invent a score from these fields.
+(`warn`, `carefulBuyer`, or `dry-run-only`) there. The guard does not invent a summary number from these fields.
 
 Paid MCP tools: an unpaid call returns an x402 v2 PaymentRequired tool error (isError, structuredContent with accepts); an x402-aware MCP client (e.g. `@x402/mcp`) retries with the payment in `_meta["x402/payment"]`. The same data is on the HTTP routes, payable by any x402 client (e.g. `@x402/fetch`, Coinbase Agentic Wallet). All three paid routes are also listed in the Coinbase x402 Bazaar.
 

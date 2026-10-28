@@ -55,8 +55,8 @@ const installedModule: PaymentGuardModule = {
 let currentModule = installedModule;
 
 /**
- * Swap the PaymentGuard module. Tests use this to stand in for an install that does not
- * accept `remotePolicy`. Omit the argument to restore the installed module.
+ * Swap the PaymentGuard module. Tests use this to stand in for an install with no
+ * `normalizeRemotePolicy`. Omit the argument to restore the installed module.
  * Not part of the package API.
  */
 export function usePaymentGuardModule(next?: PaymentGuardModule): void {

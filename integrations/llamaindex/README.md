@@ -2,13 +2,17 @@
 
 ## Install in 3 steps
 
-1. Install. `pip install llama-index-tools-botsrated` gets PyPI 0.1.2 (tools only). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/llamaindex` (pulls `botsrated>=0.3.0,<0.4`).
-2. Attach to your x402 client:
+1. Install the guard from a checkout. Not on PyPI yet (`pip install llama-index-tools-botsrated` is 0.1.2, free tools only). In a clean virtualenv: `pip install -e integrations/llamaindex` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from llama_index.tools.botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com). Use it as a pre-payment check
 before an agent pays an x402 seller.
@@ -44,7 +48,7 @@ tools = BotsRatedToolSpec().to_tool_list()  # free preflight only; no guard
 guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when selected. `fail_mode` is `"open"` or `"closed"`; omit it to stay fail-open. `token` is `remote_policy` only when `parse_remote_policy` is present. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without that normalizer raises and is not dropped.
+Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `fail_mode` to stay open. `token` is sent as `remote_policy` on botsrated 0.3.0 and later. A configured token without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 `preflight(url, pay_to=None, network=None, amount=None)` returns the latest probe. When `pay_to` is given,
 it also returns `decision.action` (`allow` or `block`) and the reasons.

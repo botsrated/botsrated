@@ -2,24 +2,38 @@
 
 ## Install in 3 steps
 
-1. Install. `pip install agent-framework-botsrated` gets PyPI 0.1.2 (middleware and tool; no `attach_payment_guard`). The `attach_payment_guard` release (0.1.3) is publishing soon; until then, from a checkout: `pip install -e integrations/microsoft-agent-framework` (pulls `botsrated>=0.3.0,<0.4`).
-2. Attach to your x402 client:
+1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.2). That release is the middleware and the check tool. It does not include `attach_payment_guard`.
+2. Name the payment tools. Installing does not attach an x402 guard:
+```python
+from agent_framework_botsrated import BotsRatedPaymentMiddleware
+
+middleware = [BotsRatedPaymentMiddleware(["pay_x402"])]
+```
+3. With no preset, an unobserved payTo is blocked, and so is an invalid payTo. PyPI 0.1.2 has no `fail_mode` argument. `attach_payment_guard` is not in that release.
+
+`attach_payment_guard` in this checkout is not on PyPI (prepared as 0.1.3). From a checkout, in a clean virtualenv: `pip install -e integrations/microsoft-agent-framework` (needs `botsrated>=0.3.0,<0.4`). Installing that checkout does not attach a guard either:
+
 ```python
 from agent_framework_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+
+Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 ## Default install
 
-Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard path is not published. From a checkout: `pip install -e integrations/microsoft-agent-framework` (guard needs `botsrated>=0.3.0,<0.4`).
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. PyPI 0.1.2 is the middleware and the check tool. The `attach_payment_guard` path in this checkout is not on PyPI.
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to fail open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## What it checks
 
@@ -38,13 +52,13 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-Requires Python 3.10+, `agent-framework-core>=1.22,<2` and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4` (agent-framework-botsrated 0.1.3+).
+PyPI 0.1.2 requires Python 3.10+, `agent-framework-core>=1.22,<2`, and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.1.5,<0.2`. The guard in this checkout (prepared as 0.1.3, not on PyPI) requires `botsrated>=0.3.0,<0.4`.
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 
 ## Middleware and token
 
-`attach_payment_guard` is the hook. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` (botsrated>=0.3.0,<0.4 has `parse_remote_policy`). A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block.
+`attach_payment_guard` is the hook in this checkout. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 ```python
 import os
@@ -66,7 +80,7 @@ agent = Agent(
 
 `BotsRatedPaymentMiddleware(["paid_tool"], preset="carefulBuyer", fail_mode="open", token=...)` builds that same guard when you do not already have one. It does not register x402 hooks. Only the named payment tools are checked. On a block, `on_block="raise"` raises `BotsRatedPaymentBlocked`. The default returns the blocked reason and does not run the tool. `botsrated_check_payment_tool()` is the free preflight and does not attach a guard.
 
-`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked. Setting `fail_mode` or `token` without a `preset` keeps that payTo block. It does not switch the default to advice-only. `preset="warn"` is advice only when selected.
+`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked, and an invalid payTo is blocked. Setting `fail_mode` or `token` without a `preset` keeps both of those blocks (`pay_to_mismatch="block"` and `pay_to_invalid="block"`). It does not switch the default to advice-only, and it does not change `fail_mode` (omit it to stay open). `preset="warn"` is advice only when selected.
 
 ## Middleware: check payments before they run
 
@@ -101,6 +115,7 @@ Default policy (from `botsrated.GuardPolicy`, configurable through `guard=PrePay
 | Situation | Result |
 |---|---|
 | `payTo` never observed by BotsRated for that host (same network) | **blocked** (`payto_not_observed`; `payto_mismatch` with botsrated 0.1.x). The default guard passes `GuardPolicy(pay_to_mismatch="block")`, so this holds with botsrated 0.2, whose own default is advice-only |
+| `payTo` is not a 20-byte hex address | **blocked**. The historical guard uses `pay_to_mismatch`. A `PaymentGuard` built with `fail_mode` or `token` and no `preset` sets `pay_to_invalid="block"` as well |
 | Quote can't be read from the arguments | **blocked** (`quote_unreadable`) |
 | Price above the last observed price on the same route | allowed with a warning |
 | Host not covered, or data older than 24 h | allowed (info) |

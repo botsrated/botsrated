@@ -2,30 +2,34 @@
 
 ## Install in 3 steps
 
-1. Install. `@botsrated/ai-sdk` with the guard is publishing soon (npm 0.1.2 has no guard). From a checkout: `npm install` in `integrations/vercel-ai-sdk` (pulls `@botsrated/x402-preflight` `^0.3.0`, on npm).
-2. Attach to your x402 client:
+1. Install: `npm install @botsrated/ai-sdk` (npm 0.1.3, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`.
+2. Attach to your x402 client. Installing does not attach a guard:
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
-const guard = attachPaymentGuard(x402Client, { preset: "carefulBuyer", failMode: "open" });
+const guard = attachPaymentGuard(x402Client);
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `failMode` (`"open"` default, or `"closed"`).
+3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `failMode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 ## Default install
 
-Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Not published: from a checkout, `npm install` in `integrations/vercel-ai-sdk` (needs `@botsrated/x402-preflight` `^0.3.0`).
+Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's.
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
-const guard = attachPaymentGuard(x402Client, { preset: "carefulBuyer", failMode: "open" });
+const guard = attachPaymentGuard(x402Client);
 ```
 
-Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to fail open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
+Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
 
 ## Token
 
 `attach_payment_guard` is the same function as `attachPaymentGuard`.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` (`@botsrated/x402-preflight` `^0.3.0` exports `normalizeRemotePolicy`). A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`; 0.3.0 does. A configured token without `normalizeRemotePolicy` raises and is not dropped.
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 `botsratedPreflight()`, `botsratedCheck()`, and `botsratedTools()` stay optional and do not attach a guard. Wrap the paying fetch with `guard.wrapFetch` so the guard knows the URL being paid.
 
@@ -47,7 +51,7 @@ const result = await generateText({ model, tools: { ...botsratedTools(), paidToo
 [AI SDK](https://ai-sdk.dev) tools for [BotsRated](https://botsrated.com). Use them as a
 pre-payment check before an agent pays an x402 seller.
 
-**Status: published on npm as [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) (0.1.2).** `attachPaymentGuard` is not in that release. The source here depends on
+**Status: published on npm as [`@botsrated/ai-sdk` 0.1.3](https://www.npmjs.com/package/@botsrated/ai-sdk)** (includes `attachPaymentGuard`). It depends on
 [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.3.0`. Docs: https://botsrated.com/docs/ai-sdk
 
 ```bash

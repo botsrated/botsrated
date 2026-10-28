@@ -2,29 +2,33 @@
 
 ## Install in 3 steps
 
-1. Install. `langgraph-botsrated` is publishing soon (not on PyPI yet). From a checkout: `pip install -e integrations/langgraph` (pulls `botsrated>=0.3.0,<0.4`).
-2. Attach to your x402 client:
+1. Install. Not on the registry yet. From a checkout, in a clean virtualenv: `pip install -e integrations/langgraph` (pulls `botsrated>=0.3.0,<0.4`).
+2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from langgraph_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `fail_mode` (`"open"` default, or `"closed"`).
+3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 ## Default install
 
-Pairs with [LangGraph](https://docs.langchain.com/oss/python/langgraph). Payment-client wrap and an optional pre-pay node helper. Not an orchestration framework, and not a StateGraph, checkpoint store, or agent loop. Not published. From a checkout: `pip install -e integrations/langgraph` (needs `botsrated>=0.3.0,<0.4`).
+Pairs with [LangGraph](https://docs.langchain.com/oss/python/langgraph). Payment-client wrap and an optional pre-pay node helper. Not an orchestration framework, and not a StateGraph, checkpoint store, or agent loop. Not on the registry yet.
 
 ```python
 from langgraph_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to fail open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## Pre-pay node and token
 
 `botsrated_payment_middleware(guard, pay_node, context=read_payment)` runs that same guard before an opaque pay node. On a block it does not call the node and returns only `botsrated_payment_reason`. `botsrated_preflight(url)` is the free preflight and does not attach a guard.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remote_policy={"token", "fail_mode"}` (botsrated>=0.3.0,<0.4 has `parse_remote_policy`). A bare token string is never passed. botsrated 0.2.1 does not accept `remote_policy`; 0.3.0 does. A configured token without `parse_remote_policy` raises and is not dropped.
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 Tests: `pytest -m "not live"` in this directory.
