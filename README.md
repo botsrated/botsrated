@@ -8,7 +8,7 @@ BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent 
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
 - paid test-buys, each with its on-chain tx hash.
 
-It reports facts only. No grade or index is shown until a host has 3 paid test-buys on 3 different days.
+It reports facts and signed receipts only; no scores or grades.
 
 This repository documents the **remote** MCP server. There is nothing to install or run locally.
 
@@ -29,7 +29,6 @@ This repository documents the **remote** MCP server. There is nothing to install
 | `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
-| `history` | free | Signed daily aggregates for one host, newest first |
 | `check` | $0.001 (x402, USDC on Base); first 25 per client IP per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
 | `report` | $0.002 (x402); first 3 per client IP per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
@@ -57,7 +56,7 @@ The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller
 `observed_network`, `observedAmount` / `observed_amount`, `stale`, `receiptUrl` / `receipt_url`). Pick a named preset
 (`warn`, `carefulBuyer`, or `dry-run-only`) there. The guard does not invent a score from these fields.
 
-The paid tools return the x402 URL to call. Any x402 client can pay them, for example `@x402/fetch` or the Coinbase Agentic Wallet. All three paid routes are also listed in the Coinbase x402 Bazaar.
+Paid MCP tools: an unpaid call returns an x402 v2 PaymentRequired tool error (isError, structuredContent with accepts); an x402-aware MCP client (e.g. `@x402/mcp`) retries with the payment in `_meta["x402/payment"]`. The same data is on the HTTP routes, payable by any x402 client (e.g. `@x402/fetch`, Coinbase Agentic Wallet). All three paid routes are also listed in the Coinbase x402 Bazaar.
 
 Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
@@ -79,14 +78,16 @@ One x402 USDC payment on Base buys one 30-day period. There is no balance and no
 
 | Plan | Price per 30 days | What you get |
 |---|---|---|
-| `alerts-free` | free | 1 host; one signed webhook digest per UTC day when its facts change |
+| `alerts-free` | free | 1 host; one email digest per UTC day when its facts change. Slack, Discord, and webhook need a paid plan (`paid_channel_required`). Up to 3 free alert subscriptions per client IP, 1,000 in total |
 | `alerts-10` | $9 | Up to 10 hosts; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
 | `alerts-50` | $29 | Up to 50 hosts; same events |
 | `data-starter` | $49 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (60 requests/min) |
-| `data-pro` | $199 | Same, 600 requests/min |
-| custom | from $499/month | Volume, SLA or bulk delivery: botsrated@gmail.com |
+| `data-pro` | $199 | Same, 600 requests/min, plus the change-event export (`GET /v1/export/changes.ndjson?host=`) |
+| custom | $499+ per 30 days | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
 
-Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Alerts are webhooks only, never email, signed with Ed25519 (`botsrated-prober-1`, see below) over `{"m":"<timestamp>.<raw body>"}`. Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
+Paid BotPulse plans are paused and not on sale. A period already bought keeps working until that 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json.
+
+Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Free alerts are email only: one confirmation link first, then plain-text alerts from alerts@botsrated.com. Slack, Discord, and webhook delivery need a paid plan (`paid_channel_required` on the free plan). Paid alert plans can use a signed webhook (Ed25519, `botsrated-prober-1`, see below, over `{"m":"<timestamp>.<raw body>"}`), a Slack incoming webhook or Discord channel webhook (plain text, not signed), or the same email path. Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
 
 ## Install
 
