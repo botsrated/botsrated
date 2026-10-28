@@ -7,6 +7,7 @@
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
+import { normalizeRemotePolicy, policyQuote, requestPolicyCheck, type RemotePolicyOptions } from "./payment-guard.js";
 import {
   BASE_MAINNET,
   BASE_USDC,
@@ -282,6 +283,16 @@ export class BotsRatedClient {
   private readonly timeoutMs: number;
   private readonly cacheTtlMs: number;
   private readonly cache = new Map<string, { at: number; value: PreflightResult }>();
+
+  /** Unpaid fetch. A remote policy check uses this and never the paid path. */
+  unpaidFetch(): FetchLike {
+    return this.fetchFn;
+  }
+
+  /** Timeout for unpaid calls, including a remote policy check. */
+  unpaidTimeoutMs(): number {
+    return this.timeoutMs;
+  }
 
   constructor(private readonly options: BotsRatedClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? BOTSRATED_BASE_URL).replace(/\/$/, "");
@@ -587,6 +598,11 @@ export interface Decision {
   facts?: SellerFacts;
   /** Where to dispute a BotsRated measurement. */
   disputeUrl?: string;
+  /** Kept when a remote policy response sends them. `remote_decision` is null when that check returned no decision. */
+  decided_by?: string;
+  not_a_botsrated_rating?: boolean;
+  policy_version?: string;
+  remote_decision?: "pass" | "warn" | "block" | null;
 }
 
 const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate" | "requireRequestUrl">> = {
@@ -664,6 +680,12 @@ export interface GuardOptions {
   /** Run a check for payments at or above this USD amount: free within the daily quota (25 per UTC day), then a $0.001 paid check if the client is paid-enabled (otherwise skipped). */
   paidCheckAtOrAboveUsd?: number;
   onDecision?: (decision: Decision, req: PaymentRequirementsLike) => void;
+  /**
+   * Optional private policy check. Before paying, POST /v1/policy/check with the host and quote.
+   * A remote block stops the payment. HTTP 503, 404 or `decision: null` follows `failMode` and is never read as a pass.
+   * Unset: local rules only.
+   */
+  remotePolicy?: RemotePolicyOptions;
 }
 
 /** Context passed by `x402Client.onBeforePaymentCreation` in `@x402/core` v2. */
@@ -692,6 +714,8 @@ export interface PrePaymentGuard {
   forRequest(requestUrl: string): BeforePaymentHook;
   /** Wraps a paying fetch (e.g. `wrapFetchWithPayment(fetch, client)`) so `beforePaymentCreation` knows the URL being paid. */
   wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F;
+  /** Last `policy_version` seen on a remote policy response, if one was set. */
+  remotePolicyVersion(): string | undefined;
 }
 
 const MEASUREMENT_NOTE = "This is a measurement, not a finding about the seller.";
@@ -711,6 +735,8 @@ export function formatDecision(d: Decision): string {
 
 export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGuard {
   const client = options.client ?? new BotsRatedClient();
+  const remote = options.remotePolicy ? normalizeRemotePolicy(options.remotePolicy) : undefined;
+  let cachedPolicyVersion: string | undefined;
   const failOpen = options.failOpen ?? true;
   const openOrClosed = (code: string, detail: string, host?: string): Decision => ({
     action: failOpen ? "allow" : "block",
@@ -719,11 +745,50 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     disputeUrl: DISPUTE_URL,
   });
 
+  async function mergeRemote(decision: Decision, req: PaymentRequirementsLike): Promise<Decision> {
+    if (!remote || !decision.host) return decision;
+    let effect = await requestPolicyCheck({
+      fetch: client.unpaidFetch(),
+      baseUrl: remote.baseUrl,
+      token: remote.token,
+      host: decision.host,
+      quote: policyQuote(req),
+      timeoutMs: client.unpaidTimeoutMs(),
+      failMode: remote.failMode,
+    });
+    if (effect.policy_version) cachedPolicyVersion = effect.policy_version;
+    else if (cachedPolicyVersion) effect = { ...effect, policy_version: cachedPolicyVersion };
+    if (effect.effect && effect.code && effect.fact) {
+      decision.reasons.push({ code: effect.code, detail: effect.fact, effect: effect.effect });
+      if (effect.effect === "block") decision.action = "block";
+    }
+    if (effect.decided_by) decision.decided_by = effect.decided_by;
+    if (typeof effect.not_a_botsrated_rating === "boolean") decision.not_a_botsrated_rating = effect.not_a_botsrated_rating;
+    if (effect.policy_version) decision.policy_version = effect.policy_version;
+    decision.remote_decision = effect.decision;
+    return decision;
+  }
+
   async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
+    let decision: Decision;
     try {
-      return await decideInner(resourceUrl, req, requestUrl);
+      decision = await decideInner(resourceUrl, req, requestUrl);
     } catch {
-      return openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
+      decision = openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
+    }
+    try {
+      return await mergeRemote(decision, req);
+    } catch {
+      if (!remote || !decision.host) return decision;
+      const closed = remote.failMode === "closed";
+      decision.reasons.push({
+        code: "remote_policy_unavailable",
+        detail: `your policy check returned no decision; fail_mode is ${remote.failMode}.`,
+        effect: closed ? "block" : "info",
+      });
+      if (closed) decision.action = "block";
+      decision.remote_decision = null;
+      return decision;
     }
   }
 
@@ -832,6 +897,9 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     forRequest: (requestUrl) => (ctx) => hook(ctx, requestUrl),
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
       return ((input: any, init?: any) => payingRequest(requestUrlOf(input), () => fetchWithPayment(input, init))) as F;
+    },
+    remotePolicyVersion(): string | undefined {
+      return cachedPolicyVersion;
     },
   };
 }
