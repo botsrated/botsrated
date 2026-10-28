@@ -6,6 +6,9 @@ What it does, and nothing more:
   botsrated.com) and compares them locally with the payment request. Advice-only by default: it reports facts and
   stops a payment only when you choose a blocking policy (e.g. ``POLICIES["carefulBuyer"]``, an alias of
   ``POLICIES["strict"]``).
+- When ``remote_policy`` is set: ``POST /v1/policy/check`` with that host and the quote, merged with the local rules
+  (a remote block stops the payment). HTTP 503 or ``decision: null`` follows your ``fail_mode``. The policy decision
+  is not signed.
 - While the payload is built: adds a random x402 ``payment-identifier`` retry key, only when the seller advertises
   that extension, through x402's extension mechanism.
 - After: records the payment locally (never the signature) and offers a read-only on-chain check of whether it
@@ -26,12 +29,13 @@ import json
 import secrets
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Literal, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -149,6 +153,11 @@ class GuardDecision:
     policy_rule: str | None = None
     facts: GuardFacts | None = None
     dispute_url: str = DISPUTE_URL
+    # Present only after a remote policy check. ``remote_decision`` stays None when the server sent none.
+    decided_by: str | None = None
+    not_a_botsrated_rating: bool | None = None
+    policy_version: str | None = None
+    remote_decision: Literal["pass", "warn", "block"] | None = None
 
 
 def _effect(e: RuleEffect, fallback: Effect) -> Effect:
@@ -191,6 +200,204 @@ def _get(obj: Any, *names: str) -> Any:
         if not isinstance(obj, dict) and obj is not None and hasattr(obj, n):
             return getattr(obj, n)
     return None
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Remote policy. The client enforces. A missing decision is never turned into a pass.
+
+
+FailMode = Literal["open", "closed"]
+RemoteDecision = Literal["pass", "warn", "block"]
+
+
+def _ascii_label(text: str, extra: str) -> bool:
+    return all(c.isascii() and (c.isalnum() or c in extra) for c in text)
+
+
+def _policy_origin(base: str) -> str:
+    """Origin only. A path on ``base_url`` is not a prefix (the check path is always ``/v1/policy/check``)."""
+    if not isinstance(base, str) or any(c.isspace() for c in base):
+        raise ValueError("remote_policy.base_url must be an http(s) URL.")
+    parts = urlsplit(base.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
+        raise ValueError("remote_policy.base_url must be an http(s) URL.")
+    host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
+    netloc = host if parts.port is None else f"{host}:{parts.port}"
+    return f"{parts.scheme}://{netloc}"
+
+
+def _token_ok(token: str) -> bool:
+    if not isinstance(token, str) or not token or len(token) > 4096:
+        return False
+    return all(c.isascii() and not c.isspace() and ord(c) >= 33 for c in token)
+
+
+def _version_of(value: Any) -> str | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    text = str(value) if isinstance(value, int) else value.strip() if isinstance(value, str) else None
+    if not text or len(text) > 80 or not _ascii_label(text, "._:-"):
+        return None
+    return text
+
+
+@dataclass(frozen=True)
+class RemotePolicy:
+    """Your private policy check. ``fail_mode`` is required: ``open`` or ``closed``.
+
+    ``base_url`` defaults to https://botsrated.com when omitted. A mapping may use ``fail_mode`` or
+    ``failMode``, and ``base_url`` or ``baseUrl``.
+    """
+
+    token: str
+    fail_mode: FailMode
+    base_url: str | None = None
+
+    def __post_init__(self) -> None:
+        token = self.token[7:].strip() if isinstance(self.token, str) and self.token.lower().startswith("bearer ") else self.token
+        if token is not self.token:
+            object.__setattr__(self, "token", token)
+        if not _token_ok(token if isinstance(token, str) else ""):
+            raise ValueError("remote_policy.token must be a non-empty bearer token without whitespace.")
+        if self.fail_mode not in ("open", "closed"):
+            raise ValueError('remote_policy.fail_mode must be "open" or "closed".')
+        if self.base_url is None:
+            return
+        object.__setattr__(self, "base_url", _policy_origin(self.base_url))
+
+
+def parse_remote_policy(value: RemotePolicy | Mapping[str, Any] | None) -> RemotePolicy | None:
+    """Accept a :class:`RemotePolicy` or a mapping. ``None`` leaves the guard on local rules only."""
+    if value is None:
+        return None
+    if isinstance(value, RemotePolicy):
+        return value
+    if not isinstance(value, Mapping):
+        raise TypeError("remote_policy must be a RemotePolicy or a mapping.")
+    if "fail_mode" in value and "failMode" in value and value.get("fail_mode") != value.get("failMode"):
+        raise ValueError("remote_policy.fail_mode and failMode disagree.")
+    if "base_url" in value and "baseUrl" in value and value.get("base_url") != value.get("baseUrl"):
+        raise ValueError("remote_policy.base_url and baseUrl disagree.")
+    fail_mode = value.get("fail_mode", value.get("failMode"))
+    base_url = value.get("base_url", value.get("baseUrl"))
+    return RemotePolicy(str(value.get("token") or ""), fail_mode, base_url)  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True)
+class RemotePolicyEffect:
+    """One policy-check outcome. ``decision`` is set only when the server named pass, warn or block."""
+
+    decision: RemoteDecision | None
+    effect: Effect | None
+    code: str | None
+    fact: str | None
+    decided_by: str | None = None
+    not_a_botsrated_rating: bool | None = None
+    policy_version: str | None = None
+
+
+def policy_quote(req: Any) -> dict[str, str]:
+    """Quote fields sent to ``/v1/policy/check``: payTo, amount, asset, network. Nothing else."""
+    quote: dict[str, str] = {}
+    pay_to = _get(req, "payTo", "pay_to")
+    if is_address(pay_to):
+        quote["payTo"] = pay_to
+    amount = _get(req, "amount")
+    if isinstance(amount, bool):
+        amount_s = None
+    elif isinstance(amount, int):
+        amount_s = str(amount)
+    elif isinstance(amount, str):
+        amount_s = amount
+    else:
+        amount_s = None
+    if is_atomic_amount(amount_s):
+        quote["amount"] = amount_s
+    asset = _get(req, "asset")
+    if is_address(asset):
+        quote["asset"] = asset
+    network = _get(req, "network")
+    if isinstance(network, str) and network.strip():
+        quote["network"] = clean_text(network, 40)
+    return quote
+
+
+def _framing(body: Any) -> tuple[str | None, bool | None, str | None]:
+    if not isinstance(body, dict):
+        return None, None, None
+    decided = body.get("decided_by")
+    decided_by = decided.strip() if isinstance(decided, str) else None
+    if decided_by is not None and (not decided_by or len(decided_by) > 80 or not _ascii_label(decided_by, "_.:-")):
+        decided_by = None
+    rating = body.get("not_a_botsrated_rating")
+    return decided_by, rating if isinstance(rating, bool) else None, _version_of(body.get("policy_version"))
+
+
+def _named_decision(body: Any) -> RemoteDecision | None:
+    """pass, warn or block. ``allow`` is read as pass. Any other label, including null, is no decision."""
+    if not isinstance(body, dict) or "decision" not in body:
+        return None
+    raw = body.get("decision")
+    if not isinstance(raw, str):
+        return None
+    key = raw.strip().lower()
+    if key == "block":
+        return "block"
+    if key == "warn":
+        return "warn"
+    if key in ("pass", "allow"):
+        return "pass"
+    return None
+
+
+def interpret_policy_body(status: int | None, body: Any, fail_mode: FailMode, host: str) -> RemotePolicyEffect:
+    """Map a policy-check response. 503, 404, transport failure and ``decision: null`` use ``fail_mode``."""
+    decided_by, rating, version = _framing(body)
+    if status is not None and 200 <= status < 300:
+        decision = _named_decision(body)
+        if decision == "block":
+            return RemotePolicyEffect("block", "block", "remote_policy", f"your policy returned block for {host}.", decided_by, rating, version)
+        if decision == "warn":
+            return RemotePolicyEffect("warn", "warn", "remote_policy", f"your policy returned warn for {host}.", decided_by, rating, version)
+        if decision == "pass":
+            return RemotePolicyEffect("pass", None, None, None, decided_by, rating, version)
+    effect: Effect = "block" if fail_mode == "closed" else "info"
+    fact = f"your policy check returned no decision; fail_mode is {fail_mode}."
+    return RemotePolicyEffect(None, effect, "remote_policy_unavailable", fact, decided_by, rating, version)
+
+
+def _policy_headers(token: str) -> dict[str, str]:
+    return {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "user-agent": USER_AGENT,
+        "authorization": f"Bearer {token}",
+    }
+
+
+def _read_policy_response(resp: httpx.Response) -> tuple[int, Any]:
+    if len(resp.content) > 1_000_000:
+        return resp.status_code, {}
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+    return resp.status_code, body if isinstance(body, dict) else {}
+
+
+def fetch_remote_policy(http: httpx.Client, policy: RemotePolicy, host: str, req: Any, timeout: float | None = None) -> RemotePolicyEffect:
+    """POST /v1/policy/check. Transport errors and non-decisions follow ``policy.fail_mode``."""
+    url = f"{(policy.base_url or BOTSRATED_BASE_URL)}/v1/policy/check"
+    payload = {"host": host, "quote": policy_quote(req)}
+    try:
+        kwargs: dict[str, Any] = {"json": payload, "headers": _policy_headers(policy.token), "follow_redirects": False}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        resp = http.post(url, **kwargs)
+        status, body = _read_policy_response(resp)
+    except Exception:  # noqa: BLE001 - a failed check is fail_mode, not a pass
+        status, body = None, {}
+    return interpret_policy_body(status, body, policy.fail_mode, host)
 
 
 def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: PaymentGuardPolicy) -> list[GuardReason]:
@@ -376,6 +583,10 @@ class PaymentGuard:
         http / async_http: Optional ``httpx.Client`` / ``httpx.AsyncClient`` for the hosted lookup.
         preflight: Replace the hosted lookup: ``(host) -> (found, body)``. Receives a host name only.
         on_decision: Receives every decision. Errors raised in it are ignored.
+        remote_policy: Optional private policy check (``token``, ``fail_mode`` ``open`` or ``closed``, optional
+            ``base_url``). Before paying, ``POST /v1/policy/check`` with the host and quote. A remote block stops
+            the payment. HTTP 503, 404 or ``decision: null`` follows ``fail_mode`` and is never read as a pass.
+            The last ``policy_version`` is kept on ``remote_policy_version``. Unset: local rules only.
     """
 
     def __init__(
@@ -395,6 +606,7 @@ class PaymentGuard:
         async_http: httpx.AsyncClient | None = None,
         preflight: Callable[[str], tuple[bool, dict[str, Any]]] | None = None,
         on_decision: Callable[[GuardDecision], None] | None = None,
+        remote_policy: RemotePolicy | Mapping[str, Any] | None = None,
     ) -> None:
         if preset is not None and preset not in PRESETS:
             raise ValueError(f'Unknown payment guard preset "{preset}". Expected warn, carefulBuyer, or dry-run-only.')
@@ -418,6 +630,8 @@ class PaymentGuard:
         self._async_http = async_http
         self._preflight = preflight
         self.on_decision = on_decision
+        self.remote_policy = parse_remote_policy(remote_policy)
+        self.remote_policy_version: str | None = None
         self._records: dict[str, PaymentRecord] = {}
         self._retry_keys: dict[str, tuple[str, int]] = {}
         self._lock = threading.Lock()
@@ -495,7 +709,14 @@ class PaymentGuard:
         except Exception:  # noqa: BLE001, S110 - caller callback errors are ignored
             pass
 
-    def _finish(self, phase: Literal["before_payment", "payment_response"], reasons: list[GuardReason], host: str | None, facts: GuardFacts | None = None) -> GuardDecision:
+    def _finish(
+        self,
+        phase: Literal["before_payment", "payment_response"],
+        reasons: list[GuardReason],
+        host: str | None,
+        facts: GuardFacts | None = None,
+        remote: RemotePolicyEffect | None = None,
+    ) -> GuardDecision:
         stopping = next((r for r in reasons if r.effect == "block"), None)
         d = GuardDecision(
             phase=phase,
@@ -507,9 +728,49 @@ class PaymentGuard:
             host=host,
             policy_rule=(stopping.rule or stopping.code) if stopping else None,
             facts=facts,
+            decided_by=remote.decided_by if remote else None,
+            not_a_botsrated_rating=remote.not_a_botsrated_rating if remote else None,
+            policy_version=remote.policy_version if remote else None,
+            remote_decision=remote.decision if remote else None,
         )
         d.message = _summarize(d)
         return d
+
+    def _remember_remote(self, reasons: list[GuardReason], effect: RemotePolicyEffect | None) -> RemotePolicyEffect | None:
+        if effect is None:
+            return None
+        version = effect.policy_version or self.remote_policy_version
+        if effect.policy_version:
+            self.remote_policy_version = effect.policy_version
+        if version != effect.policy_version:
+            effect = replace(effect, policy_version=version)
+        if effect.effect and effect.code and effect.fact:
+            rule = "remotePolicy" if effect.decision else "failMode"
+            reasons.append(GuardReason(effect.code, effect.effect, effect.fact, rule))
+        return effect
+
+    def _remote_sync(self, host: str, req: Any) -> RemotePolicyEffect:
+        assert self.remote_policy is not None
+        if self._http is not None:
+            return fetch_remote_policy(self._http, self.remote_policy, host, req, self._timeout)
+        with httpx.Client(timeout=self._timeout, follow_redirects=False) as client:
+            return fetch_remote_policy(client, self.remote_policy, host, req, self._timeout)
+
+    async def _remote_async(self, host: str, req: Any) -> RemotePolicyEffect:
+        assert self.remote_policy is not None
+        url = f"{(self.remote_policy.base_url or BOTSRATED_BASE_URL)}/v1/policy/check"
+        headers = _policy_headers(self.remote_policy.token)
+        payload = {"host": host, "quote": policy_quote(req)}
+        try:
+            if self._async_http is not None:
+                resp = await self._async_http.post(url, json=payload, headers=headers, timeout=self._timeout, follow_redirects=False)
+            else:
+                async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as c:
+                    resp = await c.post(url, json=payload, headers=headers)
+            status, body = _read_policy_response(resp)
+        except Exception:  # noqa: BLE001 - a failed check is fail_mode, not a pass
+            status, body = None, {}
+        return interpret_policy_body(status, body, self.remote_policy.fail_mode, host)
 
     def _local(self, ctx: Any) -> tuple[list[GuardReason], str | None, str | None, Any, str | None]:
         pr = _get(ctx, "payment_required", "paymentRequired")
@@ -644,7 +905,8 @@ class PaymentGuard:
         try:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, self._lookup_sync(lookup), req, paid_url) if lookup else None
-            return self._finish("before_payment", reasons, host, facts)
+            remote = self._remember_remote(reasons, self._remote_sync(host, req) if self.remote_policy and host else None)
+            return self._finish("before_payment", reasons, host, facts, remote)
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -653,7 +915,8 @@ class PaymentGuard:
         try:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, await self._lookup_async(lookup), req, paid_url) if lookup else None
-            return self._finish("before_payment", reasons, host, facts)
+            remote = self._remember_remote(reasons, await self._remote_async(host, req) if self.remote_policy and host else None)
+            return self._finish("before_payment", reasons, host, facts, remote)
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -868,4 +1131,7 @@ def decision_as_dict(d: GuardDecision) -> dict[str, Any]:
     out = asdict(d)
     if out.get("facts"):
         out["facts"].pop("probed", None)
+    for key in ("decided_by", "not_a_botsrated_rating", "policy_version", "remote_decision"):
+        if out.get(key) is None:
+            out.pop(key, None)
     return out
