@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
@@ -14,6 +14,12 @@ from botsrated.client import (
     extensions_ok,
     paying_request,
     usd_to_atomic,
+)
+from botsrated.payment_guard import (
+    RemotePolicy,
+    fetch_remote_policy,
+    interpret_policy_body,
+    parse_remote_policy,
 )
 from botsrated.util import (
     DISPUTE_URL,
@@ -62,6 +68,11 @@ class Decision:
     reasons: list[Reason]
     facts: SellerFacts | None = None
     dispute_url: str = DISPUTE_URL
+    # Set when a remote policy check ran. ``remote_decision`` stays None when the server sent none.
+    decided_by: str | None = None
+    not_a_botsrated_rating: bool | None = None
+    policy_version: str | None = None
+    remote_decision: Literal["pass", "warn", "block"] | None = None
 
     def summary(self) -> str:
         """Fact-only text with the dispute link. Seller text is never echoed beyond a parsed host name."""
@@ -223,6 +234,10 @@ class PrePaymentGuard:
         paid_check_at_or_above_usd: Run a check for payments at or above this: free within the daily quota
             (25 per UTC day), then a $0.001 paid check with a paid-enabled client (skipped otherwise).
         on_decision: Called with every decision.
+        remote_policy: Optional private policy check (``token``, ``fail_mode`` ``open`` or ``closed``, optional
+            ``base_url``). Before paying, ``POST /v1/policy/check`` with the host and quote. A remote block stops
+            the payment. HTTP 503, 404 or ``decision: null`` follows ``fail_mode`` and is never read as a pass.
+            The last ``policy_version`` is kept on ``remote_policy_version``. Unset: local rules only.
     """
 
     def __init__(
@@ -233,12 +248,15 @@ class PrePaymentGuard:
         fail_open: bool = True,
         paid_check_at_or_above_usd: float | None = None,
         on_decision: Callable[[Decision], None] | None = None,
+        remote_policy: RemotePolicy | Mapping[str, Any] | None = None,
     ) -> None:
         self.client = client or BotsRatedClient()
         self.policy = policy or GuardPolicy()
         self.fail_open = fail_open
         self.paid_threshold = paid_check_at_or_above_usd
         self.on_decision = on_decision
+        self.remote_policy = parse_remote_policy(remote_policy)
+        self.remote_policy_version: str | None = None
 
     def _open_or_closed(self, code: str, detail: str, host: str | None = None) -> Decision:
         eff: Effect = "info" if self.fail_open else "block"
@@ -257,9 +275,33 @@ class PrePaymentGuard:
                 difference (a redirect between the two) is tolerated. Only host names are sent to BotsRated.
         """
         try:
-            return self._decide(resource_url, requirements, request_url)
+            decision = self._decide(resource_url, requirements, request_url)
         except Exception:  # noqa: BLE001
-            return self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
+            decision = self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
+        return self._merge_remote(decision, requirements)
+
+    def _merge_remote(self, decision: Decision, requirements: Any) -> Decision:
+        """POST /v1/policy/check when configured. A remote block wins. A missing decision follows fail_mode."""
+        policy = self.remote_policy
+        host = decision.host
+        if policy is None or not host:
+            return decision
+        try:
+            effect = fetch_remote_policy(self.client.unpaid_http(), policy, host, requirements)
+        except Exception:  # noqa: BLE001
+            effect = interpret_policy_body(None, {}, policy.fail_mode, host)
+        version = effect.policy_version or self.remote_policy_version
+        if effect.policy_version:
+            self.remote_policy_version = effect.policy_version
+        if effect.effect and effect.code and effect.fact:
+            decision.reasons.append(Reason(effect.code, effect.fact, effect.effect))
+            if effect.effect == "block":
+                decision.action = "block"
+        decision.decided_by = effect.decided_by
+        decision.not_a_botsrated_rating = effect.not_a_botsrated_rating
+        decision.policy_version = version
+        decision.remote_decision = effect.decision
+        return decision
 
     def _decide(self, resource_url: str | None, requirements: Any, request_url: str | None) -> Decision:
         req = as_requirements(requirements)

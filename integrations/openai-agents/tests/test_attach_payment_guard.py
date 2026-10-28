@@ -266,8 +266,8 @@ def test_token_is_forwarded_only_when_the_constructor_accepts_it():
         def __init__(self, preset: str | None = None) -> None:
             del preset
 
-    assert _remote_policy_kwargs(WithSnake, "abc") == {"remote_policy": "abc"}
-    assert _remote_policy_kwargs(WithCamel, "abc") == {"remotePolicy": "abc"}
+    assert _remote_policy_kwargs(WithSnake, "abc") == {"remote_policy": {"token": "abc", "fail_mode": "open"}}
+    assert _remote_policy_kwargs(WithCamel, "abc", "closed") == {"remotePolicy": {"token": "abc", "fail_mode": "closed"}}
     assert _remote_policy_kwargs(WithNeither, "abc") == {}
     assert _remote_policy_kwargs(WithSnake, None) == {}
 
@@ -278,11 +278,12 @@ def test_token_is_local_only_until_remote_policy_exists(api):
     guard = attach_payment_guard(client, preset="warn", token=token)
     params = inspect.signature(type(guard).__init__).parameters
     supported = any(name in params for name in _REMOTE_POLICY_PARAMS)
-    expected: dict[str, str] = {}
+    expected: dict[str, dict[str, str]] = {}
+    mapping = {"token": token, "fail_mode": "open"}
     if "remote_policy" in params:
-        expected = {"remote_policy": token}
+        expected = {"remote_policy": mapping}
     elif "remotePolicy" in params:
-        expected = {"remotePolicy": token}
+        expected = {"remotePolicy": mapping}
     assert _remote_policy_kwargs(type(guard), token) == expected
     assert _remote_policy_kwargs(type(guard), None) == {}
     url = FOUND["latest_probe"]["url"]

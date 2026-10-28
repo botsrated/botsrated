@@ -133,12 +133,16 @@ def test_token_is_local_only_until_remote_policy_exists(api):
     guard = attach_payment_guard(client, preset="warn", token=token)
     params = inspect.signature(type(guard).__init__).parameters
     supported = any(name in params for name in _REMOTE_POLICY_PARAMS)
-    expected: dict[str, str] = {}
+    expected: dict[str, dict[str, str]] = {}
+    mapping = {"token": token, "fail_mode": "open"}
     if "remote_policy" in params:
-        expected = {"remote_policy": token}
+        expected = {"remote_policy": mapping}
     elif "remotePolicy" in params:
-        expected = {"remotePolicy": token}
+        expected = {"remotePolicy": mapping}
     assert _remote_policy_kwargs(type(guard), token) == expected
+    if supported:
+        closed = {"token": token, "fail_mode": "closed"}
+        assert next(iter(_remote_policy_kwargs(type(guard), token, "closed").values())) == closed
     url = FOUND["latest_probe"]["url"]
     with guard.request(url):
         guard.decide(_ctx(FOUND["latest_probe"]["live_payTo"]))

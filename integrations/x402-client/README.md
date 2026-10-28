@@ -136,6 +136,7 @@ smaller local bundle and does not copy a score out of it, because the response h
 | `timeoutMs` / `cacheTtlMs` | 3000 ms / 5 min | Hosted lookup timeout and per-host cache |
 | `preflight` | hosted call | Your own lookup `(host) => …`, e.g. to share a `BotsRatedClient` cache |
 | `onDecision` | none | Receives every decision (errors in it are ignored) |
+| `remotePolicy` | unset | Private policy check. See below. Unset: local presets only |
 
 ### Fail-Open Or Fail-Closed
 
@@ -146,16 +147,32 @@ smaller local bundle and does not copy a score out of it, because the response h
   for you than a missed call.
 - Local checks (`resource_host_mismatch`, `payto_invalid`) and the on-chain check never depend on botsrated.com.
 
+### Remote Policy
+
+Optional. Set `remotePolicy` to ask your private policy on BotsRated before a payment. The guard merges that answer with the local rules. A remote block stops the payment. A remote pass does not clear a local block. `createPrePaymentGuard({ remotePolicy })` uses the same check.
+
+```ts
+const guard = createPaymentGuard({
+  preset: "carefulBuyer",
+  remotePolicy: { token: "<bearer>", failMode: "closed" }, // baseUrl defaults to https://botsrated.com
+});
+```
+
+`failMode` is yours: `"open"` or `"closed"` (`fail_mode` is accepted as an alias). The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 404, or `"decision": null`, it applies `failMode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). It does not turn a missing decision into a pass. `decided_by` and `not_a_botsrated_rating` are kept when the server sends them. The last `policy_version` is remembered (`remotePolicyVersion()`). The policy decision is not signed. Leave `remotePolicy` unset and local presets behave as before.
+
 ### What The Guard Sends, And To Whom
 
-- **botsrated.com:** `GET /v1/preflight?url=<host name>` with `User-Agent: botsrated-x402-preflight/<version>`.
+- **botsrated.com (preflight):** `GET /v1/preflight?url=<host name>` with `User-Agent: botsrated-x402-preflight/<version>`.
   Never the path, query, wallet, amount, nonce, tx hash, payment header or request body. No install id. Covered by
   the [Terms](https://botsrated.com/terms) and [Privacy Policy](https://botsrated.com/privacy). Turn it off with
   `hosted: false`.
+- **botsrated.com (only when `remotePolicy` is set):** `POST /v1/policy/check` with the host, the quote
+  (`payTo`, `amount`, `asset`, `network`) and your bearer token. Not the path, query, payer wallet, nonce or a
+  payment header. The decision is not signed. `hosted: false` does not turn this off.
 - **Base RPCs (only when you call `paymentState`; nothing calls them automatically):** JSON-RPC reads that include
   the payer address and the payment's nonce, sent straight from your machine to the RPCs, never to BotsRated.
   See the privacy note under "Did It Settle Once?".
-- No remote configuration, feature flags or auto-update: behavior changes only with a new package version.
+- No feature flags or auto-update: behavior changes only with a new package version, or with `remotePolicy` when you set it.
 
 ### Retry Key (`payment-identifier`)
 

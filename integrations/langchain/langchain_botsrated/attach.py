@@ -26,17 +26,21 @@ def _payment_guard() -> tuple[Any, type]:
     return POLICIES, PaymentGuard
 
 
-def _remote_policy_kwargs(guard_cls: type, token: str | None) -> dict[str, str]:
-    """Pass ``token`` as remote policy only when PaymentGuard already accepts it.
+def _remote_policy_kwargs(
+    guard_cls: type, token: str | None, fail_mode: FailMode | None = None
+) -> dict[str, dict[str, str]]:
+    """Pass ``token`` as a remote policy mapping only when PaymentGuard accepts it.
 
-    Until that parameter exists, the token is dropped. Nothing is sent.
+    The mapping is ``{"token": token, "fail_mode": fail_mode}``. ``fail_mode`` defaults to
+    ``open``, matching the guard's fail-open default. Until that parameter exists, the token
+    is dropped. Nothing is sent.
     """
     if not token:
         return {}
     params = inspect.signature(guard_cls.__init__).parameters
     for name in _REMOTE_POLICY_PARAMS:
         if name in params:
-            return {name: token}
+            return {name: {"token": token, "fail_mode": fail_mode or "open"}}
     return {}
 
 
@@ -52,7 +56,8 @@ def attach_payment_guard(
     ``preset`` is your choice: ``warn`` (advice only), ``carefulBuyer``, or ``strict``
     (same stops as ``carefulBuyer``). Omit it for the guard's advice-only default.
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
-    ``token`` is forwarded as ``remote_policy`` (or ``remotePolicy``) only when
+    ``token`` is forwarded as ``remote_policy`` (or ``remotePolicy``), as
+    ``{"token": token, "fail_mode": fail_mode or "open"}``, only when
     ``PaymentGuard`` accepts that argument. Otherwise the attach stays on the local preset
     and the token is not sent.
 
@@ -76,7 +81,7 @@ def attach_payment_guard(
         kwargs["fail_open"] = False
     elif fail_mode == "open":
         kwargs["fail_open"] = True
-    kwargs.update(_remote_policy_kwargs(payment_guard, token))
+    kwargs.update(_remote_policy_kwargs(payment_guard, token, fail_mode))
     guard = payment_guard(**kwargs)
     guard.install(x402_client)
     return guard

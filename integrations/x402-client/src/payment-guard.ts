@@ -119,7 +119,7 @@ export interface GuardReason {
   code: string;
   effect: "info" | "warn" | "block";
   /** The policy rule that set the effect, when one did. */
-  rule?: keyof PaymentGuardPolicy | "failOpen";
+  rule?: keyof PaymentGuardPolicy | "failOpen" | "remotePolicy" | "failMode";
   /** One sentence stating a fact. Seller text is never echoed except a parsed host name. */
   fact: string;
 }
@@ -151,6 +151,14 @@ export interface GuardDecision {
   disputeUrl: string;
   /** Human-readable summary, built only from facts and parsed host names. */
   message: string;
+  /**
+   * Kept when a remote policy response sends them. `remote_decision` is null when that check returned no decision
+   * (it is never filled in as a pass).
+   */
+  decided_by?: string;
+  not_a_botsrated_rating?: boolean;
+  policy_version?: string;
+  remote_decision?: "pass" | "warn" | "block" | null;
 }
 
 export type PreflightFn = (host: string) => Promise<{ found: boolean; body: Record<string, any> }>;
@@ -189,6 +197,12 @@ export interface PaymentGuardOptions {
   preflight?: PreflightFn;
   /** Receives every decision. Errors thrown here are ignored. */
   onDecision?: (decision: GuardDecision) => void;
+  /**
+   * Optional private policy check. Before paying, POST /v1/policy/check with the host and quote.
+   * A remote block stops the payment. HTTP 503, 404 or `decision: null` follows `failMode` and is never read as a pass.
+   * `fail_mode` and `base_url` are accepted as aliases. Unset: local rules only.
+   */
+  remotePolicy?: RemotePolicyOptions;
 }
 
 /** Minimal shape of an `@x402/core` x402Client used by {@link PaymentGuard.install}. */
@@ -219,6 +233,8 @@ export interface PaymentGuard {
   records(): PaymentRecord[];
   /** Read-only on-chain state of a payment: "settled", "unknown" (wait) or "expired_unsettled". Never pays or retries. */
   paymentState(ref: PaymentRecord | { payTo: string; nonce: string }): Promise<PaymentState>;
+  /** Last `policy_version` seen on a remote policy response, if one was set. */
+  remotePolicyVersion(): string | undefined;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -390,6 +406,182 @@ function randomId(): string {
   return "pay_" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Remote policy. The client enforces. A missing decision is never turned into a pass.
+
+/** Customer private policy check. `failMode` is required (`open` or `closed`). `baseUrl` defaults to https://botsrated.com. */
+export interface RemotePolicyOptions {
+  token: string;
+  /** Canonical name. `fail_mode` is accepted as an alias. */
+  failMode?: "open" | "closed";
+  fail_mode?: "open" | "closed";
+  /** Canonical name. `base_url` is accepted as an alias. Default https://botsrated.com. */
+  baseUrl?: string;
+  base_url?: string;
+}
+
+export interface NormalizedRemotePolicy {
+  token: string;
+  failMode: "open" | "closed";
+  baseUrl: string;
+}
+
+export interface RemotePolicyEffect {
+  /** Set only when the server named pass, warn or block. Null means no decision. */
+  decision: "pass" | "warn" | "block" | null;
+  effect?: "info" | "warn" | "block";
+  code?: string;
+  fact?: string;
+  decided_by?: string;
+  not_a_botsrated_rating?: boolean;
+  policy_version?: string;
+}
+
+function asciiLabel(text: string, extra: string): boolean {
+  return [...text].every((c) => {
+    const n = c.charCodeAt(0);
+    return n < 128 && ((n >= 48 && n <= 57) || (n >= 65 && n <= 90) || (n >= 97 && n <= 122) || extra.includes(c));
+  });
+}
+
+function tokenOk(token: string): boolean {
+  return token.length > 0 && token.length <= 4096 && [...token].every((c) => {
+    const n = c.charCodeAt(0);
+    return n >= 33 && n <= 126;
+  });
+}
+
+function versionOf(value: unknown): string | undefined {
+  if (typeof value === "boolean" || value === null || value === undefined) return undefined;
+  const text = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : typeof value === "string" ? value.trim() : "";
+  if (!text || text.length > 80 || !asciiLabel(text, "._:-")) return undefined;
+  return text;
+}
+
+/** Accepts `failMode` or `fail_mode`, and `baseUrl` or `base_url`. */
+export function normalizeRemotePolicy(value: RemotePolicyOptions): NormalizedRemotePolicy {
+  let token = typeof value?.token === "string" ? value.token : "";
+  if (token.toLowerCase().startsWith("bearer ")) token = token.slice(7).trim();
+  if (!tokenOk(token)) throw new TypeError("remotePolicy.token must be a non-empty bearer token without whitespace.");
+  if (value.failMode !== undefined && value.fail_mode !== undefined && value.failMode !== value.fail_mode) {
+    throw new TypeError("remotePolicy.failMode and fail_mode disagree.");
+  }
+  const failMode = value.failMode ?? value.fail_mode;
+  if (failMode !== "open" && failMode !== "closed") throw new TypeError('remotePolicy.failMode must be "open" or "closed".');
+  if (value.baseUrl !== undefined && value.base_url !== undefined && value.baseUrl !== value.base_url) {
+    throw new TypeError("remotePolicy.baseUrl and base_url disagree.");
+  }
+  const baseUrl = originOf(value.baseUrl ?? value.base_url ?? BOTSRATED_BASE_URL);
+  return { token, failMode, baseUrl };
+}
+
+/** Origin only. A path on `baseUrl` is not a prefix (the check path is always `/v1/policy/check`). */
+function originOf(baseUrl: string): string {
+  if (typeof baseUrl !== "string" || /\s/.test(baseUrl)) throw new TypeError("remotePolicy.baseUrl must be an http(s) URL.");
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new TypeError("remotePolicy.baseUrl must be an http(s) URL.");
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) {
+    throw new TypeError("remotePolicy.baseUrl must be an http(s) URL.");
+  }
+  return url.origin;
+}
+
+/** Quote fields sent to `/v1/policy/check`: payTo, amount, asset, network. Nothing else. */
+export function policyQuote(req: { payTo?: unknown; amount?: unknown; asset?: unknown; network?: unknown } | null | undefined): Record<string, string> {
+  const quote: Record<string, string> = {};
+  if (isAddress(req?.payTo)) quote.payTo = String(req?.payTo);
+  const amount = typeof req?.amount === "bigint" ? req.amount.toString() : typeof req?.amount === "number" && Number.isSafeInteger(req.amount) ? String(req.amount) : req?.amount;
+  if (isAtomicAmount(amount)) quote.amount = String(amount);
+  if (isAddress(req?.asset)) quote.asset = String(req?.asset);
+  if (typeof req?.network === "string" && req.network.trim()) quote.network = cleanText(req.network, 40);
+  return quote;
+}
+
+function framingOf(body: unknown): { decided_by?: string; not_a_botsrated_rating?: boolean; policy_version?: string } {
+  if (!body || typeof body !== "object") return {};
+  const b = body as Record<string, unknown>;
+  const decided = typeof b.decided_by === "string" ? b.decided_by.trim() : "";
+  const version = versionOf(b.policy_version);
+  return {
+    ...(decided && decided.length <= 80 && asciiLabel(decided, "_.:-") ? { decided_by: decided } : {}),
+    ...(typeof b.not_a_botsrated_rating === "boolean" ? { not_a_botsrated_rating: b.not_a_botsrated_rating } : {}),
+    ...(version ? { policy_version: version } : {}),
+  };
+}
+
+/** pass, warn or block. `allow` is read as pass. Any other label, including null, is no decision. */
+function namedDecision(body: unknown): "pass" | "warn" | "block" | null {
+  if (!body || typeof body !== "object" || !Object.prototype.hasOwnProperty.call(body, "decision")) return null;
+  const raw = (body as Record<string, unknown>).decision;
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().toLowerCase();
+  if (key === "block") return "block";
+  if (key === "warn") return "warn";
+  if (key === "pass" || key === "allow") return "pass";
+  return null;
+}
+
+/** Map a policy-check response. 503, 404, transport failure and `decision: null` use `failMode`. */
+export function interpretPolicyBody(status: number | null, body: unknown, failMode: "open" | "closed", host: string): RemotePolicyEffect {
+  const framing = framingOf(body);
+  if (status !== null && status >= 200 && status < 300) {
+    const decision = namedDecision(body);
+    if (decision === "block") return { decision, effect: "block", code: "remote_policy", fact: `your policy returned block for ${host}.`, ...framing };
+    if (decision === "warn") return { decision, effect: "warn", code: "remote_policy", fact: `your policy returned warn for ${host}.`, ...framing };
+    if (decision === "pass") return { decision, ...framing };
+  }
+  return {
+    decision: null,
+    effect: failMode === "closed" ? "block" : "info",
+    code: "remote_policy_unavailable",
+    fact: `your policy check returned no decision; fail_mode is ${failMode}.`,
+    ...framing,
+  };
+}
+
+export async function requestPolicyCheck(args: {
+  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  baseUrl: string;
+  token: string;
+  host: string;
+  quote: Record<string, string>;
+  timeoutMs: number;
+  failMode: "open" | "closed";
+}): Promise<RemotePolicyEffect> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), args.timeoutMs);
+  try {
+    const res = await args.fetch(`${args.baseUrl}/v1/policy/check`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "user-agent": USER_AGENT,
+        authorization: `Bearer ${args.token}`,
+      },
+      body: JSON.stringify({ host: args.host, quote: args.quote }),
+      signal: ctrl.signal,
+      redirect: "error",
+    });
+    const text = await res.text();
+    let body: unknown = {};
+    try {
+      body = text.length <= 1_000_000 ? JSON.parse(text) : {};
+    } catch {
+      body = {};
+    }
+    return interpretPolicyBody(res.status, body, args.failMode, args.host);
+  } catch {
+    return interpretPolicyBody(null, {}, args.failMode, args.host);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function presetOf(name: PaymentGuardPresetName): PaymentGuardPreset {
   if (!Object.hasOwn(presets, name)) {
     throw new RangeError(`Unknown payment guard preset "${String(name)}". Expected warn, carefulBuyer, or dry-run-only.`);
@@ -409,6 +601,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
   const failOpen = opts.failOpen !== false;
   const retryKeyOn = opts.retryKey !== false && !dryRun;
   const baseUrl = (opts.baseUrl ?? BOTSRATED_BASE_URL).replace(/\/+$/, "");
+  const remote = opts.remotePolicy ? normalizeRemotePolicy(opts.remotePolicy) : undefined;
+  let cachedPolicyVersion: string | undefined;
   const ownHost = tryHostOf(baseUrl) ?? "botsrated.com";
   const ttl = opts.cacheTtlMs ?? 300_000;
   const cache = new Map<string, { at: number; value: { found: boolean; body: Record<string, any> } }>();
@@ -542,8 +736,43 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
         });
       }
     }
+    let remoteEffect: RemotePolicyEffect | undefined;
+    if (remote && host) {
+      remoteEffect = await requestPolicyCheck({
+        fetch: opts.fetch ?? ((input, init) => fetch(input, init)),
+        baseUrl: remote.baseUrl,
+        token: remote.token,
+        host,
+        quote: policyQuote(req),
+        timeoutMs: opts.timeoutMs ?? 3000,
+        failMode: remote.failMode,
+      });
+      if (remoteEffect.policy_version) cachedPolicyVersion = remoteEffect.policy_version;
+      else if (cachedPolicyVersion) remoteEffect = { ...remoteEffect, policy_version: cachedPolicyVersion };
+      if (remoteEffect.effect && remoteEffect.code && remoteEffect.fact) {
+        reasons.push({
+          code: remoteEffect.code,
+          effect: remoteEffect.effect,
+          rule: remoteEffect.decision ? "remotePolicy" : "failMode",
+          fact: remoteEffect.fact,
+        });
+      }
+    }
     const publicFacts = facts ? (({ _probed, ...rest }: any) => rest)(facts) : undefined;
-    return finish({ phase: "before_payment", host, reasons, ...(publicFacts ? { facts: publicFacts } : {}) });
+    return finish({
+      phase: "before_payment",
+      host,
+      reasons,
+      ...(publicFacts ? { facts: publicFacts } : {}),
+      ...(remoteEffect
+        ? {
+            ...(remoteEffect.decided_by ? { decided_by: remoteEffect.decided_by } : {}),
+            ...(typeof remoteEffect.not_a_botsrated_rating === "boolean" ? { not_a_botsrated_rating: remoteEffect.not_a_botsrated_rating } : {}),
+            ...(remoteEffect.policy_version ? { policy_version: remoteEffect.policy_version } : {}),
+            remote_decision: remoteEffect.decision,
+          }
+        : {}),
+    });
   }
 
   function recordFrom(ctx: any): (PaymentRecord & { expiresAt: number }) | undefined {
@@ -683,6 +912,9 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     records(): PaymentRecord[] {
       prune();
       return [...records.values()].map(({ expiresAt, ...r }) => ({ ...r }));
+    },
+    remotePolicyVersion(): string | undefined {
+      return cachedPolicyVersion;
     },
     async paymentState(ref): Promise<PaymentState> {
       const full = "from" in ref ? (ref as PaymentRecord) : records.get(`${String(ref.payTo).toLowerCase()}:${String(ref.nonce).toLowerCase()}`);

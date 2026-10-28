@@ -226,6 +226,10 @@ class BotsRatedClient:
         except httpx.HTTPError as e:
             raise BotsRatedError(f"BotsRated unreachable: {clean_text(e, 80)}", "unreachable") from e
 
+    def unpaid_http(self) -> httpx.Client:
+        """HTTP client for unpaid calls. A remote policy check uses this and does not create a payment."""
+        return self._http
+
     def preflight(self, url_or_host: str) -> PreflightResult:
         """Free. Latest stored probe for a seller; ``found=False`` when the host is not covered.
 
