@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- `llama-index-tools-botsrated`: `attach_payment_guard(x402_client, preset=..., token=..., fail_mode=...)` registers `PaymentGuard` on an x402 client. `BotsRatedToolSpec()` stays free preflight only and does not attach a guard. Omit `preset` for advice only; `fail_mode` is `"open"` or `"closed"` and is omitted by default (fail-open). `token` is passed as `remote_policy` / `remotePolicy` only when `PaymentGuard` accepts it; until then the attach is the local preset and the token is not sent. Not published.
 - `langchain-botsrated`: `attach_payment_guard(x402_client, preset=..., token=..., fail_mode=...)` registers `PaymentGuard` on an x402 client. `botsrated_tools()` stays free preflight only and does not attach a guard. Omit `preset` for advice only; `fail_mode` is `"open"` or `"closed"` and is omitted by default (fail-open). `token` is passed as `remote_policy` / `remotePolicy` only when `PaymentGuard` accepts it; until then the attach is the local preset and the token is not sent. Not published.
 - Public copy: preflight is described as free, no key, rate limits (it stays free), including client tool text. Free daily quota wording is 25 checks and 3 reports per client IP per UTC day. BotPulse is named as a separate digest and alerts product. No package version bump.
 - Payment guard 0.2.1 is on npm (`@botsrated/x402-preflight`, 2026-10-27) and PyPI (`botsrated`, 2026-10-27). Named presets are under 0.2.1 below. `0.2.0` is also on both registries (2026-10-25).
@@ -195,6 +196,8 @@ Changed:
 - Keeps blocking a payTo BotsRated's probes never recorded, with any supported botsrated version: the package now
   passes `GuardPolicy(pay_to_mismatch="block")` explicitly, because botsrated 0.2 made that advice-only by default.
   The reason code is `payto_not_observed` with botsrated 0.2 (`payto_mismatch` with 0.1.x).
+- `attach_payment_guard(x402_client, preset=..., token=..., fail_mode=...)` registers `PaymentGuard` on the
+  caller's x402 client. `BotsRatedToolSpec()` does not attach a guard. Not published.
 
 ### 0.1.2
 - Depends on `botsrated>=0.1.5,<0.2`. Docstrings point to `x402_client=`.
