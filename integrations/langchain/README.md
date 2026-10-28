@@ -27,11 +27,11 @@ tools = botsrated_tools()            # free preflight only
 tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", x402_client=x402_client))
 ```
 
-## Default install
+## Opt-in payment guard
 
-`pip install langchain-botsrated` (needs `botsrated` 0.2.1 or newer for the guard). Preflight and the guard
-are free, no key, rate limits, at `https://botsrated.com`. A paid check is $0.001 and stays opt-in on the tool.
-`botsrated_tools()` is unchanged: free preflight only, and it does not attach a guard.
+`pip install langchain-botsrated` does not attach a guard. Call `attach_payment_guard` yourself (needs `botsrated`
+0.2.1 or newer). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. A paid check
+is $0.001 and stays opt-in on the tool. `botsrated_tools()` is unchanged: free preflight only.
 
 ```python
 from langchain_botsrated import attach_payment_guard, botsrated_tools
