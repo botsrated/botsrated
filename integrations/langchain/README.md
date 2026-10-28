@@ -27,9 +27,26 @@ tools = botsrated_tools()            # free preflight only
 tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", x402_client=x402_client))
 ```
 
-To guard every payment that an x402 client makes (not just when the model calls a tool), register
-`botsrated.PrePaymentGuard(policy=botsrated.GuardPolicy(pay_to_mismatch="block")).x402_hook` with
-`x402Client.on_before_payment_creation`; without that policy, botsrated 0.2's guard only warns about an unobserved payTo.
-See [`botsrated`](https://pypi.org/project/botsrated/).
+## Opt-in payment guard
+
+`pip install langchain-botsrated` does not attach a guard. Call `attach_payment_guard` yourself (needs `botsrated`
+0.2.1 or newer). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. A paid check
+is $0.001 and stays opt-in on the tool. `botsrated_tools()` is unchanged: free preflight only.
+
+```python
+from langchain_botsrated import attach_payment_guard, botsrated_tools
+
+tools = botsrated_tools()  # free preflight only; no guard attached
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+# token=... is local-only until PaymentGuard accepts remote_policy
+```
+
+`preset` is yours: `warn` (advice only; the default when you omit it), `carefulBuyer`, or `strict` (same stops
+as `carefulBuyer`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays fail-open. The guard
+reports measurements and receipt links. It does not sign a payment and does not hold funds.
+
+`x402_client` is your x402 client. `token` is passed as `remote_policy` (or `remotePolicy`) only when
+`PaymentGuard` accepts that argument. botsrated 0.2.1 does not yet. Until the core SDK does, a token is not
+sent and the attach uses your local preset.
 
 Tests: `pytest tests/unit_tests` runs the tool tests and LangChain's `ToolsUnitTests`.
