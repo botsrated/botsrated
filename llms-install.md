@@ -24,8 +24,9 @@ BotsRated is a **remote** MCP server. Do not clone, build, or run anything.
 These register a check on the x402 client the app already uses. They are not a second runtime.
 
 - [LangChain](integrations/langchain/README.md) (`langchain-botsrated`)
-- [Vercel AI SDK](integrations/vercel-ai-sdk/README.md) (`@botsrated/ai-sdk`, guard not published): `attachPaymentGuard` on your x402 client. Payment-client wrap only. A tool-level approval helper is deferred. The Vercel AI SDK stays the runtime.
 - [LangGraph](integrations/langgraph/README.md) (`langgraph-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional pre-pay node helper. Pairs with LangGraph. Not an orchestration framework.
 - [Google ADK](integrations/google-adk/README.md) (`google-adk-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `before_tool_callback` for opaque paid tools. Pairs with Google ADK. Not an agent runtime.
 - [CrewAI](integrations/crewai/README.md) (`crewai-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `PRE_TOOL_CALL` hook for named paid tools. Pairs with CrewAI. Not a crew runtime.
 - [Llama Stack](integrations/llama-stack/README.md) (`llama-stack-botsrated`, not published): `attach_payment_guard` on your x402 client. Payment-client wrap only. A before-tool hook is deferred. Llama Stack stays the runtime.
+- [Vercel AI SDK](integrations/vercel-ai-sdk/README.md) (`@botsrated/ai-sdk`, guard not published): `attachPaymentGuard` on your x402 client. Payment-client wrap only. A tool-level approval helper is deferred. The Vercel AI SDK stays the runtime.
+- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md) (`agent-framework-botsrated`; guard path not published): `attach_payment_guard` on your x402 client, plus the existing function middleware for named payment tools. Pairs with Microsoft Agent Framework. Not an agent or workflow runtime.

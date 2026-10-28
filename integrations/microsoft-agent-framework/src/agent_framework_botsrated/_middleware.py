@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import re
 from collections.abc import Awaitable, Callable, Collection, Mapping
@@ -12,6 +13,8 @@ from typing import Annotated, Any, Literal
 from agent_framework import FunctionInvocationContext, FunctionMiddleware, FunctionTool, MiddlewareFailure, tool
 from botsrated import BotsRatedClient, Decision, GuardPolicy, PrePaymentGuard, Reason
 from pydantic import BaseModel, Field
+
+from agent_framework_botsrated.guard import FailMode, PresetName, build_payment_guard
 
 DECISION_METADATA_KEY = "botsrated_decision"
 """Key of the ``botsrated.Decision`` stored in ``FunctionInvocationContext.metadata`` for checked calls."""
@@ -66,11 +69,80 @@ def default_quote_extractor(args: Mapping[str, Any]) -> PaymentQuote:
     return PaymentQuote(url=url, pay_to=pay_to, amount=str(amount), network=str(network), scheme=str(scheme))
 
 
+class _TokenOmitted:
+    """Sentinel: the middleware caller did not pass ``token``."""
+
+
+_TOKEN_OMITTED = _TokenOmitted()
+
+
+def _decision_text(decision: Any) -> str:
+    summary = getattr(decision, "summary", None)
+    if callable(summary):
+        text = summary()
+        if isinstance(text, str) and text:
+            return text
+    message = getattr(decision, "message", None)
+    if isinstance(message, str) and message:
+        return message
+    return "Payment stopped by your payment policy."
+
+
+def _uses_payment_context(guard: Any) -> bool:
+    """True for ``PaymentGuard`` (one payment-context argument) and the same shape of stub."""
+    try:
+        from botsrated.payment_guard import PaymentGuard
+    except ImportError:
+        payment_guard: type | tuple[type, ...] = ()
+    else:
+        payment_guard = PaymentGuard
+    if isinstance(guard, payment_guard):
+        return True
+    decide = getattr(guard, "decide", None)
+    if not callable(decide):
+        return False
+    try:
+        params = inspect.signature(decide).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    positional = [
+        param
+        for param in params
+        if param.name != "self"
+        and param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    return len(positional) == 1
+
+
+def _payment_context(quote: PaymentQuote) -> dict[str, Any]:
+    requirements = quote.requirements()
+    return {
+        "payment_required": {"x402Version": 2, "resource": {"url": quote.url}, "accepts": [requirements]},
+        "selected_requirements": requirements,
+    }
+
+
+def _decide_payment_context(guard: Any, quote: PaymentQuote) -> Any:
+    ctx = _payment_context(quote)
+    try:
+        request = getattr(guard, "request", None)
+        if callable(request):
+            with request(quote.url):
+                return guard.decide(ctx)
+        return guard.decide(ctx)
+    except Exception:  # noqa: BLE001 - a guard failure must not be turned into a pass
+        return Decision(
+            "block",
+            None,
+            [Reason("hook_error", "the payment guard could not evaluate this payment.", "block")],
+        )
+
+
 class BotsRatedPaymentBlocked(MiddlewareFailure):
     """Raised for a blocked payment when the middleware uses ``on_block="raise"``. It ends the run."""
 
-    def __init__(self, decision: Decision) -> None:
-        super().__init__(decision.summary())
+    def __init__(self, decision: Any) -> None:
+        super().__init__(_decision_text(decision))
         self.decision = decision
 
 
@@ -90,24 +162,42 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
     reason becomes the call's result, so the model reads it, or with ``on_block="raise"`` the
     run ends with ``BotsRatedPaymentBlocked``.
 
-    Default policy (from ``botsrated.GuardPolicy``): a payTo that BotsRated has not seen for the
-    host is blocked; an uncovered host or stale data is allowed; a price above the observed one
-    is a warning. If BotsRated can't be reached, the payment is allowed (``fail_open=True`` on
-    the guard). If the quote can't be read from the arguments, the call is blocked.
+    Pass ``guard`` from :func:`agent_framework_botsrated.attach_payment_guard` to judge the quote
+    with that same ``PaymentGuard``. Pass ``preset``, ``fail_mode``, or ``token`` (and no
+    ``guard``) to build that guard here, without registering it on an x402 client. Omit all of
+    them to keep the historical free-preflight guard: a payTo that BotsRated has not seen for
+    the host is blocked; an uncovered host or stale data is allowed; a price above the observed
+    one is a warning. If BotsRated can't be reached, that historical guard allows the payment
+    (``fail_open=True``). If the quote can't be read from the arguments, the call is blocked.
+
+    On the ``PaymentGuard`` path, omitting ``preset`` is advice only. ``carefulBuyer`` and
+    ``strict`` block an unobserved payTo only when selected. A remote pass does not clear a
+    local block. ``fail_mode`` ``"closed"`` stops the payment when a remote check returns no
+    decision; ``"open"`` records info. A missing decision is not a pass.
 
     Args:
         payment_tools: Names of the payment functions to check, or a mapping from name to a
             ``QuoteExtractor`` (``None`` uses ``default_quote_extractor``).
-        guard: A ``botsrated.PrePaymentGuard``. Defaults to a free-only guard (nothing is paid).
-        on_block: ``"result"`` (default) returns the reason as the call's result; ``"raise"`` ends the run.
+        guard: A ``PaymentGuard`` from ``attach_payment_guard``, or a ``PrePaymentGuard``.
+            Omit it, and omit ``preset`` / ``fail_mode`` / ``token``, for the historical guard.
+        on_block: ``"result"`` (default) returns the reason as the call's result; ``"raise"``
+            ends the run with ``BotsRatedPaymentBlocked``.
+        preset: ``warn``, ``carefulBuyer``, or ``strict`` when building a ``PaymentGuard`` here.
+            Omit it on that path for advice only.
+        fail_mode: ``"open"`` or ``"closed"`` for that ``PaymentGuard``. Omit it to fail open.
+        token: Remote-policy token for that ``PaymentGuard``. Omit the argument to leave the
+            historical guard in place. ``None`` reads ``BOTSRATED_TOKEN``.
     """
 
     def __init__(
         self,
         payment_tools: Collection[str] | Mapping[str, QuoteExtractor | None],
         *,
-        guard: PrePaymentGuard | None = None,
+        guard: Any | None = None,
         on_block: Literal["result", "raise"] = "result",
+        preset: PresetName | None = None,
+        fail_mode: FailMode | None = None,
+        token: str | None | _TokenOmitted = _TOKEN_OMITTED,
     ) -> None:
         if isinstance(payment_tools, str):
             payment_tools = [payment_tools]
@@ -119,7 +209,19 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
             self.extractors = {name: default_quote_extractor for name in payment_tools}
         if not self.extractors:
             raise ValueError("payment_tools must name at least one payment function")
-        self.guard = guard or PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)
+        token_passed = not isinstance(token, _TokenOmitted)
+        if guard is not None and (preset is not None or fail_mode is not None or token_passed):
+            raise ValueError("pass guard or preset/fail_mode/token, not both")
+        if guard is not None:
+            self.guard = guard
+        elif preset is not None or fail_mode is not None or token_passed:
+            self.guard = build_payment_guard(
+                preset=preset,
+                fail_mode=fail_mode,
+                token=None if isinstance(token, _TokenOmitted) else token,
+            )
+        else:
+            self.guard = PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)
         self.on_block = on_block
 
     async def process(
@@ -134,18 +236,22 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
         try:
             quote = extractor(_as_mapping(context.arguments))
         except Exception as error:  # noqa: BLE001 - any unreadable quote fails closed
-            decision = Decision("block", None, [Reason("quote_unreadable", str(error), "block")])
+            decision: Any = Decision("block", None, [Reason("quote_unreadable", str(error), "block")])
         else:
-            decision = await asyncio.to_thread(self.guard.decide, quote.url, quote.requirements())
+            if _uses_payment_context(self.guard):
+                decision = await asyncio.to_thread(_decide_payment_context, self.guard, quote)
+            else:
+                decision = await asyncio.to_thread(self.guard.decide, quote.url, quote.requirements())
         context.metadata[DECISION_METADATA_KEY] = decision
-        if self.guard.on_decision:
-            self.guard.on_decision(decision)
-        if decision.action == "allow":
+        callback = getattr(self.guard, "on_decision", None)
+        if callback:
+            callback(decision)
+        if getattr(decision, "action", None) == "allow":
             await call_next()
             return
         if self.on_block == "raise":
             raise BotsRatedPaymentBlocked(decision)
-        context.result = f"Payment tool '{context.function.name}' was not executed. {decision.summary()}"
+        context.result = f"Payment tool '{context.function.name}' was not executed. {_decision_text(decision)}"
 
 
 def decision_to_dict(decision: Decision) -> dict[str, Any]:
@@ -158,7 +264,10 @@ def decision_to_dict(decision: Decision) -> dict[str, Any]:
 
 
 def botsrated_check_payment_tool(guard: PrePaymentGuard | None = None) -> FunctionTool:
-    """A function tool the model can call to check an x402 payment option before paying it (free preflight)."""
+    """A function tool the model can call to check an x402 payment option before paying it (free preflight).
+
+    This tool does not attach a payment guard and does not register an x402 hook.
+    """
     checker = guard or PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)
 
     async def botsrated_check_payment(
