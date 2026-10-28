@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install. `@botsrated/mastra` with the guard is publishing soon (not on npm yet). From a checkout: `npm install` in `integrations/mastra` (needs `@botsrated/x402-preflight` `^0.3.0`, also publishing soon).
+1. Install. `@botsrated/mastra` with the guard is publishing soon (not on npm yet). From a checkout: `npm install` in `integrations/mastra` (pulls `@botsrated/x402-preflight` `^0.3.0`, on npm).
 2. Attach to your x402 client:
 ```ts
 import { attachPaymentGuard } from "@botsrated/mastra";

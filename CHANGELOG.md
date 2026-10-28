@@ -56,9 +56,9 @@ All notable changes to the packages in this repository. Each package has its own
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
 
-## 0.3.0 (both packages; not yet published)
+## 0.3.0 (both packages) - 2026-10-28
 
-Date: TBD.
+Published 2026-10-28: `botsrated` 0.3.0 on PyPI, `@botsrated/x402-preflight` 0.3.0 on npm.
 
 - Payment guard (Python `botsrated` and `@botsrated/x402-preflight`): optional `remote_policy` / `remotePolicy` calls `POST /v1/policy/check` with the seller host and quote before paying, and merges that answer with local rules (a remote block stops the payment). On HTTP 503, 404, or `decision: null`, the customer `fail_mode` / `failMode` applies (`open` records an info reason; `closed` stops the payment). A missing decision is not turned into a pass. `decided_by` and `not_a_botsrated_rating` are kept when the server sends them. The last `policy_version` is remembered. The policy decision is not signed. Unset, local presets are unchanged. Same option on `PrePaymentGuard` / `createPrePaymentGuard`.
 - Framework attaches that check for `remote_policy` / `remotePolicy` now send `BOTSRATED_TOKEN`.
