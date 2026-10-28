@@ -27,6 +27,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
 | `microsoft-agent-framework/` | `agent-framework-botsrated` (PyPI) | Microsoft Agent Framework (Python): `FunctionMiddleware` that checks a payment tool's payTo before it runs, a check tool, and the hosted MCP server |
+| [`openai-agents/`](openai-agents/) | `botsrated-openai-agents` (not published) | OpenAI Agents SDK: `attach_payment_guard` on the caller's x402 client. Pairs with the SDK; not an Agent or Runner. Omit `preset` for advice only |
 | `fixtures/` | | real BotsRated responses used by the tests |
 
 Upstream proposals:
@@ -40,5 +41,7 @@ Default guard policy:
 - A price above the observed price is flagged as a warning.
 - An uncovered host or stale data is allowed.
 - If BotsRated can't be reached, the guard allows the payment (fails open).
+
+[`openai-agents/`](openai-agents/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`.
 
 Results are measurements, not endorsements. API spec: [`spec/SPEC.md`](../spec/SPEC.md).
