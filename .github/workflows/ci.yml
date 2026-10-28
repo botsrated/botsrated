@@ -78,7 +78,11 @@ jobs:
       fail-fast: false
       matrix:
         node: ["20", "22"]
-        package: ["x402-client", "vercel-ai-sdk"]
+        package: ["x402-client", "vercel-ai-sdk", "mastra"]
+        exclude:
+          # @mastra/core engines.node is >=22.13.0
+          - node: "20"
+            package: "mastra"
     defaults:
       run:
         working-directory: integrations/${{ matrix.package }}

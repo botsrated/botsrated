@@ -29,6 +29,7 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 | `integrations/openai-agents` | `botsrated-openai-agents` (not published) | Python |
 | `integrations/x402-client` | `@botsrated/x402-preflight` (npm) | TypeScript |
 | `integrations/vercel-ai-sdk` | `@botsrated/ai-sdk` (npm) | TypeScript |
+| `integrations/mastra` | `@botsrated/mastra` (not published) | TypeScript |
 | `integrations/haystack`, `integrations/strands` | guides (no package) | Python |
 | `spec` | receipt format and `verify.mjs` | Markdown, JavaScript |
 
@@ -60,6 +61,7 @@ TypeScript:
 ```bash
 cd integrations/x402-client && npm ci && npm run typecheck && npm test
 cd integrations/vercel-ai-sdk && npm ci && npm run typecheck && npm test
+cd integrations/mastra && npm ci && npm run typecheck && npm test
 ```
 
 Live tests (`pytest -m live`, the Haystack and Strands smoke scripts) call the real, free BotsRated API. They never
