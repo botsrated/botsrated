@@ -20,7 +20,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | Directory | Package | For |
 |---|---|---|
 | `x402-client/` | `@botsrated/x402-preflight` (npm) | payment guard (x402 hooks + `payment-identifier` retry key + read-only on-chain state), `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
-| `vercel-ai-sdk/` | `@botsrated/ai-sdk` (npm) | Vercel AI SDK `tool()`s |
+| [`vercel-ai-sdk/`](vercel-ai-sdk/) | `@botsrated/ai-sdk` (guard not published) | Vercel AI SDK: `attachPaymentGuard` on the caller's x402 client. Pairs with the Vercel AI SDK; not a generation runtime. Omit `preset` for advice only |
 | `python-core/` | `botsrated` (PyPI) | payment guard, client + guard + Python `x402` `on_before_payment_creation` hook |
 | `langchain/` | `langchain-botsrated` (PyPI) | LangChain tools |
 | [`langgraph/`](langgraph/) | `langgraph-botsrated` (not published) | LangGraph: `attach_payment_guard` on the caller's x402 client, plus an optional pre-pay node helper. Pairs with LangGraph; not a graph runtime. Omit `preset` for advice only |
@@ -55,5 +55,7 @@ Default guard policy:
 [`llama-stack/`](llama-stack/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)) and passes `token` as `remote_policy` from [PR #15](https://github.com/botsrated/botsrated/pull/15). Omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with Llama Stack as a payment-client wrap. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred.
 
 [`openai-agents/`](openai-agents/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`.
+
+[`vercel-ai-sdk/`](vercel-ai-sdk/) follows the same `attachPaymentGuard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)) and passes `token` as `remotePolicy` from [PR #15](https://github.com/botsrated/botsrated/pull/15). Omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with the Vercel AI SDK as a payment-client wrap. The AI SDK stays the generation runtime. A secondary `needsApproval` helper is deferred.
 
 Results are measurements, not endorsements. API spec: [`spec/SPEC.md`](../spec/SPEC.md).
