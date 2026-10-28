@@ -11,7 +11,13 @@ import json
 import httpx
 import pytest
 
-from botsrated import POLICIES, STRICT_GUARD_POLICY, PaymentGuard, PrePaymentGuard, RemotePolicy
+from botsrated import (
+    POLICIES,
+    STRICT_GUARD_POLICY,
+    PaymentGuard,
+    PrePaymentGuard,
+    RemotePolicy,
+)
 from botsrated.client import BotsRatedClient
 from botsrated.payment_guard import interpret_policy_body
 

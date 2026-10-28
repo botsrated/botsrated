@@ -15,7 +15,12 @@ from botsrated.client import (
     paying_request,
     usd_to_atomic,
 )
-from botsrated.payment_guard import RemotePolicy, fetch_remote_policy, interpret_policy_body, parse_remote_policy
+from botsrated.payment_guard import (
+    RemotePolicy,
+    fetch_remote_policy,
+    interpret_policy_body,
+    parse_remote_policy,
+)
 from botsrated.util import (
     DISPUTE_URL,
     clean_text,
