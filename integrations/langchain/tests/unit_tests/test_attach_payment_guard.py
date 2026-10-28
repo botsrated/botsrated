@@ -148,6 +148,23 @@ def test_token_is_sent_as_remote_policy_mapping(api):
 
 
 
+def test_token_without_normalizer_raises_and_is_not_dropped(monkeypatch):
+    import langchain_botsrated.attach as attach_mod
+
+    with pytest.raises(TypeError, match="parse_remote_policy"):
+        _remote_policy_kwargs("policy-token-example", normalizer=None)
+    assert _remote_policy_kwargs(None, normalizer=None) == {}
+    assert _remote_policy_kwargs("", normalizer=None) == {}
+    monkeypatch.setattr(attach_mod, "_parse_remote_policy", lambda: None)
+    client = RecordingClientSync()
+    with pytest.raises(TypeError, match="token was not dropped"):
+        attach_payment_guard(client, preset="warn", token="policy-token-example")
+    assert client.calls == []
+    # Without a token the guard still attaches on that install.
+    attach_payment_guard(client, preset="warn")
+    assert "before" in client.calls and "sign" not in client.calls
+
+
 def test_strict_uses_the_strict_policy_table():
     from botsrated.payment_guard import POLICIES
 

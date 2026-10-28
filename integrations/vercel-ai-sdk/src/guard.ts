@@ -28,7 +28,7 @@ export interface AttachPaymentGuardOptions {
   failMode?: FailMode;
   /**
    * Bearer token for a private policy check. Omit to read `BOTSRATED_TOKEN`.
-   * Passed as `remotePolicy: { token, failMode }` only when PaymentGuard accepts it.
+   * Passed as `remotePolicy: { token, failMode }` when this install exports `normalizeRemotePolicy` (0.3.0+); otherwise a set token throws.
    * A bare token string is never passed. Empty means unset.
    */
   token?: string;

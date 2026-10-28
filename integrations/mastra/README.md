@@ -1,5 +1,15 @@
 # @botsrated/mastra
 
+## Install in 3 steps
+
+1. Install. `@botsrated/mastra` with the guard is publishing soon (not on npm yet). From a checkout: `npm install` in `integrations/mastra` (needs `@botsrated/x402-preflight` `^0.3.0`, also publishing soon).
+2. Attach to your x402 client:
+```ts
+import { attachPaymentGuard } from "@botsrated/mastra";
+const guard = attachPaymentGuard(x402Client, { preset: "carefulBuyer", failMode: "open" });
+```
+3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `failMode` (`"open"` default, or `"closed"`).
+
 ## Default install
 
 Pairs with [Mastra](https://mastra.ai) (`@mastra/core`). Payment-client wrap only. Not an agent, workflow, or tool runtime. The Mastra `Agent` stays Mastra's. Not published: from a checkout, `npm install` in `integrations/mastra` (needs `@botsrated/x402-preflight` `^0.3.0`).
@@ -15,7 +25,7 @@ Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved p
 
 `attach_payment_guard` is the same function as `attachPaymentGuard`.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` only when PaymentGuard accepts `remotePolicy`. A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`; 0.3.0 does. A configured token without `normalizeRemotePolicy` raises and is not dropped.
+`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` (`@botsrated/x402-preflight` `^0.3.0` exports `normalizeRemotePolicy`). A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`; 0.3.0 does. A configured token without `normalizeRemotePolicy` raises and is not dropped.
 
 `botsratedPreflight(url)` is the free preflight and does not attach a guard.
 
