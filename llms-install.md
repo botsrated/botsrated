@@ -26,3 +26,4 @@ These register a check on the x402 client the app already uses. They are not a s
 - [LangChain](integrations/langchain/README.md) (`langchain-botsrated`)
 - [LangGraph](integrations/langgraph/README.md) (`langgraph-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional pre-pay node helper. Pairs with LangGraph. Not an orchestration framework.
 - [Google ADK](integrations/google-adk/README.md) (`google-adk-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `before_tool_callback` for opaque paid tools. Pairs with Google ADK. Not an agent runtime.
+- [CrewAI](integrations/crewai/README.md) (`crewai-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `PRE_TOOL_CALL` hook for named paid tools. Pairs with CrewAI. Not a crew runtime.
