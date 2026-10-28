@@ -102,6 +102,7 @@ async def test_observed_payto_runs_when_the_request_url_is_known(api):
 async def test_fail_mode_without_preset_keeps_the_unobserved_payto_block(api):
     middleware = BotsRatedPaymentMiddleware(["pay_x402"], fail_mode="open")
     assert middleware.guard.policy.pay_to_mismatch == "block"
+    assert middleware.guard.policy.pay_to_invalid == "block"
     assert middleware.guard.fail_open is True
     decisions: list[Any] = []
     middleware.guard.on_decision = decisions.append
@@ -119,11 +120,26 @@ async def test_token_without_preset_keeps_the_unobserved_payto_block(api, monkey
     api.post("/v1/policy/check").respond(200, json={"decision": "pass"})
     middleware = BotsRatedPaymentMiddleware(["pay_x402"], token=TOKEN)
     assert middleware.guard.policy.pay_to_mismatch == "block"
+    assert middleware.guard.policy.pay_to_invalid == "block"
     model = ScriptedModel([("bad", "pay_x402", {"url": SELLER, "pay_to": DEAD, "amount": AMOUNT})])
     out = results(await _agent(model, middleware).run("pay"))
     assert paid == []
     assert "was not executed" in str(out["bad"])
     assert policy_calls(api)
+
+
+async def test_no_preset_blocks_an_invalid_payto(api):
+    """Historical DEFAULT_POLICY blocks an invalid payTo. The no-preset PaymentGuard path must too."""
+    middleware = BotsRatedPaymentMiddleware(["pay_x402"], fail_mode="open")
+    assert middleware.guard.fail_open is True
+    decisions: list[Any] = []
+    middleware.guard.on_decision = decisions.append
+    model = ScriptedModel([("bad", "pay_x402", {"url": SELLER, "pay_to": "not-an-address", "amount": AMOUNT})])
+    out = results(await _agent(model, middleware).run("pay"))
+    assert paid == []
+    assert "was not executed" in str(out["bad"])
+    assert decisions[0].action == "block"
+    assert any(reason.code == "payto_invalid" and reason.effect == "block" for reason in decisions[0].reasons)
 
 
 @pytest.mark.parametrize("preset", ["carefulBuyer", "strict"])

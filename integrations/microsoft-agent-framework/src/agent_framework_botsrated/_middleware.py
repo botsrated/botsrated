@@ -170,9 +170,11 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
     one is a warning. If BotsRated can't be reached, that historical guard allows the payment
     (``fail_open=True``). If the quote can't be read from the arguments, the call is blocked.
 
-    ``fail_mode`` or ``token`` without ``preset`` still blocks an unobserved payTo. That is the
-    historical default (``pay_to_mismatch="block"``). It does not switch to PaymentGuard's
-    advice-only zero-config policy. ``preset="warn"`` is advice only when you select it.
+    ``fail_mode`` or ``token`` without ``preset`` still blocks an unobserved payTo and an
+    invalid payTo (``pay_to_mismatch="block"`` and ``pay_to_invalid="block"``). That matches
+    the historical default, which blocks an invalid payTo through ``pay_to_mismatch``. It does
+    not switch to PaymentGuard's advice-only zero-config policy. ``preset="warn"`` is advice
+    only when you select it. ``fail_mode`` still defaults to open.
     ``carefulBuyer`` and ``strict`` block an unobserved payTo. A remote pass does not clear a
     local block. ``fail_mode`` ``"closed"`` stops the payment when a remote check returns no
     decision; ``"open"`` records info. A missing decision is not a pass.
@@ -186,7 +188,8 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
             ends the run with ``BotsRatedPaymentBlocked``.
         preset: ``warn``, ``carefulBuyer``, or ``strict`` when building a ``PaymentGuard`` here.
             Omit it and an unobserved payTo still blocks, including when ``fail_mode`` or
-            ``token`` is set. ``warn`` is advice only when selected.
+            ``token`` is set. An invalid payTo blocks on that path too
+            (``pay_to_invalid="block"``). ``warn`` is advice only when selected.
         fail_mode: ``"open"`` or ``"closed"`` for that ``PaymentGuard``. Omit it to fail open.
         token: Remote-policy token for that ``PaymentGuard``. Omit the argument to leave the
             historical guard in place. ``None`` reads ``BOTSRATED_TOKEN``.
@@ -226,9 +229,11 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
             if preset is None:
                 # PaymentGuard's zero-config policy is advice-only. fail_mode or token must
                 # not downgrade the historical payTo block (DEFAULT_POLICY) into a warning.
+                # The historical guard blocks an invalid payTo through pay_to_mismatch.
+                # PaymentGuard has a separate pay_to_invalid axis, so set that to block too.
                 from botsrated.payment_guard import PaymentGuardPolicy
 
-                built.policy = PaymentGuardPolicy(pay_to_mismatch="block")
+                built.policy = PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block")
             self.guard = built
         else:
             self.guard = PrePaymentGuard(BotsRatedClient(), policy=DEFAULT_POLICY)

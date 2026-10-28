@@ -9,7 +9,9 @@ import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
 const guard = createPaymentGuard({ preset: "carefulBuyer" });
 guard.install(client);
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo). Wrap the paying fetch with `guard.wrapFetch` so the guard knows the paid URL.
+3. Pick `preset` (omit it, or call `createPaymentGuard()`, for advice only; `carefulBuyer` / `strict` stop an unobserved payTo). Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Wrap the paying fetch with `guard.wrapFetch` so the guard knows the paid URL.
+
+`BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remotePolicy` on `@botsrated/x402-preflight` 0.3.0 and later, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk). Nothing defaults you to closed.
 
 The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment check.
 
@@ -40,7 +42,7 @@ of the x402 client you pass in.
 ## Payment Guard: Pick A Preset
 
 You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
-one, a receipt link. It does not return a score or a grade.
+one, a receipt link.
 
 Pick a named preset. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.
@@ -113,7 +115,7 @@ Reason texts state facts only; seller text is never echoed except a parsed host 
 
 ### Facts Bundle
 
-`decision.facts` is the bundle the guard compared. It is measurements plus a receipt link. It has no score and no grade.
+`decision.facts` is the bundle the guard compared. It is measurements plus a receipt link.
 
 | Field | What it is |
 |---|---|
@@ -131,7 +133,7 @@ https://botsrated.com/disputes. `wouldBlock` is true when a rule's effect is `bl
 `action` stays `allow`.
 
 The hosted preflight body is larger (see the MCP facts bundle in the repository README). The guard keeps this
-smaller local bundle and does not copy a score out of it, because the response has none.
+smaller local bundle and does not add a summary number, because the response has none.
 
 ### Options
 
@@ -167,11 +169,13 @@ This is the path that makes `BOTSRATED_TOKEN` work in framework attaches. The to
 ```ts
 const guard = createPaymentGuard({
   preset: "carefulBuyer",
-  remotePolicy: { token: "<bearer>", failMode: "closed" }, // baseUrl defaults to https://botsrated.com
+  remotePolicy: { token: "<bearer>", failMode: "open" }, // omit failMode for open; "closed" is opt-in
 });
 ```
 
-`failMode` is yours: `"open"` or `"closed"` (`fail_mode` is accepted as an alias). The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 404, or `"decision": null`, it applies `failMode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). It does not turn a missing decision into a pass. `decided_by` and `not_a_botsrated_rating` are kept when the server sends them. The last `policy_version` is remembered (`remotePolicyVersion()`). The policy decision is not signed. Leave `remotePolicy` unset and local presets behave as before.
+`failMode` is yours: `"open"` or `"closed"` (`fail_mode` is accepted as an alias). Omit it and the check stays open. Nothing defaults you to closed. `"closed"` stops the payment when BotsRated or your policy cannot answer. The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 404, or `"decision": null`, it applies `failMode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). A missing decision is never a pass. A remote pass never clears a local block. Server fields are kept when the server sends them. The last `policy_version` is remembered (`remotePolicyVersion()`). The policy decision is not signed. Leave `remotePolicy` unset and local presets behave as before.
+
+`BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remotePolicy` on `@botsrated/x402-preflight` 0.3.0 and later. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. Get a token in [Desk](https://botsrated.com/desk).
 
 ### What The Guard Sends, And To Whom
 
@@ -210,7 +214,7 @@ const state = await guard.paymentState(rec); // reads the chain; never pays, sig
 
 There are three answers only:
 
-- `settled`: two RPCs on different hosts (or two of three, see below) show the EIP-3009 authorization used at Base's `safe` block tag,
+- `settled`: two RPCs on different hosts (or two of three, see below) show the EIP-3009 authorization used at Base's default confirmation tag,
   the chain id is 8453, and the transaction receipt has `AuthorizationUsed(from, nonce)` and
   `Transfer(from, payTo, amount)` emitted by the pinned USDC contract `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
 - `unknown` (`payment_state_unknown`) with `waitUntil`: not settled yet, the RPCs disagree or failed, the blocks
@@ -218,7 +222,7 @@ There are three answers only:
   checked. **Do not sign a new payment for that purchase before `waitUntil`** (the signed authorization stays
   valid until its `validBefore`, plus a margin of at least 30 s).
 - `expired_unsettled`: `validBefore` plus the margin has passed on the clock **and** in the chain: both RPCs show
-  the authorization unused at a block (Base's `safe` tag by default) whose timestamp is at or after `validBefore`
+  the authorization unused at a block (Base's default confirmation tag) whose timestamp is at or after `validBefore`
   plus the margin. USDC accepts an authorization in any block before `validBefore`, so "unused" only counts in a
   later block. With the default 60 s margin this is usually 1 to 3 minutes after expiry. Only then is a fresh
   payment free of a double-charge risk from the first one.
@@ -229,7 +233,7 @@ above 86,400 (1 day, including `Infinity`) is lowered to 1 day, and `NaN` or a n
 `expiryTag: "finalized"` waits for a finalized block past expiry instead (more conservative, usually 20+ minutes).
 
 The guard never retries on `unknown`. botsrated.com is never asked; a tx hash the seller reports is only a hint
-that is verified on chain.
+that is checked on chain.
 
 **Default RPCs** (two operators; both must answer and agree):
 

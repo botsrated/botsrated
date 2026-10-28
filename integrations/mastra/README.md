@@ -2,30 +2,34 @@
 
 ## Install in 3 steps
 
-1. Install. `@botsrated/mastra` with the guard is publishing soon (not on npm yet). From a checkout: `npm install` in `integrations/mastra` (pulls `@botsrated/x402-preflight` `^0.3.0`, on npm).
-2. Attach to your x402 client:
+1. Install. Not on the registry yet. From a checkout, in a clean directory: `npm install` in `integrations/mastra` (pulls `@botsrated/x402-preflight` `^0.3.0`, which is on npm).
+2. Attach to your x402 client. Installing does not attach a guard:
 ```ts
 import { attachPaymentGuard } from "@botsrated/mastra";
-const guard = attachPaymentGuard(x402Client, { preset: "carefulBuyer", failMode: "open" });
+const guard = attachPaymentGuard(x402Client);
 ```
-3. Pick `preset` (`warn` advice only is the default; `carefulBuyer` / `strict` stop an unobserved payTo) and `failMode` (`"open"` default, or `"closed"`).
+3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+
+Omit `failMode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
 ## Default install
 
-Pairs with [Mastra](https://mastra.ai) (`@mastra/core`). Payment-client wrap only. Not an agent, workflow, or tool runtime. The Mastra `Agent` stays Mastra's. Not published: from a checkout, `npm install` in `integrations/mastra` (needs `@botsrated/x402-preflight` `^0.3.0`).
+Pairs with [Mastra](https://mastra.ai) (`@mastra/core`). Payment-client wrap only. Not an agent, workflow, or tool runtime. The Mastra `Agent` stays Mastra's. Not on the registry yet.
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/mastra";
-const guard = attachPaymentGuard(x402Client, { preset: "carefulBuyer", failMode: "open" });
+const guard = attachPaymentGuard(x402Client);
 ```
 
-Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to fail open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A `generate()` or `stream()` `hooks.beforeToolCall` overrides the agent hook; compose with `next`, or pass `botsratedBeforeToolCall` on that run.
+Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A `generate()` or `stream()` `hooks.beforeToolCall` overrides the agent hook; compose with `next`, or pass `botsratedBeforeToolCall` on that run.
 
 ## Token and before-tool hook
 
 `attach_payment_guard` is the same function as `attachPaymentGuard`.
 
-`token`, or `BOTSRATED_TOKEN` when `token` is omitted, is passed as `remotePolicy: { token, failMode }` (`@botsrated/x402-preflight` `^0.3.0` exports `normalizeRemotePolicy`). A bare token string is never passed. On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info. A missing decision is not a pass. A remote pass does not clear a local block. Published `@botsrated/x402-preflight` 0.2.1 does not accept `remotePolicy`; 0.3.0 does. A configured token without `normalizeRemotePolicy` raises and is not dropped.
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 `botsratedPreflight(url)` is the free preflight and does not attach a guard.
 
