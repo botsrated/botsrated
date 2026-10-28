@@ -1,0 +1,58 @@
+{
+  "name": "@botsrated/mastra",
+  "version": "0.1.0",
+  "description": "Mastra payment-client wrap for BotsRated: attachPaymentGuard before pay, plus an optional before-tool hook for named paid tools. Not an agent runtime.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.typecheck.json"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "homepage": "https://botsrated.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/botsrated/botsrated.git",
+    "directory": "integrations/mastra"
+  },
+  "dependencies": {
+    "@botsrated/x402-preflight": "^0.2.1"
+  },
+  "peerDependencies": {
+    "@mastra/core": ">=1.49.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "@mastra/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@mastra/core": "^1.79.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.12",
+    "zod": "^4.1.8"
+  },
+  "bugs": {
+    "url": "https://github.com/botsrated/botsrated/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
