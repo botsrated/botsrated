@@ -51,7 +51,7 @@ on:
         description: "Package directory under integrations/"
         required: true
         type: choice
-        options: [x402-client, vercel-ai-sdk]
+        options: [x402-client, vercel-ai-sdk, mastra]
       version:
         description: "Version to release; must equal package.json's version on main, e.g. 0.2.1"
         required: true
