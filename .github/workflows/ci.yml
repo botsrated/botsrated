@@ -35,10 +35,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest respx pytest-asyncio langchain-tests ruff
-          pip install -e "integrations/python-core[x402]" -e integrations/langchain -e integrations/llamaindex -e integrations/microsoft-agent-framework -e integrations/openai-agents -e integrations/langgraph -e integrations/google-adk -e integrations/crewai
+          pip install -e "integrations/python-core[x402]" -e integrations/langchain -e integrations/llamaindex -e integrations/microsoft-agent-framework -e integrations/openai-agents -e integrations/langgraph -e integrations/google-adk -e integrations/crewai -e integrations/llama-stack
       - name: Lint (ruff check)
         run: |
-          for d in python-core langchain llamaindex microsoft-agent-framework openai-agents langgraph google-adk crewai; do (cd integrations/$d && ruff check .); done
+          for d in python-core langchain llamaindex microsoft-agent-framework openai-agents langgraph google-adk crewai llama-stack; do (cd integrations/$d && ruff check .); done
       - name: botsrated (python-core)
         working-directory: integrations/python-core
         run: python -m pytest -q -m "not live" tests
@@ -53,6 +53,9 @@ jobs:
         run: python -m pytest -q -m "not live" tests
       - name: crewai-botsrated
         working-directory: integrations/crewai
+        run: python -m pytest -q -m "not live" tests
+      - name: llama-stack-botsrated
+        working-directory: integrations/llama-stack
         run: python -m pytest -q -m "not live" tests
       - name: llama-index-tools-botsrated
         working-directory: integrations/llamaindex
