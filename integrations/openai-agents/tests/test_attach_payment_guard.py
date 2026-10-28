@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
+
 from botsrated_openai_agents import attach_payment_guard, botsrated_preflight_tools
 from botsrated_openai_agents.guard import _REMOTE_POLICY_PARAMS, _remote_policy_kwargs
 
@@ -204,17 +205,18 @@ def test_fail_mode_closed_null_decision_does_not_proceed():
     import respx
 
     with respx.mock(base_url="https://botsrated.com", assert_all_called=False) as mock:
-        mock.get("/v1/preflight").mock(side_effect=httpx.ConnectError("unreachable"))
+        route = mock.get("/v1/preflight").mock(side_effect=httpx.ConnectError("unreachable"))
         url = FOUND["latest_probe"]["url"]
         pay_to = FOUND["latest_probe"]["live_payTo"]
         with guard.request(url):
             decision = guard.decide(_ctx(pay_to))
             stopped = client.hooks["before"](_ctx(pay_to))
+        sent = " ".join(str(call.request.url) for call in mock.calls)
+    assert route.called
     assert decision.action == "block"
     assert any(r.code == "botsrated_unreachable" and r.effect == "block" for r in decision.reasons)
     assert stopped is not None and type(stopped).__name__ == "AbortResult"
     assert "sign" not in client.calls
-    sent = " ".join(str(call.request.url) for call in mock.calls)
     assert "/v1/policy" not in sent
     assert "https://botsrated.com/v1/preflight" in sent
 
@@ -249,6 +251,25 @@ def test_without_token_makes_no_remote_policy_http(api):
         assert target.startswith("https://botsrated.com/v1/preflight")
         assert "/v1/policy" not in target
         assert "policy" not in target
+
+
+def test_token_is_forwarded_only_when_the_constructor_accepts_it():
+    class WithSnake:
+        def __init__(self, remote_policy: str | None = None) -> None:
+            del remote_policy
+
+    class WithCamel:
+        def __init__(self, remotePolicy: str | None = None) -> None:
+            del remotePolicy
+
+    class WithNeither:
+        def __init__(self, preset: str | None = None) -> None:
+            del preset
+
+    assert _remote_policy_kwargs(WithSnake, "abc") == {"remote_policy": "abc"}
+    assert _remote_policy_kwargs(WithCamel, "abc") == {"remotePolicy": "abc"}
+    assert _remote_policy_kwargs(WithNeither, "abc") == {}
+    assert _remote_policy_kwargs(WithSnake, None) == {}
 
 
 def test_token_is_local_only_until_remote_policy_exists(api):

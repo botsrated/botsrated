@@ -80,6 +80,6 @@ def botsrated_preflight_tools() -> FreePreflightTools:
     """Return the free HTTP preflight callable and the hosted MCP URL.
 
     Does not register a payment hook. Same rule as ``botsrated_tools()`` in langchain-botsrated:
-    free preflight only, and the guard is a separate call to ``attach_payment_guard``.
+    free preflight only. Registering the payment hook is a separate step on the x402 client.
     """
     return FreePreflightTools(http=(botsrated_preflight,), mcp_url=BOTSRATED_MCP_URL)

@@ -27,4 +27,5 @@ packages = ["src/botsrated_openai_agents"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"
 markers = ["live: calls the real, free BotsRated API (no payment)"]
