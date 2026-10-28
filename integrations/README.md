@@ -25,6 +25,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | `langchain/` | `langchain-botsrated` (PyPI) | LangChain tools |
 | [`langgraph/`](langgraph/) | `langgraph-botsrated` (not published) | LangGraph: `attach_payment_guard` on the caller's x402 client, plus an optional pre-pay node helper. Pairs with LangGraph; not a graph runtime. Omit `preset` for advice only |
 | [`google-adk/`](google-adk/) | `google-adk-botsrated` (not published) | Google ADK: `attach_payment_guard` on the caller's x402 client, plus an optional `before_tool_callback` for opaque paid tools. Pairs with Google ADK; not an agent runtime. Omit `preset` for advice only |
+| [`crewai/`](crewai/) | `crewai-botsrated` (not published) | CrewAI: `attach_payment_guard` on the caller's x402 client, plus an optional `PRE_TOOL_CALL` hook for named paid tools. Pairs with CrewAI; not a crew runtime. Omit `preset` for advice only |
 | `llamaindex/` | `llama-index-tools-botsrated` (PyPI) | LlamaIndex `BotsRatedToolSpec` |
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
@@ -47,6 +48,8 @@ Default guard policy:
 [`langgraph/`](langgraph/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`.
 
 [`google-adk/`](google-adk/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with Google ADK. It is not an Agent, Runner, or session service.
+
+[`crewai/`](crewai/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`. It pairs with CrewAI. It is not a crew, process, flow, or agent loop.
 
 [`openai-agents/`](openai-agents/) follows the same `attach_payment_guard` rules as LangChain ([PR #14](https://github.com/botsrated/botsrated/pull/14)): omitting `preset` is advice only, and an unobserved payTo is blocked only when the caller selects `carefulBuyer` or `strict`.
 
