@@ -2,16 +2,16 @@
 
 ## Install in 3 steps
 
-1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.2). That release is the middleware and the check tool. It does not include `attach_payment_guard`.
+1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.3). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.
 2. Name the payment tools. Installing does not attach an x402 guard:
 ```python
 from agent_framework_botsrated import BotsRatedPaymentMiddleware
 
 middleware = [BotsRatedPaymentMiddleware(["pay_x402"])]
 ```
-3. With no preset, an unobserved payTo is blocked, and so is an invalid payTo. PyPI 0.1.2 has no `fail_mode` argument. `attach_payment_guard` is not in that release.
+3. With no preset, an unobserved payTo is blocked, and so is an invalid payTo. Omit `fail_mode` to stay open.
 
-`attach_payment_guard` in this checkout is not on PyPI (prepared as 0.1.3). From a checkout, in a clean virtualenv: `pip install -e integrations/microsoft-agent-framework` (needs `botsrated>=0.3.0,<0.4`). Installing that checkout does not attach a guard either:
+`attach_payment_guard` is in PyPI 0.1.3. Installing does not attach a guard:
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
@@ -26,7 +26,7 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 
 ## Default install
 
-Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. PyPI 0.1.2 is the middleware and the check tool. The `attach_payment_guard` path in this checkout is not on PyPI.
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. PyPI 0.1.3 includes the middleware, the check tool, and `attach_payment_guard`.
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
@@ -52,13 +52,13 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-PyPI 0.1.2 requires Python 3.10+, `agent-framework-core>=1.22,<2`, and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.1.5,<0.2`. The guard in this checkout (prepared as 0.1.3, not on PyPI) requires `botsrated>=0.3.0,<0.4`.
+PyPI 0.1.3 requires Python 3.10+, `agent-framework-core>=1.22,<2`, and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4`.
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 
 ## Middleware and token
 
-`attach_payment_guard` is the hook in this checkout. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+`attach_payment_guard` is the hook. Keep your `Agent`. When the x402 client sits inside a payment tool, pass that same guard to the existing middleware. `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 ```python
 import os
