@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/ai-sdk` (npm 0.1.3, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`.
+1. Install: `npm install @botsrated/ai-sdk` (npm 0.1.4, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
@@ -51,7 +51,7 @@ const result = await generateText({ model, tools: { ...botsratedTools(), paidToo
 [AI SDK](https://ai-sdk.dev) tools for [BotsRated](https://botsrated.com). Use them as a
 pre-payment check before an agent pays an x402 seller.
 
-**Status: published on npm as [`@botsrated/ai-sdk` 0.1.3](https://www.npmjs.com/package/@botsrated/ai-sdk)** (includes `attachPaymentGuard`). It depends on
+**Status: published on npm as [`@botsrated/ai-sdk` 0.1.4](https://www.npmjs.com/package/@botsrated/ai-sdk)** (this release; includes `attachPaymentGuard`). It depends on
 [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.3.0`. Docs: https://botsrated.com/docs/ai-sdk
 
 ```bash

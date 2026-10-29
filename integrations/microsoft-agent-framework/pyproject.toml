@@ -1,6 +1,6 @@
 [project]
 name = "agent-framework-botsrated"
-version = "0.1.3"
+version = "0.1.4"
 description = "BotsRated pre-payment check for Microsoft Agent Framework: attach PaymentGuard to an x402 client, and function middleware that checks an x402 payTo before a named payment tool runs. Not an agent runtime."
 readme = "README.md"
 license = "MIT"

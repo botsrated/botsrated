@@ -1,6 +1,6 @@
 {
   "name": "@botsrated/ai-sdk",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Vercel AI SDK payment-client wrap for BotsRated: attachPaymentGuard before pay, plus optional free preflight tools. Not a generation runtime.",
   "license": "MIT",
   "type": "module",

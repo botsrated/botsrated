@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- This release is README and version strings only (no guard behavior change): `botsrated` 0.3.1, `@botsrated/x402-preflight` 0.3.1, `@botsrated/ai-sdk` 0.1.4, `langchain-botsrated` 0.1.4, `llama-index-tools-botsrated` 0.1.4, `agent-framework-botsrated` 0.1.4. Each package Status line names that version. Pins stay `botsrated>=0.3.0,<0.4` and `@botsrated/x402-preflight` `^0.3.0`. Unpublished wedges stay not published.
 - Docs: install lines for `langchain-botsrated`, `llama-index-tools-botsrated`, and `agent-framework-botsrated` name PyPI 0.1.3, which includes `attach_payment_guard`. No package version bump.
 - Docs: registry install lines, shared `BOTSRATED_TOKEN` / `fail_mode` copy, and MAF no-preset `pay_to_invalid="block"` parity. No package version bump. Lockfiles were already on `@botsrated/x402-preflight` 0.3.0.
 - `pydantic-ai-botsrated` (`integrations/pydantic-ai`, not published): `attach_payment_guard(x402_client, preset=..., fail_mode=..., token=...)` registers `PaymentGuard` on the caller's x402 client. Pairs with Pydantic AI; it is not an agent or graph runtime. Omit `preset` for advice only; `carefulBuyer` and `strict` block an unobserved payTo only when selected. `fail_mode` is `"open"` or `"closed"` (omit for fail-open). On a remote `decision: null`, HTTP 503, or transport failure, closed blocks and open reports info; a missing decision is not a pass. A remote block stops the payment. A remote pass does not clear a local block. `token` / `BOTSRATED_TOKEN` is passed as `remote_policy={"token", "fail_mode"}` (botsrated>=0.3.0,<0.4 has `parse_remote_policy`); a bare token string is never passed. `botsrated_payment_hooks(guard, paid_tools={...})` returns a Pydantic AI `Hooks` capability (`pydantic-ai-slim` 2.x extra) that registers `before_tool_execute(tools=[...])` for named paid tools only. On a block it raises `ToolFailed` (or `SkipToolExecution` when `ToolFailed` is absent) and does not run the tool. It does not raise `ModelRetry`. Checked against the public types in pydantic-ai-slim 2.63.0. `botsrated_preflight` is free and does not attach a guard. The guard calls free preflight at https://botsrated.com. It does not sign payments or hold funds.
@@ -57,6 +58,10 @@ All notable changes to the packages in this repository. Each package has its own
   build byte for byte; the npm CLI is installed only from a checksum-verified tarball.
 - Repo: SECURITY.md, CONTRIBUTING.md, issue and pull request
   templates, this changelog.
+
+## 0.3.1 (both packages)
+
+`botsrated` 0.3.1 on PyPI and `@botsrated/x402-preflight` 0.3.1 on npm. README Status and install lines name 0.3.1. User-Agent version strings match the package version. No guard behavior change.
 
 ## 0.3.0 (both packages) - 2026-10-28
 
@@ -193,6 +198,9 @@ Changed:
 
 ## langchain-botsrated (PyPI)
 
+### 0.1.4
+- This release. README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
+
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
 - Keeps blocking a payTo BotsRated's probes never recorded, with any supported botsrated version: the package now
@@ -209,6 +217,9 @@ Changed:
 - First release: preflight and check tools.
 
 ## llama-index-tools-botsrated (PyPI)
+
+### 0.1.4
+- This release. README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
@@ -228,6 +239,9 @@ Changed:
 - First release: `BotsRatedToolSpec`.
 
 ## agent-framework-botsrated (PyPI)
+
+### 0.1.4
+- This release. README Status names 0.1.4 and includes the middleware, the check tool, and `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
@@ -272,6 +286,9 @@ Changed:
   and a client.
 
 ## @botsrated/ai-sdk (npm)
+
+### 0.1.4
+- This release. README Status names 0.1.4 and includes `attachPaymentGuard`. Depends on `@botsrated/x402-preflight` `^0.3.0`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on npm on 2026-10-28. `attachPaymentGuard` registers `createPaymentGuard` on the caller's x402 client. Depends on `@botsrated/x402-preflight` `^0.3.0`. Omit `preset` for advice only. Omit `failMode` to stay open. `token` / `BOTSRATED_TOKEN` is sent as `remotePolicy`. A configured token without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed.

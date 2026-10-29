@@ -196,7 +196,7 @@ def test_version_comes_from_package_metadata() -> None:
 
     import agent_framework_botsrated
 
-    assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.3"
+    assert agent_framework_botsrated.__version__ == version("agent-framework-botsrated") == "0.1.4"
 
 
 def test_default_guard_blocks_an_unobserved_pay_to() -> None:

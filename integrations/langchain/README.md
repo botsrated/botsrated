@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install langchain-botsrated` (PyPI 0.1.3, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`.
+1. Install: `pip install langchain-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from langchain_botsrated import attach_payment_guard
@@ -17,7 +17,7 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 LangChain tools for [BotsRated](https://botsrated.com). Use them as a pre-payment check before
 an agent pays an x402 seller.
 
-**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.3.**
+**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.4** (this release; includes `attach_payment_guard`).
 It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
 
