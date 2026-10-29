@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.3). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.
+1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.4). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.
 2. Name the payment tools. Installing does not attach an x402 guard:
 ```python
 from agent_framework_botsrated import BotsRatedPaymentMiddleware
@@ -11,7 +11,7 @@ middleware = [BotsRatedPaymentMiddleware(["pay_x402"])]
 ```
 3. With no preset, an unobserved payTo is blocked, and so is an invalid payTo. Omit `fail_mode` to stay open.
 
-`attach_payment_guard` is in PyPI 0.1.3. Installing does not attach a guard:
+`attach_payment_guard` is in PyPI 0.1.4. Installing does not attach a guard:
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
@@ -26,7 +26,9 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 
 ## Default install
 
-Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. PyPI 0.1.3 includes the middleware, the check tool, and `attach_payment_guard`.
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime.
+
+**Status: published on PyPI: [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4** (this release; includes the middleware, the check tool, and `attach_payment_guard`). It depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4`.
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
@@ -52,7 +54,7 @@ pip install agent-framework-botsrated
 pip install "agent-framework-botsrated[mcp]"
 ```
 
-PyPI 0.1.3 requires Python 3.10+, `agent-framework-core>=1.22,<2`, and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4`.
+PyPI 0.1.4 requires Python 3.10+, `agent-framework-core>=1.22,<2`, and [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4`.
 Tested with agent-framework-core 1.22.0 (with mcp 1.30) and 1.23.0 (with mcp 2.3). agent-framework-core 1.22 can't
 initialize MCP sessions with mcp 2.x, so pin `mcp<2` there if you use the hosted MCP server.
 

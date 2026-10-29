@@ -30,7 +30,7 @@ networks through BotsRated's probes or webhooks.
 
 ## What The Payment Guard Can't Do
 
-The payment guard in `@botsrated/x402-preflight` and `botsrated` (0.2.1) never signs, never sends or resends a
+The payment guard in `@botsrated/x402-preflight` and `botsrated` (0.3.1) never signs, never sends or resends a
 payment, never builds a payment header and never imports a signer. Its hook return values are discarded, it never
 registers the x402 payment-creation-failure hook, and its on-chain checks use read-only RPC methods. CI enforces this
 in [`integrations/x402-client/test/c1-no-repay.test.ts`](integrations/x402-client/test/c1-no-repay.test.ts) and

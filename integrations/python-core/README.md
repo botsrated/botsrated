@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install "botsrated[x402]"` (PyPI 0.3.0).
+1. Install: `pip install "botsrated[x402]"` (PyPI 0.3.1).
 2. Attach to your x402 client:
 ```python
 from botsrated import PaymentGuard
@@ -24,7 +24,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: published on PyPI as [`botsrated` 0.3.0](https://pypi.org/project/botsrated/)** (adds `remote_policy`).
+**Status: published on PyPI as [`botsrated` 0.3.1](https://pypi.org/project/botsrated/)** (this release; includes `remote_policy`).
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 

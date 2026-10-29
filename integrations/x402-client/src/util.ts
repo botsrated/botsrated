@@ -3,7 +3,7 @@
  */
 
 /** Package version. Kept equal to package.json by a test. */
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 /** User-Agent sent on hosted BotsRated calls. No install id, wallet or other user identifier. */
 export const USER_AGENT = `botsrated-x402-preflight/${VERSION}`;
 export const BOTSRATED_BASE_URL = "https://botsrated.com";
