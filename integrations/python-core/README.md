@@ -183,6 +183,14 @@ guard = PaymentGuard(
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remote_policy` on botsrated 0.3.0 and later. A configured token on a core without `parse_remote_policy` raises and is not dropped. Get a token in [Desk](https://botsrated.com/desk).
 
+**Save a policy first.** `remote_policy` only checks; it never saves. With no saved policy every check answers `404 no_policy_saved`, and the guard applies your `fail_mode` (`closed` stops every payment). Start from a private pack (`none`, `warn`, `careful-buyer`, `strict`; list at `GET https://botsrated.com/v1/policy/packs`), then `PUT /v1/policy` with your token, or use [Desk → Policy](https://botsrated.com/desk/policy). The smallest one is `none` (only the two always-on checks):
+
+```bash
+curl -X PUT https://botsrated.com/v1/policy -H "Authorization: Bearer $BOTSRATED_TOKEN" -H "Content-Type: application/json" -d '{"preset":"none","fail_mode":"open"}'
+```
+
+`fail_mode` in that body is yours to pick (`open` or `closed`). The token needs `policy-write` (a paid-plan `brs_` token, or a `brk_` org key with that scope). Server pack names (`careful-buyer`) are your saved server rules. The local `preset` (`carefulBuyer`) is a separate client table. They don't have to match.
+
 ### What The Guard Sends, And To Whom
 
 - **botsrated.com (preflight):** `GET /v1/preflight?url=<host name>` with `User-Agent: botsrated-python/<version>`.
