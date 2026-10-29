@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Receipt check: `spec/verify.mjs` keeps an object `payment` (signed on `mcp_probe`) and still drops string `payment` hints. `spec/receipt-page.mjs` is the browser page for that same check (`signature valid` / `signature invalid` / `key unknown`). CLI: `node spec/verify.mjs '<receipt_url>'`. `GET /v1/verify` is not mounted; `verifyResultJson` is the same result for a later free route. No package version bump.
 - Docs: public install and status lines for `@botsrated/ai-sdk` name npm 0.1.3 (0.1.4 is not published). `langchain-botsrated` 0.1.4 copy names the published dependency `botsrated>=0.3.0,<0.4`.
 - This release is README and version strings only (no guard behavior change): `botsrated` 0.3.1, `@botsrated/x402-preflight` 0.3.1, `@botsrated/ai-sdk` 0.1.3, `langchain-botsrated` 0.1.4, `llama-index-tools-botsrated` 0.1.4, `agent-framework-botsrated` 0.1.4. Each package Status line names that version. Pins stay `botsrated>=0.3.0,<0.4` and `@botsrated/x402-preflight` `^0.3.0`. Unpublished wedges stay not published.
 - Docs: install lines for `langchain-botsrated`, `llama-index-tools-botsrated`, and `agent-framework-botsrated` name PyPI 0.1.3, which includes `attach_payment_guard`. No package version bump.
