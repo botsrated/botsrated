@@ -83,7 +83,7 @@ def _remote_policy_kwargs(
     if not callable(normalizer):
         raise TypeError(
             "token is set but this botsrated install has no parse_remote_policy. "
-            "Install botsrated>=0.3.0,<0.4 so the token is sent. The token was not dropped."
+            "Install botsrated>=0.3.1,<0.4 so the token is sent. The token was not dropped."
         )
     mode: FailMode = fail_mode if fail_mode in _FAIL_MODES else "open"
     return {"remote_policy": {"token": token, "fail_mode": mode}}

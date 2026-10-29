@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,31 @@ def _ctx(pay_to: str) -> dict[str, Any]:
     url = FOUND["latest_probe"]["url"]
     req = _req(pay_to)
     return {"payment_required": {"x402Version": 2, "resource": {"url": url}, "accepts": [req]}, "selected_requirements": req}
+
+
+def _supports_remote_policy(guard_cls: type | None = None) -> bool:
+    """True when this botsrated exports parse_remote_policy. The class is not inspected."""
+    del guard_cls
+    try:
+        from botsrated.payment_guard import parse_remote_policy
+    except ImportError:
+        return False
+    return callable(parse_remote_policy)
+
+
+def _policy_view(guard: Any) -> tuple[str, str] | None:
+    policy = getattr(guard, "remote_policy", None)
+    if policy is None:
+        return None
+    assert not isinstance(policy, str), "remote_policy must be a mapping, not a bare token string"
+    if isinstance(policy, Mapping):
+        return str(policy["token"]), str(policy["fail_mode"])
+    return str(policy.token), str(policy.fail_mode)
+
+
+@pytest.fixture(autouse=True)
+def _no_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BOTSRATED_TOKEN", raising=False)
 
 
 @pytest.fixture
@@ -290,6 +316,63 @@ def test_token_is_sent_as_remote_policy_mapping(api):
     assert policy[0].request.headers["authorization"] == f"Bearer {token}"
     assert "sign" not in client.calls
 
+
+
+def test_env_token_is_used_when_argument_is_omitted(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("BOTSRATED_TOKEN", "env-token")
+
+    class WithSnake:
+        def __init__(self, remote_policy: Mapping[str, str] | None = None, **kwargs: Any) -> None:
+            self.remote_policy = remote_policy
+            self.kwargs = kwargs
+
+        def install(self, client: Any) -> Any:
+            self.client = client
+            return self
+
+    from botsrated import payment_guard
+
+    if _supports_remote_policy(payment_guard.PaymentGuard):
+        guard = attach_payment_guard(RecordingClientSync(), preset="warn")
+        assert _policy_view(guard) == ("env-token", "open")
+        assert not isinstance(guard.remote_policy, str)
+        return
+
+    monkeypatch.setattr(payment_guard, "PaymentGuard", WithSnake)
+    monkeypatch.setattr(
+        "botsrated_openai_agents.guard._parse_remote_policy",
+        lambda: (lambda value: value),
+    )
+    guard = attach_payment_guard(RecordingClientSync(), preset="warn")
+    assert guard.remote_policy == {"token": "env-token", "fail_mode": "open"}
+    assert not isinstance(guard.remote_policy, str)
+
+
+def test_explicit_token_wins_over_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("BOTSRATED_TOKEN", "env-token")
+
+    class WithSnake:
+        def __init__(self, remote_policy: Mapping[str, str] | None = None, **kwargs: Any) -> None:
+            self.remote_policy = remote_policy
+            self.kwargs = kwargs
+
+        def install(self, client: Any) -> Any:
+            self.client = client
+            return self
+
+    from botsrated import payment_guard
+
+    if _supports_remote_policy(payment_guard.PaymentGuard):
+        guard = attach_payment_guard(RecordingClientSync(), token="explicit-token")
+        assert _policy_view(guard)[0] == "explicit-token"
+        return
+    monkeypatch.setattr(payment_guard, "PaymentGuard", WithSnake)
+    monkeypatch.setattr(
+        "botsrated_openai_agents.guard._parse_remote_policy",
+        lambda: (lambda value: value),
+    )
+    guard = attach_payment_guard(RecordingClientSync(), token="explicit-token", fail_mode="closed")
+    assert guard.remote_policy == {"token": "explicit-token", "fail_mode": "closed"}
 
 
 def test_attach_source_does_not_sign_or_call_remote_policy():

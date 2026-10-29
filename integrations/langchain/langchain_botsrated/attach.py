@@ -6,6 +6,7 @@ This registers the guard's before-payment hook. It does not sign, send, or hold 
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
 
 PresetName = Literal["carefulBuyer", "warn", "strict"]
@@ -13,6 +14,7 @@ FailMode = Literal["open", "closed"]
 
 _PRESETS = ("carefulBuyer", "warn", "strict")
 _FAIL_MODES = ("open", "closed")
+_TOKEN_ENV = "BOTSRATED_TOKEN"
 
 
 def _payment_guard() -> tuple[Any, type]:
@@ -21,6 +23,16 @@ def _payment_guard() -> tuple[Any, type]:
     except ImportError as exc:  # botsrated 0.1.x has no PaymentGuard
         raise ImportError("attach_payment_guard needs botsrated>=0.2.1 (PaymentGuard).") from exc
     return POLICIES, PaymentGuard
+
+
+def _token_from(token: str | None) -> str | None:
+    """Explicit ``token`` wins. Omit it to read ``BOTSRATED_TOKEN``. Empty means unset."""
+    if token is None:
+        env = os.environ.get(_TOKEN_ENV)
+        token = env if isinstance(env, str) else None
+    if not isinstance(token, str) or token == "":
+        return None
+    return token
 
 
 _MISSING = object()
@@ -58,7 +70,7 @@ def _remote_policy_kwargs(
     if not callable(normalizer):
         raise TypeError(
             "token is set but this botsrated install has no parse_remote_policy. "
-            "Install botsrated>=0.3.0,<0.4 so the token is sent. The token was not dropped."
+            "Install botsrated>=0.3.1,<0.4 so the token is sent. The token was not dropped."
         )
     mode: FailMode = fail_mode if fail_mode in _FAIL_MODES else "open"
     return {"remote_policy": {"token": token, "fail_mode": mode}}
@@ -76,10 +88,9 @@ def attach_payment_guard(
     ``preset`` is your choice: ``warn`` (advice only), ``carefulBuyer``, or ``strict``
     (same stops as ``carefulBuyer``). Omit it for the guard's advice-only default.
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
-    ``token`` is forwarded as ``remote_policy`` (or ``remotePolicy``), as
-    ``{"token": token, "fail_mode": fail_mode or "open"}``, only when
-    ``parse_remote_policy`` is present. A configured token on an install without that
-    normalizer raises and is not dropped.
+    ``token`` (or ``BOTSRATED_TOKEN`` when ``token`` is omitted) is forwarded as
+    ``remote_policy={"token", "fail_mode"}`` only when ``parse_remote_policy`` is present.
+    A configured token on an install without that normalizer raises and is not dropped.
 
     The guard does not sign a payment. Sync clients are those whose class name ends with
     ``Sync``; ``PaymentGuard.install`` picks the hook style.
@@ -101,7 +112,7 @@ def attach_payment_guard(
         kwargs["fail_open"] = False
     elif fail_mode == "open":
         kwargs["fail_open"] = True
-    kwargs.update(_remote_policy_kwargs(token, fail_mode))
+    kwargs.update(_remote_policy_kwargs(_token_from(token), fail_mode))
     guard = payment_guard(**kwargs)
     guard.install(x402_client)
     return guard

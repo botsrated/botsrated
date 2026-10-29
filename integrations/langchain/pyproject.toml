@@ -5,7 +5,7 @@ description = "LangChain tools for BotsRated: free pre-payment preflight of x402
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["langchain-core>=0.3", "botsrated>=0.3.0,<0.4"]
+dependencies = ["langchain-core>=0.3", "botsrated>=0.3.1,<0.4"]
 
 [project.urls]
 Homepage = "https://botsrated.com"
