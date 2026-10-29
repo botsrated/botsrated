@@ -1,0 +1,5 @@
+{
+  "name": "@botsrated/worker-ledger",
+  "private": true,
+  "type": "module"
+}
