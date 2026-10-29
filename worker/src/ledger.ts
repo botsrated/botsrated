@@ -161,7 +161,7 @@ export async function deleteOrgReceiptRefs(db: SqlDb, orgId: string): Promise<vo
 
 export interface LedgerItem {
   at: string;
-  source: "policy_check";
+  source: "policy_check" | "desk_rollup";
   host: string;
   agent_id: string | null;
   receipt_kind: ReceiptKind;
@@ -169,6 +169,12 @@ export interface LedgerItem {
   receipt_url: string | null;
   receipt_sha256: string | null;
   measured_at: string | null;
+}
+
+export interface UsageTotal {
+  kind: string;
+  rail: string;
+  units: number;
 }
 
 export interface ListLedgerQuery {
@@ -182,7 +188,15 @@ export interface ListLedgerQuery {
 }
 
 export type ListLedgerResult =
-  | { ok: true; items: LedgerItem[]; next_cursor: string | null; from: string | null; to: string | null }
+  | {
+      ok: true;
+      items: LedgerItem[];
+      next_cursor: string | null;
+      from: string | null;
+      to: string | null;
+      /** Same page as items, with the cursor id. HTTP responses omit this. */
+      rows: Array<LedgerItem & { id: string }>;
+    }
   | { ok: false; error: "invalid_cursor" | "invalid_query" | "ledger_unavailable" };
 
 interface RefRow {
@@ -256,21 +270,180 @@ export async function listLedger(db: SqlDb, query: ListLedgerQuery): Promise<Lis
     );
     const result = await bound.all<RefRow>();
     const rows = result.results ?? [];
-    const page = rows.slice(0, limit);
-    const mapped = page.map(rowToItem).filter((row) => row.receipt_id !== "" && row.receipt_url != null);
-    const items: LedgerItem[] = mapped.map((row) => {
-      const { id: _id, ...item } = row;
-      return item;
-    });
+    const mapped = rows.map(rowToItem).filter((row) => row.receipt_id !== "" && row.receipt_url != null);
+    const page = mapped.slice(0, limit);
     let next: string | null = null;
-    if (rows.length > limit && mapped.length) {
-      const last = mapped[mapped.length - 1];
+    if (mapped.length > limit && page.length) {
+      const last = page[page.length - 1];
       next = encodeCursor(query.org_id, last.at, last.id);
     }
-    return { ok: true, items, next_cursor: next, from: window.from, to: window.to };
+    return {
+      ok: true,
+      items: page.map(publicItem),
+      next_cursor: next,
+      from: window.from,
+      to: window.to,
+      rows: mapped,
+    };
   } catch {
     return { ok: false, error: "ledger_unavailable" };
   }
+}
+
+function publicItem(row: LedgerItem & { id: string }): LedgerItem {
+  const { id: _id, ...item } = row;
+  return item;
+}
+
+const DESK_SQL = `SELECT rollup_key, host, event_at, receipt_id
+  FROM desk_alert_rollups
+  WHERE org_id = ?
+    AND receipt_id IS NOT NULL
+    AND (? IS NULL OR event_at >= ?)
+    AND (? IS NULL OR event_at < ?)
+    AND (? IS NULL OR host = ?)
+    AND (? IS NULL OR event_at < ? OR (event_at = ? AND ('desk:' || rollup_key) < ?))
+  ORDER BY event_at DESC, rollup_key DESC
+  LIMIT ?`;
+
+const USAGE_SQL = `SELECT kind, rail, SUM(units) AS units
+  FROM usage_events
+  WHERE org_id = ?
+    AND (? IS NULL OR at >= ?)
+    AND (? IS NULL OR at < ?)
+  GROUP BY kind, rail
+  ORDER BY kind, rail`;
+
+export type ReadLedgerResult =
+  | {
+      ok: true;
+      items: LedgerItem[];
+      next_cursor: string | null;
+      from: string | null;
+      to: string | null;
+      usage_totals: UsageTotal[];
+    }
+  | { ok: false; error: "invalid_cursor" | "invalid_query" | "ledger_unavailable" };
+
+/**
+ * Policy refs plus a read-only join of desk_alert_rollups for this org.
+ * Desk rows are not written into org_receipt_refs. receipt_url is rebuilt
+ * from host and deskReceiptDay (stored day when the row has one, else the
+ * UTC day of event_at). The live rollup table has no receipt-day column.
+ */
+export async function readOrgLedger(db: SqlDb, query: ListLedgerQuery): Promise<ReadLedgerResult> {
+  const refs = await listLedger(db, query);
+  if (!refs.ok) return refs;
+  const source = query.source == null || query.source === "" ? null : query.source;
+  const limit = normalizeLimit(query.limit);
+  if (limit == null) return { ok: false, error: "invalid_query" };
+  const host = query.host == null || query.host === "" ? null : normHost(query.host);
+
+  let cursorAt: string | null = null;
+  let cursorId: string | null = null;
+  if (query.cursor != null && query.cursor !== "") {
+    const decoded = decodeCursor(query.cursor);
+    if (!decoded || decoded.o !== query.org_id) return { ok: false, error: "invalid_cursor" };
+    cursorAt = decoded.at;
+    cursorId = decoded.id;
+  }
+
+  let desk: Array<LedgerItem & { id: string }> = [];
+  if (source !== "policy_check") {
+    try {
+      const result = await db.prepare(DESK_SQL).bind(
+        query.org_id,
+        refs.from,
+        refs.from,
+        refs.to,
+        refs.to,
+        host,
+        host,
+        cursorAt,
+        cursorAt,
+        cursorAt,
+        cursorId,
+        limit + 1,
+      ).all<DeskRow>();
+      desk = (result.results ?? []).map(deskRowToItem).filter((row): row is LedgerItem & { id: string } => row != null);
+    } catch {
+      return { ok: false, error: "ledger_unavailable" };
+    }
+  }
+
+  let usage_totals: UsageTotal[] = [];
+  try {
+    const totals = await db.prepare(USAGE_SQL).bind(
+      query.org_id,
+      refs.from,
+      refs.from,
+      refs.to,
+      refs.to,
+    ).all<{ kind: string; rail: string; units: number | null }>();
+    usage_totals = (totals.results ?? []).map((row) => ({
+      kind: String(row.kind),
+      rail: String(row.rail),
+      units: Number(row.units ?? 0),
+    }));
+  } catch {
+    return { ok: false, error: "ledger_unavailable" };
+  }
+
+  const refRows = source === "desk_rollup" ? [] : refs.rows;
+  const merged = [...refRows, ...desk].sort(byAtDesc);
+  const page = merged.slice(0, limit);
+  const next = merged.length > limit && page.length
+    ? encodeCursor(query.org_id, page[page.length - 1].at, page[page.length - 1].id)
+    : null;
+  return {
+    ok: true,
+    items: page.map(publicItem),
+    next_cursor: next,
+    from: refs.from,
+    to: refs.to,
+    usage_totals,
+  };
+}
+
+interface DeskRow {
+  rollup_key: string;
+  host: string;
+  event_at: string;
+  receipt_id: string;
+  receipt_day?: string | null;
+  day?: string | null;
+}
+
+function deskRowToItem(row: DeskRow): (LedgerItem & { id: string }) | null {
+  if (typeof row.receipt_id !== "string" || !RECEIPT_ID.test(row.receipt_id)) return null;
+  const host = normHost(row.host);
+  const day = deskReceiptDay({ receipt_day: row.receipt_day, day: row.day, event_at: row.event_at });
+  if (!host || !day) return null;
+  if (typeof row.rollup_key !== "string" || row.rollup_key.length === 0 || row.rollup_key.length > 160) return null;
+  const locator = buildLocator({ kind: "unpaid_probe", host, day });
+  if (!locator) return null;
+  const url = receiptUrl(row.receipt_id, locator);
+  if (!url) return null;
+  const at = typeof row.event_at === "string" ? row.event_at : "";
+  if (!ISO_TS.test(at)) return null;
+  return {
+    id: "desk:" + row.rollup_key,
+    at,
+    source: "desk_rollup",
+    host,
+    agent_id: null,
+    receipt_kind: "unpaid_probe",
+    receipt_id: row.receipt_id,
+    receipt_url: url,
+    receipt_sha256: null,
+    measured_at: at,
+  };
+}
+
+function byAtDesc(a: LedgerItem & { id: string }, b: LedgerItem & { id: string }): number {
+  if (a.at !== b.at) return a.at < b.at ? 1 : -1;
+  if (a.id !== b.id) return a.id < b.id ? 1 : -1;
+  return 0;
 }
 
 function rowToItem(row: RefRow): LedgerItem & { id: string } {
