@@ -5,7 +5,7 @@ description = "Payment-client wrap that pairs with CrewAI. Registers BotsRated P
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-dependencies = ["botsrated>=0.3.0,<0.4"]
+dependencies = ["botsrated>=0.3.1,<0.4"]
 keywords = ["crewai", "x402", "botsrated", "payment-guard", "preflight"]
 
 [project.urls]

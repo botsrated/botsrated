@@ -1,8 +1,20 @@
 # llama-stack-botsrated
 
+## Default install
+
+Pairs with [Llama Stack](https://llama-stack.readthedocs.io/). Payment-client wrap only. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred. Not on the registry yet: `pip install -e integrations/llama-stack` (`botsrated>=0.3.1,<0.4`).
+
+```python
+# Free forever. No key for local attach. Not a runtime.
+# Optional BOTSRATED_TOKEN for Desk remote policy.
+from llama_stack_botsrated import attach_payment_guard
+# Omit preset = advice. Omit fail_mode = open.
+guard = attach_payment_guard(x402_client)
+```
+
 ## Install in 3 steps
 
-1. Install. Not on the registry yet. From a checkout, in a clean virtualenv: `pip install -e integrations/llama-stack` (pulls `botsrated>=0.3.0,<0.4`).
+1. Install. Not on the registry yet. From a checkout, in a clean virtualenv: `pip install -e integrations/llama-stack` (pulls `botsrated>=0.3.1,<0.4`).
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from llama_stack_botsrated import attach_payment_guard
@@ -13,17 +25,6 @@ guard = attach_payment_guard(x402_client)
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
-
-## Default install
-
-Pairs with [Llama Stack](https://llama-stack.readthedocs.io/). Payment-client wrap only. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred: Llama Stack public docs have no stable user-facing before-tool API. Not on the registry yet.
-
-```python
-from llama_stack_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)
-```
-
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## Token and preflight
 
