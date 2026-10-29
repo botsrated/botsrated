@@ -6,7 +6,7 @@
 | Date | 2026-10-23 |
 | Editors | BotsRated (https://botsrated.com) |
 | Reference implementation | https://botsrated.com. Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
-| Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs) |
+| Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs), [`verify-core.mjs`](verify-core.mjs), [`receipt-page.mjs`](receipt-page.mjs) |
 | License | Text CC BY 4.0. Schema, examples and code MIT (§12) |
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as described in RFC 2119 and RFC 8174.
@@ -35,7 +35,7 @@ In scope: HTTP x402 resources (x402 v1 and v2), EVM networks, with USDC on Base 
 - **Seller / host**: the x402 resource server, identified by the URL hostname.
 - **Listing**: what a public directory (e.g. Coinbase CDP Bazaar) says about the resource: price, `payTo`, network.
 - **Atomic amount**: an integer in the asset's smallest unit, as a decimal string (USDC: 6 decimals, so `"7000"` = $0.007).
-- **Presentation fields**: fields an API adds when it serves a receipt (`receipt_url`, `tx_url`, `payment`, `signature`). They are not part of the receipt (§4.4).
+- **Presentation fields**: fields an API adds when it serves a receipt (`receipt_url`, `tx_url`, `signature`, and `payment` when it is a string or null). They are not part of the receipt (§4.4). An object `payment` is part of the signed body. `mcp_probe` receipts may carry one.
 
 ## 3. Receipt objects
 
@@ -113,7 +113,7 @@ A producer MUST NOT send any other method (in particular never `tools/call`, `re
 | `calls`, `redirects`, `req_sha256`, `resp_sha256`, `dns_public` | | What was sent; redirects followed; hashes of the initialize request body and response body; public-address check result (null = cached) |
 | `state` | string | Derived and factual: `ok` (initialize and tools/list answered), `auth_required`, `handshake_failed` (HTTP answer without a valid MCP result), `unreachable` (no HTTP answer), `blocked` (URL guard) |
 
-Real example: [`examples/mcp-probe.signed.json`](examples/mcp-probe.signed.json) (cron prober, 2026-10-23, verifies with `verify.mjs`). The live API serves these at `/receipt/<id>?mcp=<shard>&day=<YYYY-MM-DD>&s=<server_id>` and may add `receipt_url`/`signature` hints that are not part of the signed body. `s` (v0.2.1) selects the per-server storage row. Older links without `s` keep resolving, and the receipt they return verifies the same way: `s` is part of the URL only, never of the receipt.
+Real example: [`examples/mcp-probe.signed.json`](examples/mcp-probe.signed.json) (cron prober, 2026-10-23, verifies with `verify.mjs`). [`examples/mcp-probe.payment.json`](examples/mcp-probe.payment.json) is a later receipt whose object `payment` is inside the signature. The live API serves these at `/receipt/<id>?mcp=<shard>&day=<YYYY-MM-DD>&s=<server_id>` and may add `receipt_url`/`signature` hints that are not part of the signed body. `s` (v0.2.1) selects the per-server storage row. Older links without `s` keep resolving, and the receipt they return verifies the same way: `s` is part of the URL only, never of the receipt.
 
 States are observations from one vantage point, not judgements: `auth_required` is the expected answer of many production servers, and an endpoint can be reachable for authenticated clients while `unreachable` from the producer.
 
@@ -144,14 +144,18 @@ New producers MUST use the first rule for every kind they create, and MAY add a 
 - Gap in v0.1: snapshots list ids, not hashes. For unpaid probes the id is a content hash, so content stays bound. For paid receipts the id binds only `tx_hash`. **From v0.1 on, producers MUST sign every new paid receipt individually.** BotsRated's paid receipts made before 2026-10-23T15:00:00Z (the five public ones) are unsigned and are not changed. Their content is bound only through their EAS `receiptSha256` on the Base Sepolia pilot (§7). Paid receipts made from then on carry `sig` with `botsrated-prod-1`, computed exactly as for probes (§4.3 message, same `sig` object). Rotating a key adds a new `key_id`. Old keys MUST stay in the key set, marked retired, so that old receipts still verify.
 
 ### 4.4 Verification (normative)
-1. Remove presentation fields (`receipt_url`, `tx_url`, `payment`, `signature`). If the response wraps the receipt as `{receipt: …}`, unwrap it.
+1. Remove presentation fields (`receipt_url`, `tx_url`, `signature`, and `payment` when it is a string or null). Keep an object `payment`; it is signed. That object is signed JSON on an `mcp_probe`. It is not the on-chain Transfer check in step 4. If the response wraps the receipt as `{receipt: …}`, unwrap it.
 2. Recompute `id` (§4.2). It MUST match.
 3. If `sig` is present: resolve `key_id` in the issuer's key set, verify Ed25519 over `canon(receipt without sig)`, and check that `ts` lies inside the key's validity window (if the key set gives one).
    Otherwise: fetch `dataset.json` and `dataset.sig.json`, check that sha256 equals `sha256`, verify the signature with the key-set key (not only the key embedded in the sig file), check that `generated_at` lies inside that key's validity window, and check that `id` is listed for `host`.
 4. Paid receipts: fetch the transaction receipt for `tx_hash` on `network`. It MUST have status 1 and a `Transfer` log from `asset` to `payTo` of `paid_amount_atomic`.
 5. Signature validity is not issuer authority. Decide whether you trust the issuer and its key set (as in the x402 offer-receipt extension §4.5.1).
 
-`node verify.mjs <file|url> [--rpc https://mainnet.base.org]` runs steps 1–4 with no dependencies. All three receipt examples pass. The paid example also passes the on-chain check (block 52971774).
+`node verify.mjs <file|url> [--rpc https://mainnet.base.org]` runs steps 1–4 with no npm packages. `verify.mjs` loads `verify-core.mjs` and `verify-node.mjs` from the same directory. Copying only `verify.mjs` does not run. The signed examples pass, including an `mcp_probe` whose `payment` object is signed. The paid example also passes the on-chain check (block 52971774). A matching signature checks that record only. It is not a rating of the seller.
+
+Free path: `GET /v1/preflight?url=` returns `latest_probe.receipt_url` for an x402 host and `servers[].latest_receipt_url` for an MCP host (`?mcp=&day=&s=`). From a checkout of `spec/`: `node spec/verify.mjs '<receipt_url>'`. Without a checkout, download `verify.mjs`, `verify-core.mjs`, and `verify-node.mjs` from the same git ref into one directory (the receipt page one-liner uses `ref=main` for all three) and run `node verify.mjs '<receipt_url>'`. The URL in that command is single-quoted and is built only from a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s`.
+
+`spec/receipt-page.mjs` is the browser page for that same check (`prefersHtml` on `Accept: text/html`, fields `id`, `kind`, `ts`, `host`, `key_id`, status `signature valid` / `signature invalid` / `key unknown`). It is not on the live host until the Pages receipt handler returns it. That handler should send `Content-Security-Policy` from `RECEIPT_PAGE_CSP` as a response header, serve `verify-browser.mjs` and `verify-core.mjs` at `/spec/`, and build the pasted command with `receiptCliUrl` (not `request.url`). Keep JSON otherwise. A browser without WebCrypto Ed25519 stays on `signature invalid`. `verifyResultJson` is the `{valid, id, key_id, errors}` body for a later free `GET /v1/verify`. That route is not mounted in this repository.
 
 ### 4.5 Optional VC envelope (non-normative)
 A producer MAY wrap a receipt as `credentialSubject` of a W3C VC 2.0 with a Data Integrity proof (`eddsa-jcs-2022`, which also uses Ed25519 and JCS). The plain receipt and its `sig` stay authoritative in v0.1 (Q5).

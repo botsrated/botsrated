@@ -119,7 +119,8 @@ Report security issues privately: see [SECURITY.md](SECURITY.md) (botsrated@gmai
 - Methodology: https://botsrated.com/methodology
 - A seller can send a reply about a measurement for free: https://botsrated.com/disputes (`POST /v1/dispute`). The measurement is re-checked and the reply is published next to the data. A measurement is a signed record, not a finding about the seller.
 - Dataset signature: https://botsrated.com/dataset.sig.json. Key set: https://botsrated.com/.well-known/botsrated-key
-- Receipt format v0.2.1 (draft; `mcp_probe` receipts for remote MCP servers; v0.2.1 updates reference schedules and MCP retention) and verifier: [`spec/SPEC.md`](spec/SPEC.md), `node spec/verify.mjs <receipt.json|url>`
+- Receipt format v0.2.1 (draft; `mcp_probe` receipts for remote MCP servers; v0.2.1 updates reference schedules and MCP retention) and verifier: [`spec/SPEC.md`](spec/SPEC.md). `node spec/verify.mjs '<receipt.json|url>'` needs `verify.mjs`, `verify-core.mjs`, and `verify-node.mjs` in one directory. `verify.mjs` alone does not run.
+- Free: preflight, then the receipt link, then the signature check. x402 preflight puts it on `latest_probe.receipt_url`. MCP preflight puts it on `servers[].latest_receipt_url` (keep `?mcp=&day=&s=`). CLI, single quotes: `node spec/verify.mjs '<receipt_url>'`. The pasted URL is a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s` only. A matching signature checks that record only. It is not a rating of the seller. `spec/receipt-page.mjs` is that same check for `Accept: text/html`. It is not on the live host until Pages returns it (`Content-Security-Policy` header, and `/spec/verify-browser.mjs` plus `/spec/verify-core.mjs`).
 
 ## Signing keys (Ed25519)
 Raw 32-byte public keys, base64. Fingerprint = sha256 of the raw key bytes. A signature is valid for an object whose own timestamp

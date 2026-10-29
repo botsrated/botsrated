@@ -44,6 +44,8 @@ of the x402 client you pass in.
 You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
 one, a receipt link.
 
+Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). The receipt page uses that same check. It is not on the live host until Pages returns it. A matching signature checks that record only. It is not a rating of the seller.
+
 Pick a named preset. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.
 
