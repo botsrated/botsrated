@@ -76,16 +76,17 @@ Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48)
 
 One x402 USDC payment on Base buys one 30-day period. There is no balance and no auto-renewal. Cancelling stops delivery. The dataset stays free.
 
+Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email. $19 / month by card + tax, or $29 / 30 days USDC. Tools you rely on (for example OpenAI, Anthropic, Gemini, Pinecone, Supabase) use those same 50 slots. No separate plan.
+
 | Plan | Price per 30 days | What you get |
 |---|---|---|
-| `alerts-free` | free | 1 host; one email digest per UTC day when its facts change. Slack, Discord, and webhook need a paid plan (`paid_channel_required`). Up to 3 free alert subscriptions per client IP, 1,000 in total |
-| `alerts-10` | $9 | Up to 10 hosts; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
-| `alerts-50` | $29 | Up to 50 hosts; same events |
+| `alerts-free` | $0 | Watch 1 seller. Daily digest: one email per UTC day when its facts change. Slack, Discord, and webhook need a paid plan (`paid_channel_required`). Up to 3 free alerts per client IP, 1,000 in total |
+| `alerts-50` | $29 | Up to 50 sellers or tools; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
 | `data-starter` | $49 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (60 requests/min) |
 | `data-pro` | $199 | Same, 600 requests/min, plus the change-event export (`GET /v1/export/changes.ndjson?host=`) |
 | custom | $499+ per 30 days | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
 
-Paid BotPulse plans are paused and not on sale. A period already bought keeps working until that 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json.
+Paid BotPulse plans are retired; the feed stays free. Plans already bought keep working until their 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json. Alerts on tools use Pro's 50 slots.
 
 Subscribe with `POST https://botsrated.com/v1/alerts/subscribe` (free) or `POST https://botsrated.com/v1/subscribe/{plan}` (x402). The body and the webhook are checked before any 402. The webhook must answer the verification POST with the challenge; it must be https on a public DNS name, and redirects are not followed. Free alerts are email only: one confirmation link first, then plain-text alerts from alerts@botsrated.com. Slack, Discord, and webhook delivery need a paid plan (`paid_channel_required` on the free plan). Paid alert plans can use a signed webhook (Ed25519, `botsrated-prober-1`, see below, over `{"m":"<timestamp>.<raw body>"}`), a Slack incoming webhook or Discord channel webhook (plain text, not signed), or the same email path. Manage a subscription with `GET /v1/subscription` and `POST /v1/subscription/{cancel,update}` plus `Authorization: Bearer <token>`. Full details: https://botsrated.com/v1/plans
 
