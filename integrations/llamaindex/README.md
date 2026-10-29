@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install the guard from a checkout. Not on PyPI yet (`pip install llama-index-tools-botsrated` is 0.1.2, free tools only). In a clean virtualenv: `pip install -e integrations/llamaindex` (pulls `botsrated>=0.3.0,<0.4`).
+1. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.3, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from llama_index.tools.botsrated import attach_payment_guard
@@ -17,7 +17,7 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com). Use it as a pre-payment check
 before an agent pays an x402 seller.
 
-**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.2.**
+**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.3.**
 It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package. LlamaIndex no longer accepts new
 integration packages in its monorepo, so this package is published on its own.
 
