@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { prefersHtml, renderReceiptPage, verifyResultJson } from "./receipt-page.mjs";
+import { prefersHtml, quoteShellArg, receiptCliUrl, renderReceiptPage, signatureStatus, verifyResultJson } from "./receipt-page.mjs";
+import { ed25519WebCryptoAvailable } from "./verify-browser.mjs";
 import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
 import { nodeDeps } from "./verify-node.mjs";
 
@@ -100,7 +101,7 @@ test("HTML panel shows receipt fields, MCP query, and CLI", () => {
   const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/mcp-probe.payment.json"), "utf8"));
   const pageUrl = raw.receipt.receipt_url;
   const html = renderReceiptPage(raw, { pageUrl });
-  assert.match(html, /id="status">Checking signature…/);
+  assert.match(html, /id="status">signature invalid/);
   assert.match(html, /Verify signature/);
   assert.match(html, new RegExp(raw.receipt.id));
   assert.match(html, /mcp_probe/);
@@ -119,6 +120,64 @@ test("HTML panel shows receipt fields, MCP query, and CLI", () => {
     assert.equal(new RegExp(`\\b${word}\\b`, "i").test(html), false, word);
   }
   assert.equal(/\bsafe\b/i.test(html), false);
+});
+
+function decodeHtml(s) {
+  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+function preText(html, id) {
+  const m = html.match(new RegExp(`id="${id}">([\\s\\S]*?)</pre>`));
+  assert.ok(m, id);
+  return decodeHtml(m[1]);
+}
+
+test("CLI paste drops shell metacharacters in id and query", () => {
+  const evilUrl = "https://evil.example/receipt/$(id)?host=$(id)&mcp=`id`&day=$(date)&s=$(id)&extra=$(id)";
+  const bad = renderReceiptPage({
+    receipt: { id: "$(id)", kind: "mcp_probe", host: "$(id)", ts: "2026-10-28T00:00:00Z", sig: { key_id: "k" } },
+  }, { pageUrl: evilUrl });
+  const badCli = preText(bad, "cli");
+  const badOne = preText(bad, "cli-oneliner");
+  assert.equal(badCli, "node spec/verify.mjs");
+  assert.equal(receiptCliUrl("$(id)", evilUrl, "$(id)"), "");
+  assert.equal(quoteShellArg("https://botsrated.com/receipt/$(id)"), "");
+  for (const text of [badCli, badOne]) {
+    assert.doesNotMatch(text, /\$\(id\)/);
+    assert.doesNotMatch(text, /\$\(date\)/);
+    assert.doesNotMatch(text, /`/);
+    assert.doesNotMatch(text, /evil\.example/);
+  }
+
+  const id = "534359eaf4a00dcf0261";
+  const html = renderReceiptPage({
+    receipt: { id, kind: "mcp_probe", host: "mcp.offendersearch.app", ts: "2026-10-28T02:39:48Z", sig: { key_id: "botsrated-prober-1" } },
+  }, { pageUrl: "https://evil.example/receipt/" + id + "?mcp=$(id)&day=2026-10-28&s=5fc2f595bd0bec49ef95&host=`id`" });
+  const cli = preText(html, "cli");
+  const one = preText(html, "cli-oneliner");
+  assert.match(cli, /^node spec\/verify\.mjs 'https:\/\/botsrated\.com\/receipt\/534359eaf4a00dcf0261\?host=mcp\.offendersearch\.app&day=2026-10-28&s=5fc2f595bd0bec49ef95'$/);
+  assert.doesNotMatch(cli, /"/);
+  assert.doesNotMatch(cli, /\$\(/);
+  assert.doesNotMatch(cli, /`/);
+  assert.match(one, /verify-core\.mjs/);
+  assert.match(one, /verify-node\.mjs/);
+  assert.match(one, /ref=main/);
+  assert.match(one, / 'https:\/\/botsrated\.com\/receipt\/534359eaf4a00dcf0261\?host=mcp\.offendersearch\.app&day=2026-10-28&s=5fc2f595bd0bec49ef95'$/);
+  const arg = cli.slice("node spec/verify.mjs ".length);
+  const ran = spawnSync("bash", ["--noprofile", "--norc", "-c", "id(){ printf PWNED; }; printf %s " + arg], { encoding: "utf8" });
+  assert.equal(ran.status, 0, ran.stderr);
+  assert.equal(ran.stdout.includes("PWNED"), false);
+  assert.equal(ran.stdout.includes("$("), false);
+  assert.equal(ran.stdout.includes("`"), false);
+  assert.match(ran.stdout, /^https:\/\/botsrated\.com\/receipt\/534359eaf4a00dcf0261\?/);
+});
+
+test("missing WebCrypto is not a pass", async () => {
+  assert.equal(signatureStatus({ status: "signature valid" }, false), "signature invalid");
+  assert.equal(signatureStatus(null, true), "signature invalid");
+  assert.equal(signatureStatus({ status: "signature valid" }, true), "signature valid");
+  assert.equal(signatureStatus({ status: "key unknown" }, true), "key unknown");
+  const cryptoOk = await ed25519WebCryptoAvailable();
+  if (cryptoOk) assert.equal(signatureStatus({ status: "signature valid" }, cryptoOk), "signature valid");
 });
 
 test("preflight fixture still carries a receipt link", () => {

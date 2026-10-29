@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Verify a BotsRated receipt. Node >= 18, no dependencies. MIT.
 // Usage: node verify.mjs <receipt.json | receipt URL> [--keys <file|url>] [--dataset <file|url> --sig <file|url>] [--rpc <Base RPC url>]
-// From a checkout: node spec/verify.mjs '<receipt_url>'
-// No checkout: d=$(mktemp -d) && curl -fsSL -o "$d/verify.mjs" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify.mjs && curl -fsSL -o "$d/verify-core.mjs" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify-core.mjs && curl -fsSL -o "$d/verify-node.mjs" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify-node.mjs && node "$d/verify.mjs" '<receipt_url>'
+// From a checkout of this directory (verify.mjs, verify-core.mjs, and verify-node.mjs together):
+//   node spec/verify.mjs '<receipt_url>'
+// verify.mjs alone does not run. The receipt page one-liner downloads those three files from the same ref (main).
 // Checks: (1) receipt id, (2) per-receipt ed25519 signature, or, for unsigned receipts, the signed snapshot that lists the id,
 // (3) optional: for paid test-buys, the on-chain USDC Transfer(payer -> payTo, paid amount) in the tx receipt.
 // Presentation fields receipt_url, tx_url, and signature are removed. payment is removed only when it is not an object

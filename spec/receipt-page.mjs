@@ -1,10 +1,10 @@
 // Sparse HTML for GET /receipt/:id, including ?mcp=&day=&s=.
-// The live Pages worker (receiptscore-beta-q7) is not in this repo. Its receipt handler
-// should keep the JSON body for Accept that does not prefer text/html, and when
-// prefersHtml(accept) return this HTML with RECEIPT_PAGE_CSP. Serve this directory's
-// verify-browser.mjs and verify-core.mjs at /spec/ so the module script loads.
-// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result
-// for that later free route: one check, no second signature implementation.
+// The live Pages worker is not in this repo. This page is not on the live host until that handler returns it.
+// Keep JSON unless prefersHtml(accept). When it does, return this HTML and set
+// Content-Security-Policy to RECEIPT_PAGE_CSP on the response (the meta tag repeats it).
+// Serve verify-browser.mjs and verify-core.mjs at /spec/.
+// The pasted CLI URL comes from receiptCliUrl (checked id + allowlisted host, mcp, day, s), not from request.url.
+// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result for that later free route.
 
 export const RECEIPT_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://botsrated.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
@@ -43,6 +43,80 @@ function receiptOf(raw) {
   return raw || {};
 }
 
+const RECEIPT_ID = /^[0-9a-f]{20}$/;
+const HOST_Q = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+const MCP_Q = /^[0-9]{1,6}$/;
+const DAY_Q = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const S_Q = /^[0-9a-f]{20}$/;
+const CLI_URL = /^https:\/\/botsrated\.com\/receipt\/[0-9a-f]{20}(?:\?(?:host|mcp|day|s)=[a-z0-9.-]+(?:&(?:host|mcp|day|s)=[a-z0-9.-]+)*)?$/i;
+
+function readQuery(input) {
+  const bag = {};
+  if (input == null || input === "") return bag;
+  if (typeof input === "object" && !Array.isArray(input)) {
+    for (const key of ["host", "mcp", "day", "s"]) {
+      if (input[key] != null) bag[key] = String(input[key]);
+    }
+    return bag;
+  }
+  let search = "";
+  try {
+    search = new URL(String(input), "https://botsrated.com").search;
+  } catch {
+    search = String(input);
+  }
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  for (const key of ["host", "mcp", "day", "s"]) {
+    const value = params.get(key);
+    if (value != null) bag[key] = value;
+  }
+  return bag;
+}
+
+function pickHost(receiptHost, queryHost) {
+  if (typeof receiptHost === "string" && HOST_Q.test(receiptHost)) return receiptHost;
+  if ((receiptHost == null || receiptHost === "") && typeof queryHost === "string" && HOST_Q.test(queryHost)) return queryHost;
+  return "";
+}
+
+// CLI URL is only https://botsrated.com/receipt/<20 hex> plus host, mcp, day, and s when each value matches its allowlist.
+// A raw page URL is never copied into the shell line. A bad id yields "".
+export function receiptCliUrl(id, query, receiptHost) {
+  if (typeof id !== "string" || !RECEIPT_ID.test(id)) return "";
+  const q = readQuery(query);
+  const parts = [];
+  const host = pickHost(receiptHost, q.host);
+  if (host) parts.push("host=" + host);
+  if (typeof q.mcp === "string" && MCP_Q.test(q.mcp)) parts.push("mcp=" + q.mcp);
+  if (typeof q.day === "string" && DAY_Q.test(q.day)) parts.push("day=" + q.day);
+  if (typeof q.s === "string" && S_Q.test(q.s)) parts.push("s=" + q.s);
+  const qs = parts.join("&");
+  return "https://botsrated.com/receipt/" + id + (qs ? "?" + qs : "");
+}
+
+// Single quotes only. Refuse if a metacharacter is still present.
+export function quoteShellArg(url) {
+  if (typeof url !== "string" || !CLI_URL.test(url)) return "";
+  // & separates allowlisted params and is inert inside the single quotes this returns.
+  if (/['"`$\\\s;|<>()]/.test(url)) return "";
+  return "'" + url + "'";
+}
+
+export function receiptShellCommands(id, query, receiptHost) {
+  const quoted = quoteShellArg(receiptCliUrl(id, query, receiptHost));
+  const cli = quoted ? "node spec/verify.mjs " + quoted : "node spec/verify.mjs";
+  const tail = quoted ? " " + quoted : "";
+  const oneLiner = "ref=main; d=$(mktemp -d) && base=\"https://raw.githubusercontent.com/botsrated/botsrated/$ref/spec\" && curl -fsSL -o \"$d/verify.mjs\" \"$base/verify.mjs\" && curl -fsSL -o \"$d/verify-core.mjs\" \"$base/verify-core.mjs\" && curl -fsSL -o \"$d/verify-node.mjs\" \"$base/verify-node.mjs\" && node \"$d/verify.mjs\"" + tail;
+  return { cli, oneLiner };
+}
+
+// Missing WebCrypto is not a pass. Only the three check results are shown, and only when crypto ran.
+export function signatureStatus(result, cryptoOk) {
+  if (!cryptoOk || !result) return "signature invalid";
+  if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
+  return "signature invalid";
+}
+
 export function verifyResultJson(result) {
   return {
     valid: !!result.valid,
@@ -52,7 +126,7 @@ export function verifyResultJson(result) {
   };
 }
 
-export function renderReceiptPage(raw, { pageUrl = "", scriptSrc = "/spec/verify-browser.mjs" } = {}) {
+export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec/verify-browser.mjs" } = {}) {
   const r = receiptOf(raw);
   const id = r.id || "";
   const kind = r.kind || "";
@@ -61,10 +135,8 @@ export function renderReceiptPage(raw, { pageUrl = "", scriptSrc = "/spec/verify
   const keyId = (r.sig && r.sig.key_id) || "";
   const hostPath = host ? "/s/" + encodeURIComponent(host) : "/sellers";
   const preflight = host ? "/v1/preflight?url=" + encodeURIComponent(host) : "/v1/preflight";
-  const cliUrl = pageUrl || (id ? "https://botsrated.com/receipt/" + id : "");
-  const cli = "node spec/verify.mjs " + JSON.stringify(cliUrl);
-  const q = JSON.stringify(cliUrl);
-  const oneLiner = "d=$(mktemp -d) && curl -fsSL -o \"$d/verify.mjs\" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify.mjs && curl -fsSL -o \"$d/verify-core.mjs\" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify-core.mjs && curl -fsSL -o \"$d/verify-node.mjs\" https://raw.githubusercontent.com/botsrated/botsrated/main/spec/verify-node.mjs && node \"$d/verify.mjs\" " + q;
+  // pageUrl is not pasted. Only an allowlisted id and host/mcp/day/s are.
+  const { cli, oneLiner } = receiptShellCommands(id, query != null ? query : pageUrl, host);
   const embedded = JSON.stringify(raw).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -93,7 +165,7 @@ export function renderReceiptPage(raw, { pageUrl = "", scriptSrc = "/spec/verify
 <body>
 <main>
   <p class="eyebrow">BotsRated receipt</p>
-  <h1 id="status">Checking signature…</h1>
+  <h1 id="status">signature invalid</h1>
   <dl>
     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
@@ -107,7 +179,7 @@ export function renderReceiptPage(raw, { pageUrl = "", scriptSrc = "/spec/verify
   <h2>CLI</h2>
   <pre id="cli">${esc(cli)}</pre>
   <pre id="cli-oneliner">${esc(oneLiner)}</pre>
-  <p class="note">Checks the public key at /.well-known/botsrated-key. Same canonical JSON and Ed25519 rules as spec/verify.mjs.</p>
+  <p class="note">Checks the public key at /.well-known/botsrated-key. Same canonical JSON and Ed25519 rules as spec/verify.mjs. A matching signature checks this record only. It is not a rating of the seller. If this browser cannot run the check, the status stays signature invalid.</p>
 </main>
 <script type="application/json" id="receipt-data">${embedded}</script>
 <script type="module" src="${esc(scriptSrc)}"></script>
