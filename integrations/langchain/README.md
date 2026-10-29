@@ -2,7 +2,7 @@
 
 ## Default install
 
-Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; depends on `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Free forever, no key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy.
+Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free forever, no key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy.
 
 ```python
 # Free forever. No key for local attach. Not a runtime.
@@ -14,7 +14,7 @@ guard = attach_payment_guard(x402_client)
 
 ## Install in 3 steps
 
-1. Install: `pip install langchain-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). It depends on `botsrated>=0.3.1,<0.4`.
+1. Install: `pip install langchain-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). Published dependency metadata is `botsrated>=0.3.0,<0.4`.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from langchain_botsrated import attach_payment_guard
@@ -30,7 +30,7 @@ LangChain tools for [BotsRated](https://botsrated.com). Use them as a pre-paymen
 an agent pays an x402 seller.
 
 **Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.4** (this release; includes `attach_payment_guard`).
-It depends on the [`botsrated`](https://pypi.org/project/botsrated/) package (source:
+Published dependency metadata requires [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4` (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
 
 ```bash
@@ -55,7 +55,7 @@ tools = botsrated_tools(BotsRatedClient(budget_usd="0.02", x402_client=x402_clie
 
 ## Opt-in payment guard
 
-`pip install langchain-botsrated` does not attach a guard. Call `attach_payment_guard` yourself (needs `botsrated>=0.3.1,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. A paid check
+`pip install langchain-botsrated` does not attach a guard. Call `attach_payment_guard` yourself (published metadata requires `botsrated>=0.3.0,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. A paid check
 is $0.001 and stays opt-in on the tool. `botsrated_tools()` is unchanged: free preflight only.
 
 ```python

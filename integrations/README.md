@@ -10,7 +10,7 @@ PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.1,
 [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.4 (includes `attach_payment_guard`),
 [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4 (middleware, check tool, and `attach_payment_guard`).
 npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) 0.3.1,
-[`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.4 (includes `attachPaymentGuard`).
+[`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.3 (includes `attachPaymentGuard`).
 Other wedges are not on a registry yet. Production publishes use GitHub OIDC only.
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
@@ -21,7 +21,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | Directory | Package | For |
 |---|---|---|
 | `x402-client/` | `@botsrated/x402-preflight` (npm 0.3.1) | payment guard (x402 hooks + `payment-identifier` retry key + read-only on-chain state), `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
-| [`vercel-ai-sdk/`](vercel-ai-sdk/) | `@botsrated/ai-sdk` (npm 0.1.4) | Vercel AI SDK: `attachPaymentGuard` on the caller's x402 client. Pairs with the Vercel AI SDK; not a generation runtime. Omit `preset` for advice only |
+| [`vercel-ai-sdk/`](vercel-ai-sdk/) | `@botsrated/ai-sdk` (npm 0.1.3) | Vercel AI SDK: `attachPaymentGuard` on the caller's x402 client. Pairs with the Vercel AI SDK; not a generation runtime. Omit `preset` for advice only |
 | `python-core/` | `botsrated` (PyPI 0.3.1) | payment guard, client + guard + Python `x402` `on_before_payment_creation` hook |
 | `langchain/` | `langchain-botsrated` (PyPI 0.1.4) | LangChain tools |
 | [`langgraph/`](langgraph/) | `langgraph-botsrated` (not published) | LangGraph: `attach_payment_guard` on the caller's x402 client, plus an optional pre-pay node helper. Pairs with LangGraph; not a graph runtime. Omit `preset` for advice only |
