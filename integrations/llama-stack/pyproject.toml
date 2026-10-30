@@ -1,6 +1,6 @@
 [project]
 name = "llama-stack-botsrated"
-version = "0.1.0"
+version = "0.1.1"
 description = "Payment-client wrap that pairs with Llama Stack. Registers BotsRated PaymentGuard on an x402 client. Not a runtime, distribution, or inference server."
 readme = "README.md"
 license = "MIT"
