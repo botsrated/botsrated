@@ -17,7 +17,7 @@ Other wedges are not on a registry yet. Production publishes use GitHub OIDC onl
 
 Pair-with only — not a second runtime. Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
-- [LangChain](langchain/README.md#one-click-attach) — `pip install langchain-botsrated` (PyPI 0.1.4)
+- [LangChain](langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — `pip install langchain-botsrated` (PyPI 0.1.4)
 - [OpenAI Agents](openai-agents/README.md#one-click-attach) — `pip install -e integrations/openai-agents` (not on registry yet)
 - [LangGraph](langgraph/README.md#one-click-attach) — `pip install -e integrations/langgraph` (not on registry yet)
 - [Llama Stack](llama-stack/README.md#one-click-attach) — `pip install -e integrations/llama-stack` (not on registry yet)
@@ -26,8 +26,8 @@ Pair-with only — not a second runtime. Free. No key for local attach. Prefligh
 
 ## Published pair-with (one-click)
 
-- [LlamaIndex](llamaindex/README.md#one-click-attach) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
-- [Microsoft Agent Framework](microsoft-agent-framework/README.md#one-click-attach) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [LlamaIndex](llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [Microsoft Agent Framework](microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2

@@ -15,6 +15,8 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Live docs: [botsrated.com/docs/guard#microsoft-agent-framework](https://botsrated.com/docs/guard#microsoft-agent-framework).
+
 ## Install in 3 steps
 
 1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.4). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.

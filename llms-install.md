@@ -26,7 +26,7 @@ Free. No key for local attach. Preflight and the guard surface signed receipt li
 
 ### Six LIVE wedges (one-click)
 
-- [LangChain](integrations/langchain/README.md#one-click-attach) — `pip install langchain-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — `pip install langchain-botsrated` (PyPI 0.1.4). Free. No key for local attach.
 - [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) — `pip install -e integrations/openai-agents` (not on the registry yet). Free. No key for local attach.
 - [LangGraph](integrations/langgraph/README.md#one-click-attach) — `pip install -e integrations/langgraph` (not on the registry yet). Free. No key for local attach.
 - [Llama Stack](integrations/llama-stack/README.md#one-click-attach) — `pip install -e integrations/llama-stack` (not on the registry yet). Free. No key for local attach.
@@ -35,8 +35,8 @@ Free. No key for local attach. Preflight and the guard surface signed receipt li
 
 ### Published pair-with (one-click)
 
-- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
-- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
 
 ### Other pair-with packages
 
