@@ -26,8 +26,21 @@ const CANONICAL_ORIGIN = "https://botsrated.com";
 export const LEDGER_NOTE =
   "Ledger rows are unsigned. Each receipt_url is a public signed receipt; verify it free with the HTML page or spec/verify.mjs.";
 
+/**
+ * Sources a write may carry. policy_check is the default so existing callers
+ * keep the same row bytes. plan_* rows come from plan-token /v1/check,
+ * /v1/report/:host and /v1/best (plan_ledger.ts). desk_rollup is read-only and
+ * never written. preflight_attributed stays reserved and is not emitted.
+ */
+export type LedgerSource = "policy_check" | "plan_check" | "plan_report" | "plan_best";
+export const LEDGER_SOURCES: readonly LedgerSource[] = ["policy_check", "plan_check", "plan_report", "plan_best"];
+
+export function isLedgerSource(value: unknown): value is LedgerSource {
+  return typeof value === "string" && (LEDGER_SOURCES as readonly string[]).includes(value);
+}
+
 export const INSERT_REF_SQL =
-  "INSERT OR IGNORE INTO org_receipt_refs (id, org_id, agent_id, key_id, source, host, receipt_kind, receipt_id, locator, receipt_sha256, measured_at, usage_event_id, at) VALUES (?, ?, ?, ?, 'policy_check', ?, ?, ?, ?, ?, ?, ?, ?)";
+  "INSERT OR IGNORE INTO org_receipt_refs (id, org_id, agent_id, key_id, source, host, receipt_kind, receipt_id, locator, receipt_sha256, measured_at, usage_event_id, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 export const DELETE_REFS_SQL = "DELETE FROM org_receipt_refs WHERE org_id = ?";
 
@@ -103,6 +116,8 @@ export interface RecordReceiptRefInput {
   agent_id?: string | null;
   /** org_keys.key_id. A bearer (brk_ / brs_) is dropped, never stored. */
   key_id?: string | null;
+  /** Defaults to policy_check. Anything outside LEDGER_SOURCES writes nothing. */
+  source?: LedgerSource;
   host: string;
   receipt_kind: ReceiptKind;
   receipt_id: string;
@@ -119,7 +134,7 @@ export interface RecordReceiptRefInput {
 }
 
 /**
- * INSERT OR IGNORE one policy_check ref. Missing table, bad ids, and
+ * INSERT OR IGNORE one ref (source defaults to policy_check). Missing table, bad ids, and
  * constraint failures return without throwing.
  */
 export async function recordReceiptRef(db: SqlDb, input: RecordReceiptRefInput): Promise<void> {
@@ -131,6 +146,7 @@ export async function recordReceiptRef(db: SqlDb, input: RecordReceiptRefInput):
       row.org_id,
       row.agent_id,
       row.key_id,
+      row.source,
       row.host,
       row.receipt_kind,
       row.receipt_id,
@@ -161,7 +177,7 @@ export async function deleteOrgReceiptRefs(db: SqlDb, orgId: string): Promise<vo
 
 export interface LedgerItem {
   at: string;
-  source: "policy_check" | "desk_rollup";
+  source: LedgerSource | "desk_rollup";
   host: string;
   agent_id: string | null;
   receipt_kind: ReceiptKind;
@@ -232,7 +248,7 @@ export async function listLedger(db: SqlDb, query: ListLedgerQuery): Promise<Lis
   const host = query.host == null || query.host === "" ? null : normHost(query.host);
   if (query.host != null && query.host !== "" && !host) return { ok: false, error: "invalid_query" };
   const source = query.source == null || query.source === "" ? null : query.source;
-  if (source != null && source !== "policy_check" && source !== "desk_rollup") {
+  if (source != null && !isLedgerSource(source) && source !== "desk_rollup") {
     return { ok: false, error: "invalid_query" };
   }
   const limit = normalizeLimit(query.limit);
@@ -349,7 +365,8 @@ export async function readOrgLedger(db: SqlDb, query: ListLedgerQuery): Promise<
   }
 
   let desk: Array<LedgerItem & { id: string }> = [];
-  if (source !== "policy_check") {
+  // Desk rows join only when no source filter is set or the filter is desk_rollup.
+  if (source == null || source === "desk_rollup") {
     try {
       const result = await db.prepare(DESK_SQL).bind(
         query.org_id,
@@ -452,7 +469,7 @@ function rowToItem(row: RefRow): LedgerItem & { id: string } {
   return {
     id: row.id,
     at: row.at,
-    source: "policy_check",
+    source: isLedgerSource(row.source) ? row.source : "policy_check",
     host: row.host,
     agent_id: row.agent_id,
     receipt_kind: kind,
@@ -468,6 +485,7 @@ interface NormalizedRef {
   org_id: string;
   agent_id: string | null;
   key_id: string | null;
+  source: LedgerSource;
   host: string;
   receipt_kind: ReceiptKind;
   receipt_id: string;
@@ -481,6 +499,8 @@ interface NormalizedRef {
 function normalizeRef(input: RecordReceiptRefInput): NormalizedRef | null {
   if (!ORG_ID.test(input.org_id)) return null;
   if (!RECEIPT_ID.test(input.receipt_id)) return null;
+  const source: LedgerSource | null = input.source == null ? "policy_check" : isLedgerSource(input.source) ? input.source : null;
+  if (!source) return null;
   const host = normHost(input.host);
   if (!host) return null;
   if (input.receipt_kind !== "unpaid_probe" && input.receipt_kind !== "mcp_probe") return null;
@@ -500,6 +520,7 @@ function normalizeRef(input: RecordReceiptRefInput): NormalizedRef | null {
     org_id: input.org_id,
     agent_id: agent,
     key_id: key,
+    source,
     host,
     receipt_kind: input.receipt_kind,
     receipt_id: input.receipt_id.toLowerCase(),
