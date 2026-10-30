@@ -1,5 +1,20 @@
 # agent-framework-botsrated
 
+## One-click attach
+
+Pairs with Microsoft Agent Framework. Not a second runtime. Free. No key for local attach. Published on PyPI.
+
+```bash
+pip install agent-framework-botsrated
+```
+
+```python
+from agent_framework_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Install in 3 steps
 
 1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.4). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.
@@ -26,7 +41,7 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 
 ## Default install
 
-Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime.
+Pairs with [Microsoft Agent Framework](https://github.com/microsoft/agent-framework). Payment-client wrap, and the existing function middleware for an opaque payment tool. Not an agent or workflow runtime. The guard is not a runtime. Free. No key for local attach.
 
 **Status: published on PyPI: [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4** (this release; includes the middleware, the check tool, and `attach_payment_guard`). It depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4`.
 
