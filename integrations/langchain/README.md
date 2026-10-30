@@ -15,6 +15,8 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Live docs: [botsrated.com/docs/guard#langchain](https://botsrated.com/docs/guard#langchain).
+
 ## Default install
 
 Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free. No key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy *(main reads env when `token` omitted; PyPI 0.1.4 needs `token=` passed explicitly)*.
