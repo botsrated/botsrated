@@ -2,7 +2,7 @@
 
 ## One-click attach
 
-Pairs with LlamaIndex. Not a second runtime. Free. No key for local attach. Published on PyPI.
+Free. No key for local attach. Pairs with LlamaIndex. Not a second runtime. Published on PyPI. Paid checks are not required to attach.
 
 ```bash
 pip install llama-index-tools-botsrated
@@ -15,11 +15,13 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Attach is pair-with. Free. No key for local attach. Not a second runtime.
+
 Live docs: [botsrated.com/docs/guard#llamaindex](https://botsrated.com/docs/guard#llamaindex).
 
 ## Install in 3 steps
 
-1. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`.
+1. Free. No key for local attach. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from llama_index.tools.botsrated import attach_payment_guard

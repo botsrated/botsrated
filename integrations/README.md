@@ -11,23 +11,29 @@ PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.1,
 [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4 (middleware, check tool, and `attach_payment_guard`).
 npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) 0.3.1,
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.3 (includes `attachPaymentGuard`).
-Other wedges are not on a registry yet. Production publishes use GitHub OIDC only.
+Other pair-with packages are not on a registry yet. Those stacks attach today with `pip install "botsrated[x402]"` or `npm install @botsrated/x402-preflight` (`@botsrated/ai-sdk` 0.1.3 is on npm). Production publishes use GitHub OIDC only.
 
 ## Six LIVE wedges (one-click Guard attach)
 
 Pair-with only — not a second runtime. Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
-- [LangChain](langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — `pip install langchain-botsrated` (PyPI 0.1.4)
-- [OpenAI Agents](openai-agents/README.md#one-click-attach) — `pip install -e integrations/openai-agents` (not on registry yet)
-- [LangGraph](langgraph/README.md#one-click-attach) — `pip install -e integrations/langgraph` (not on registry yet)
-- [Llama Stack](llama-stack/README.md#one-click-attach) — `pip install -e integrations/llama-stack` (not on registry yet)
-- [Google ADK](google-adk/README.md#one-click-attach) — `pip install -e integrations/google-adk` (not on registry yet)
-- [CrewAI](crewai/README.md#one-click-attach) — `pip install -e integrations/crewai` (not on registry yet)
+- [LangChain](langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.4)
+- [OpenAI Agents](openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [LangGraph](langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [Llama Stack](llama-stack/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llama-stack) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [Google ADK](google-adk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#google-adk) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [CrewAI](crewai/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#crewai) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
 
 ## Published pair-with (one-click)
 
-- [LlamaIndex](llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
-- [Microsoft Agent Framework](microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [LlamaIndex](llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — Free. No key for local attach. `pip install llama-index-tools-botsrated` (PyPI 0.1.4)
+- [Microsoft Agent Framework](microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — Free. No key for local attach. `pip install agent-framework-botsrated` (PyPI 0.1.4)
+
+## Other pair-with
+
+- [Vercel AI SDK](vercel-ai-sdk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#vercel-ai-sdk) — Free. No key for local attach. `npm install @botsrated/ai-sdk` (npm 0.1.3, `attachPaymentGuard`). Payment-client wrap only. The Vercel AI SDK stays the runtime.
+- [Pydantic AI](pydantic-ai/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#pydantic-ai) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet. Not an agent or graph runtime.
+- [Mastra](mastra/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#mastra) — Free. No key for local attach. `npm install @botsrated/x402-preflight` then `createPaymentGuard`. `@botsrated/mastra` is not on npm. Not an agent, workflow, or tool runtime.
 
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2

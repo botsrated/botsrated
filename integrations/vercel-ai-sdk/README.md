@@ -1,8 +1,25 @@
 # @botsrated/ai-sdk
 
+## One-click attach
+
+Free. No key for local attach. Pairs with the Vercel AI SDK. Not a generation runtime. Paid checks are not required to attach. Published on npm as `@botsrated/ai-sdk` 0.1.3 (`attachPaymentGuard`).
+
+```bash
+npm install @botsrated/ai-sdk
+```
+
+```ts
+import { attachPaymentGuard } from "@botsrated/ai-sdk";
+const guard = attachPaymentGuard(x402Client); // npm 0.1.3; omit preset = advice; omit failMode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
+Live docs: [botsrated.com/docs/guard#vercel-ai-sdk](https://botsrated.com/docs/guard#vercel-ai-sdk).
+
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/ai-sdk` (npm 0.1.3, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`.
+1. Free. No key for local attach. Install: `npm install @botsrated/ai-sdk` (npm 0.1.3, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
@@ -16,7 +33,7 @@ Omit `failMode` and the guard stays open. `"closed"` stops the payment when Bots
 
 ## Default install
 
-Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's.
+Free. No key for local attach. Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Paid checks are not required to attach. `npm install @botsrated/ai-sdk` (npm 0.1.3, `attachPaymentGuard`).
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";

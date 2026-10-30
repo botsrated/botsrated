@@ -2,22 +2,29 @@
 
 ## One-click attach
 
-Pairs with the host runtime. Not a second runtime. Free. No key for local attach. Not on the registry yet — install from a checkout.
+Free. No key for local attach. Pairs with the host runtime. Not a second runtime. Paid checks are not required to attach.
 
 ```bash
-pip install -e integrations/openai-agents
+pip install "botsrated[x402]"
 ```
 
 ```python
-from botsrated_openai_agents import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+from botsrated import PaymentGuard
+guard = PaymentGuard(preset="carefulBuyer")  # omit preset = warn only, never stops a payment
+guard.install(x402_client)                   # the x402 client your agent already pays with
 ```
+
+The pair-with package is not on PyPI yet: `pip install -e integrations/openai-agents`, then `attach_payment_guard` from `botsrated_openai_agents`.
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Live docs: [botsrated.com/docs/guard#openai-agents](https://botsrated.com/docs/guard#openai-agents).
+
 ## Default install
 
-Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not a runtime. Not on the registry yet: `pip install -e integrations/openai-agents` (`botsrated>=0.3.1,<0.4`).
+Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not a runtime. Free. No key for local attach. Today: `pip install "botsrated[x402]"` and `PaymentGuard`. The pair-with package is not on PyPI yet: `pip install -e integrations/openai-agents` (`botsrated>=0.3.1,<0.4`).
+
+Pair-with package (not on PyPI yet):
 
 ```python
 # Free. No key for local attach. Not a runtime.
@@ -29,8 +36,8 @@ guard = attach_payment_guard(x402_client)
 
 ## Install in 3 steps
 
-1. Install. Not on the registry yet. From a checkout, in a clean virtualenv: `pip install -e integrations/openai-agents` (pulls `botsrated>=0.3.1,<0.4`).
-2. Attach to your x402 client. Installing does not attach a guard:
+1. Free. No key for local attach. Install the guard that works today: `pip install "botsrated[x402]"`, then `PaymentGuard` on the x402 client your agent already pays with (one-click above). The pair-with package is not on PyPI yet. From a checkout, in a clean virtualenv: `pip install -e integrations/openai-agents` (pulls `botsrated>=0.3.1,<0.4`).
+2. On the pair-with package, attach to your x402 client. Installing does not attach a guard:
 ```python
 from botsrated_openai_agents import attach_payment_guard
 guard = attach_payment_guard(x402_client)
