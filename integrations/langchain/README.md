@@ -22,7 +22,7 @@ guard = attach_payment_guard(x402_client)
 ```
 3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
-`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
+`BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN` *(main; PyPI 0.1.4 needs `token=` passed explicitly)*. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
 
@@ -32,6 +32,7 @@ an agent pays an x402 seller.
 **Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.4** (this release; includes `attach_payment_guard`).
 Published dependency metadata requires [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.0,<0.4` (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
+Main pins `botsrated>=0.3.1,<0.4` and reads `BOTSRATED_TOKEN` when `token` is omitted; both land with the next release. PyPI 0.1.4 needs `token=` passed explicitly and does not claim the `>=0.3.1` pin.
 
 ```bash
 pip install langchain-botsrated
