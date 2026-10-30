@@ -24,6 +24,11 @@ Pair-with only — not a second runtime. Free. No key for local attach. Prefligh
 - [Google ADK](google-adk/README.md#one-click-attach) — `pip install -e integrations/google-adk` (not on registry yet)
 - [CrewAI](crewai/README.md#one-click-attach) — `pip install -e integrations/crewai` (not on registry yet)
 
+## Published pair-with (one-click)
+
+- [LlamaIndex](llamaindex/README.md#one-click-attach) — `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [Microsoft Agent Framework](microsoft-agent-framework/README.md#one-click-attach) — `pip install agent-framework-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2
 (`extra.assetTransferMethod`), carrying payment extensions (e.g. `erc20ApprovalGasSponsoring`) or a

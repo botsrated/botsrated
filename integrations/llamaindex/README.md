@@ -1,5 +1,20 @@
 # llama-index-tools-botsrated
 
+## One-click attach
+
+Pairs with LlamaIndex. Not a second runtime. Free. No key for local attach. Published on PyPI.
+
+```bash
+pip install llama-index-tools-botsrated
+```
+
+```python
+from llama_index.tools.botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Install in 3 steps
 
 1. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.4, includes `attach_payment_guard`). It depends on `botsrated>=0.3.0,<0.4`.
@@ -39,7 +54,7 @@ tools = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.02", x402_client=x402_cl
 
 ## Default install
 
-`pip install llama-index-tools-botsrated` (needs `botsrated>=0.3.0,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. No sign, no custody, no holding funds. `BotsRatedToolSpec()` does not attach a guard.
+Pairs with LlamaIndex. The guard is not a runtime. Free. No key for local attach. `pip install llama-index-tools-botsrated` (needs `botsrated>=0.3.0,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. No sign, no custody, no holding funds. `BotsRatedToolSpec()` does not attach a guard.
 
 ```python
 from llama_index.tools.botsrated import BotsRatedToolSpec, attach_payment_guard
