@@ -3,6 +3,17 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _reset_hosted_lookup_circuit():
+    """Each test starts with the in-process hosted-lookup circuit closed."""
+    from botsrated.payment_guard import reset_hosted_lookup_circuit
+
+    reset_hosted_lookup_circuit()
+    yield
+    reset_hosted_lookup_circuit()
+
+
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
 

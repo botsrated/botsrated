@@ -189,7 +189,10 @@ export interface PaymentGuardOptions {
   baseUrl?: string;
   /** Fetch used for the hosted preflight. Default global fetch. */
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
-  /** Hosted preflight timeout. Default 3000 ms. */
+  /**
+   * Hosted preflight and policy-check timeout. Default 3000 ms.
+   * Values above 10 s are clamped. A non-finite or negative value uses the default.
+   */
   timeoutMs?: number;
   /** Preflight cache per host. Default 300 000 ms. */
   cacheTtlMs?: number;
@@ -199,7 +202,8 @@ export interface PaymentGuardOptions {
   onDecision?: (decision: GuardDecision) => void;
   /**
    * Optional private policy check. Before paying, POST /v1/policy/check with the host and quote.
-   * A remote block stops the payment. HTTP 503, 404 or `decision: null` follows `failMode` and is never read as a pass.
+   * A remote block stops the payment. HTTP 503, 429, 404, a timeout, or `decision: null` follows `failMode` and is never read as a pass.
+   * 503, 429 and a timeout also open a short in-process circuit (`Retry-After`, else 5 s, at most 60 s) so later hosted lookups skip.
    * `fail_mode` and `base_url` are accepted as aliases. Unset: local rules only.
    */
   remotePolicy?: RemotePolicyOptions;
@@ -525,7 +529,7 @@ function namedDecision(body: unknown): "pass" | "warn" | "block" | null {
   return null;
 }
 
-/** Map a policy-check response. 503, 404, transport failure and `decision: null` use `failMode`. */
+/** Map a policy-check response. 503, 429, 404, transport failure and `decision: null` use `failMode`. A non-2xx body is never a pass. */
 export function interpretPolicyBody(status: number | null, body: unknown, failMode: "open" | "closed", host: string): RemotePolicyEffect {
   const framing = framingOf(body);
   if (status !== null && status >= 200 && status < 300) {
@@ -543,6 +547,64 @@ export function interpretPolicyBody(status: number | null, body: unknown, failMo
   };
 }
 
+/** Default hosted preflight and policy-check timeout. */
+export const DEFAULT_HOSTED_TIMEOUT_MS = 3_000;
+/** Hard cap for `timeoutMs`. Callers cannot hang the attach path past this. */
+export const MAX_HOSTED_TIMEOUT_MS = 10_000;
+/** Circuit wait when a 503/429 omits `Retry-After`, or the lookup times out. */
+export const DEFAULT_HOSTED_CIRCUIT_MS = 5_000;
+/** Longest wait a `Retry-After` may open. */
+export const MAX_HOSTED_CIRCUIT_MS = 60_000;
+
+const hostedCircuits = new Map<string, number>();
+
+/** Seconds for one hosted lookup. Non-finite or negative values use the default. Above {@link MAX_HOSTED_TIMEOUT_MS} is that cap. */
+export function clampHostedTimeoutMs(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return DEFAULT_HOSTED_TIMEOUT_MS;
+  return Math.min(value, MAX_HOSTED_TIMEOUT_MS);
+}
+
+/** Clears the in-process hosted-lookup circuit. The next lookup calls BotsRated again. */
+export function resetHostedLookupCircuit(): void {
+  hostedCircuits.clear();
+}
+
+function hostedOriginOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return baseUrl;
+  }
+}
+
+function hostedCircuitOpen(origin: string, now = Date.now()): boolean {
+  return now < (hostedCircuits.get(origin) ?? 0);
+}
+
+function clampCircuitMs(ms: number): number {
+  if (!Number.isFinite(ms) || ms < 0) return DEFAULT_HOSTED_CIRCUIT_MS;
+  return Math.min(ms, MAX_HOSTED_CIRCUIT_MS);
+}
+
+/** `Retry-After` delta-seconds or HTTP-date. Missing or unreadable values use the short default. */
+function retryAfterMs(header: string | null, now: number): number {
+  if (!header) return DEFAULT_HOSTED_CIRCUIT_MS;
+  const text = header.trim();
+  if (!text) return DEFAULT_HOSTED_CIRCUIT_MS;
+  // Delta-seconds may be a list. An HTTP-date has a comma after the weekday, so only split digit values.
+  const delta = text.split(",")[0]?.trim() ?? "";
+  if (/^\d+$/.test(delta)) return clampCircuitMs(Number(delta) * 1000);
+  const when = Date.parse(text);
+  if (Number.isFinite(when)) return clampCircuitMs(Math.max(0, when - now));
+  return DEFAULT_HOSTED_CIRCUIT_MS;
+}
+
+function openHostedCircuit(origin: string, retryAfter: string | null, now = Date.now()): void {
+  const until = now + retryAfterMs(retryAfter, now);
+  const prev = hostedCircuits.get(origin) ?? 0;
+  if (until > prev) hostedCircuits.set(origin, until);
+}
+
 export async function requestPolicyCheck(args: {
   fetch: (input: string, init?: RequestInit) => Promise<Response>;
   baseUrl: string;
@@ -552,8 +614,10 @@ export async function requestPolicyCheck(args: {
   timeoutMs: number;
   failMode: "open" | "closed";
 }): Promise<RemotePolicyEffect> {
+  const origin = hostedOriginOf(args.baseUrl);
+  if (hostedCircuitOpen(origin)) return interpretPolicyBody(null, {}, args.failMode, args.host);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), args.timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), clampHostedTimeoutMs(args.timeoutMs));
   try {
     const res = await args.fetch(`${args.baseUrl}/v1/policy/check`, {
       method: "POST",
@@ -567,6 +631,8 @@ export async function requestPolicyCheck(args: {
       signal: ctrl.signal,
       redirect: "error",
     });
+    // Overload is a miss. Read Retry-After before the body so a slow body cannot hide it.
+    if (res.status === 503 || res.status === 429) openHostedCircuit(origin, res.headers.get("retry-after"));
     const text = await res.text();
     let body: unknown = {};
     try {
@@ -576,6 +642,7 @@ export async function requestPolicyCheck(args: {
     }
     return interpretPolicyBody(res.status, body, args.failMode, args.host);
   } catch {
+    if (ctrl.signal.aborted) openHostedCircuit(origin, null);
     return interpretPolicyBody(null, {}, args.failMode, args.host);
   } finally {
     clearTimeout(timer);
@@ -605,6 +672,7 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
   let cachedPolicyVersion: string | undefined;
   const ownHost = tryHostOf(baseUrl) ?? "botsrated.com";
   const ttl = opts.cacheTtlMs ?? 300_000;
+  const timeoutMs = clampHostedTimeoutMs(opts.timeoutMs);
   const cache = new Map<string, { at: number; value: { found: boolean; body: Record<string, any> } }>();
   const records = new Map<string, PaymentRecord & { expiresAt: number }>();
   const retryKeys = new Map<string, { id: string; expiresAt: number }>();
@@ -617,12 +685,15 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     }
   };
 
+  const origin = hostedOriginOf(baseUrl);
   const hostedPreflight: PreflightFn = async (host) => {
     const hit = cache.get(host);
     if (hit && Date.now() - hit.at < ttl) return hit.value;
+    // An open circuit is a miss. It is not a pass, and it does not fetch the seller or botsrated.com.
+    if (hostedCircuitOpen(origin)) throw new Error("hosted_circuit_open");
     const f = opts.fetch ?? ((i: string, init?: RequestInit) => fetch(i, init));
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 3000);
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       // Host name only: never the path, query, wallet, amount, tx hash or payment header.
       const res = await f(`${baseUrl}/v1/preflight?url=${encodeURIComponent(host)}`, {
@@ -630,6 +701,10 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
         signal: ctrl.signal,
         redirect: "error",
       });
+      if (res.status === 503 || res.status === 429) {
+        openHostedCircuit(origin, res.headers.get("retry-after"));
+        throw new Error(`HTTP ${res.status}`);
+      }
       const text = await res.text();
       let body: Record<string, any> = {};
       try {
@@ -643,6 +718,9 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       else value = { found: body.found !== false, body };
       if (ttl > 0) cache.set(host, { at: Date.now(), value });
       return value;
+    } catch (err) {
+      if (ctrl.signal.aborted) openHostedCircuit(origin, null);
+      throw err;
     } finally {
       clearTimeout(t);
     }
@@ -744,7 +822,7 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
         token: remote.token,
         host,
         quote: policyQuote(req),
-        timeoutMs: opts.timeoutMs ?? 3000,
+        timeoutMs,
         failMode: remote.failMode,
       });
       if (remoteEffect.policy_version) cachedPolicyVersion = remoteEffect.policy_version;

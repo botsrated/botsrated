@@ -44,6 +44,15 @@ def _no_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BOTSRATED_TOKEN", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _reset_hosted_lookup_circuit():
+    from botsrated.payment_guard import reset_hosted_lookup_circuit
+
+    reset_hosted_lookup_circuit()
+    yield
+    reset_hosted_lookup_circuit()
+
+
 @pytest.fixture
 def api():
     import respx

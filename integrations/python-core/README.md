@@ -152,7 +152,7 @@ smaller local bundle and does not add a summary number, because the response has
 | `fail_open` | `True` | `False`: stop the payment when BotsRated can't be reached or the guard errors |
 | `retry_key` | `True` | Add a `payment-identifier` id where the seller advertises it |
 | `onchain` | default RPCs | RPC settings for `payment_state` (`rpcs`, `extra_rpc`, `margin_seconds`, `expiry_tag`, `confirm_tag`), or `False` |
-| `timeout` / `cache_ttl` | 3 s / 5 min | Hosted lookup timeout and per-host cache |
+| `timeout` / `cache_ttl` | 3 s / 5 min | Hosted lookup timeout, clamped to 10 s, and per-host cache |
 | `preflight` | hosted call | Your own lookup `(host) -> (found, body)` |
 | `on_decision` | none | Receives every decision (errors in it are ignored) |
 | `remote_policy` | unset | Private policy check. See below. Unset: local presets only |
@@ -161,7 +161,9 @@ smaller local bundle and does not add a summary number, because the response has
 
 - **Fail-open (default):** if botsrated.com is down or slow, or the guard itself hits an error, the payment goes
   ahead and the decision says `botsrated_unreachable` (or `hook_error`). Our outage never stops your agent, but
-  during an outage you get no seller facts.
+  during an outage you get no seller facts. HTTP 503, HTTP 429 and a timeout are that miss: the guard reads
+  `Retry-After` (or waits 5 s, at most 60 s) and skips further hosted lookups in the process until then.
+  A skipped lookup is not a pass. A fresh cached success is still used.
 - **Fail-closed (`fail_open=False`):** the same cases stop the payment. Use it only if an unchecked payment is worse
   for you than a missed call.
 - Local checks (`resource_host_mismatch`, `payto_invalid`) and the on-chain check never depend on botsrated.com.
@@ -179,7 +181,7 @@ guard = PaymentGuard(
 )
 ```
 
-`fail_mode` is yours: `open` or `closed`. Omit it and the check stays open. Nothing defaults you to closed. `"closed"` stops the payment when BotsRated or your policy cannot answer. The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 404, or `"decision": null`, it applies `fail_mode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). A missing decision is never a pass. A remote pass never clears a local block. Server fields are kept when the server sends them. The last `policy_version` is remembered on the guard. The policy decision is not signed. Leave `remote_policy` unset and local presets behave as before.
+`fail_mode` is yours: `open` or `closed`. Omit it and the check stays open. Nothing defaults you to closed. `"closed"` stops the payment when BotsRated or your policy cannot answer. The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 429, HTTP 404, a timeout, or `"decision": null`, it applies `fail_mode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). A 503, 429 or timeout also opens the in-process circuit above, and the next hosted lookup is skipped. A missing decision is never a pass. A remote pass never clears a local block. Server fields are kept when the server sends them. The last `policy_version` is remembered on the guard. The policy decision is not signed. Leave `remote_policy` unset and local presets behave as before.
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remote_policy` on botsrated 0.3.0 and later. A configured token on a core without `parse_remote_policy` raises and is not dropped. Get a token in [Desk](https://botsrated.com/desk).
 
