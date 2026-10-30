@@ -13,6 +13,17 @@ npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.3 (includes `attachPaymentGuard`).
 Other wedges are not on a registry yet. Production publishes use GitHub OIDC only.
 
+## Six LIVE wedges (one-click Guard attach)
+
+Pair-with only — not a second runtime. Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
+- [LangChain](langchain/README.md#one-click-attach) — `pip install langchain-botsrated` (PyPI 0.1.4)
+- [OpenAI Agents](openai-agents/README.md#one-click-attach) — `pip install -e integrations/openai-agents` (not on registry yet)
+- [LangGraph](langgraph/README.md#one-click-attach) — `pip install -e integrations/langgraph` (not on registry yet)
+- [Llama Stack](llama-stack/README.md#one-click-attach) — `pip install -e integrations/llama-stack` (not on registry yet)
+- [Google ADK](google-adk/README.md#one-click-attach) — `pip install -e integrations/google-adk` (not on registry yet)
+- [CrewAI](crewai/README.md#one-click-attach) — `pip install -e integrations/crewai` (not on registry yet)
+
 Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from allowlisted quote fields
 (`x402_client=` in Python, `paid: { x402Client }` in TypeScript). A quote asking for Permit2
 (`extra.assetTransferMethod`), carrying payment extensions (e.g. `erc20ApprovalGasSponsoring`) or a

@@ -22,13 +22,20 @@ BotsRated is a **remote** MCP server. Do not clone, build, or run anything.
 ## Framework payment hooks
 
 These register a check on the x402 client the app already uses. They are not a second runtime.
+Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
-- [LangChain](integrations/langchain/README.md) (`langchain-botsrated` 0.1.4 on PyPI)
+### Six LIVE wedges (one-click)
+
+- [LangChain](integrations/langchain/README.md#one-click-attach) — `pip install langchain-botsrated` (PyPI 0.1.4). Free. No key for local attach.
+- [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) — `pip install -e integrations/openai-agents` (not on the registry yet). Free. No key for local attach.
+- [LangGraph](integrations/langgraph/README.md#one-click-attach) — `pip install -e integrations/langgraph` (not on the registry yet). Free. No key for local attach.
+- [Llama Stack](integrations/llama-stack/README.md#one-click-attach) — `pip install -e integrations/llama-stack` (not on the registry yet). Free. No key for local attach.
+- [Google ADK](integrations/google-adk/README.md#one-click-attach) — `pip install -e integrations/google-adk` (not on the registry yet). Free. No key for local attach.
+- [CrewAI](integrations/crewai/README.md#one-click-attach) — `pip install -e integrations/crewai` (not on the registry yet). Free. No key for local attach.
+
+### Other pair-with packages
+
 - [LlamaIndex](integrations/llamaindex/README.md) (`llama-index-tools-botsrated` 0.1.4 on PyPI)
-- [LangGraph](integrations/langgraph/README.md) (`langgraph-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional pre-pay node helper. Pairs with LangGraph. Not an orchestration framework.
-- [Google ADK](integrations/google-adk/README.md) (`google-adk-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `before_tool_callback` for opaque paid tools. Pairs with Google ADK. Not an agent runtime.
-- [CrewAI](integrations/crewai/README.md) (`crewai-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `PRE_TOOL_CALL` hook for named paid tools. Pairs with CrewAI. Not a crew runtime.
-- [Llama Stack](integrations/llama-stack/README.md) (`llama-stack-botsrated`, not published): `attach_payment_guard` on your x402 client. Payment-client wrap only. A before-tool hook is deferred. Llama Stack stays the runtime.
 - [Vercel AI SDK](integrations/vercel-ai-sdk/README.md) (`@botsrated/ai-sdk` 0.1.3 on npm): `attachPaymentGuard` on your x402 client. Payment-client wrap only. A tool-level approval helper is deferred. The Vercel AI SDK stays the runtime.
 - [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md) (`agent-framework-botsrated` 0.1.4 on PyPI): `attach_payment_guard` on your x402 client, plus middleware for named payment tools. Pairs with Microsoft Agent Framework. Not an agent or workflow runtime.
 - [Pydantic AI](integrations/pydantic-ai/README.md) (`pydantic-ai-botsrated`, not published): `attach_payment_guard` on your x402 client, plus an optional `Hooks` capability for named paid tools. Pairs with Pydantic AI. Not an agent or graph runtime.
