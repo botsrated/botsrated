@@ -26,7 +26,7 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 | `integrations/pydantic-ai` | `pydantic-ai-botsrated` (not published) | Python |
 | `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI) | Python |
 | `integrations/microsoft-agent-framework` | `agent-framework-botsrated` (PyPI) | Python |
-| `integrations/openai-agents` | `botsrated-openai-agents` (not published) | Python |
+| `integrations/openai-agents` | `botsrated-openai-agents` (PyPI) | Python |
 | `integrations/x402-client` | `@botsrated/x402-preflight` (npm) | TypeScript |
 | `integrations/vercel-ai-sdk` | `@botsrated/ai-sdk` (npm) | TypeScript |
 | `integrations/mastra` | `@botsrated/mastra` (not published) | TypeScript |

@@ -2,29 +2,26 @@
 
 ## One-click attach
 
-Free. No key for local attach. Pairs with the host runtime. Not a second runtime. Paid checks are not required to attach.
+Free. No key for local attach. Pairs with the host runtime. Not a second runtime. Published on PyPI. Paid checks are not required to attach.
 
 ```bash
-pip install "botsrated[x402]"
+pip install botsrated-openai-agents
 ```
 
 ```python
-from botsrated import PaymentGuard
-guard = PaymentGuard(preset="carefulBuyer")  # omit preset = warn only, never stops a payment
-guard.install(x402_client)                   # the x402 client your agent already pays with
+from botsrated_openai_agents import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
 ```
 
-The pair-with package is not on PyPI yet: `pip install -e integrations/openai-agents`, then `attach_payment_guard` from `botsrated_openai_agents`.
-
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
+Attach is pair-with. Free. No key for local attach. Not a second runtime.
 
 Live docs: [botsrated.com/docs/guard#openai-agents](https://botsrated.com/docs/guard#openai-agents).
 
 ## Default install
 
-Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not a runtime. Free. No key for local attach. Today: `pip install "botsrated[x402]"` and `PaymentGuard`. The pair-with package is not on PyPI yet: `pip install -e integrations/openai-agents` (`botsrated>=0.3.1,<0.4`).
-
-Pair-with package (not on PyPI yet):
+Free. No key for local attach. Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. The guard is not a runtime. Published: `pip install botsrated-openai-agents` (PyPI 0.1.0; dependency `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Paid checks are not required to attach. Optional `BOTSRATED_TOKEN` for Desk remote policy (omit `token` and the guard reads the env).
 
 ```python
 # Free. No key for local attach. Not a runtime.
@@ -36,8 +33,8 @@ guard = attach_payment_guard(x402_client)
 
 ## Install in 3 steps
 
-1. Free. No key for local attach. Install the guard that works today: `pip install "botsrated[x402]"`, then `PaymentGuard` on the x402 client your agent already pays with (one-click above). The pair-with package is not on PyPI yet. From a checkout, in a clean virtualenv: `pip install -e integrations/openai-agents` (pulls `botsrated>=0.3.1,<0.4`).
-2. On the pair-with package, attach to your x402 client. Installing does not attach a guard:
+1. Free. No key for local attach. Install: `pip install botsrated-openai-agents` (PyPI 0.1.0, includes `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
+2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from botsrated_openai_agents import attach_payment_guard
 guard = attach_payment_guard(x402_client)
@@ -47,6 +44,38 @@ guard = attach_payment_guard(x402_client)
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
 Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Nothing defaults you to closed.
+
+OpenAI Agents SDK hook for [BotsRated](https://botsrated.com). Use it as a pre-payment check before
+an agent pays an x402 seller. You keep the SDK's `Agent` and `Runner`.
+
+**Status: published on PyPI: [`botsrated-openai-agents`](https://pypi.org/project/botsrated-openai-agents/) 0.1.0** (this release; includes `attach_payment_guard`).
+Depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.1,<0.4` (source:
+[`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
+PyPI 0.1.0 matches that pin. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`.
+
+```bash
+pip install botsrated-openai-agents
+```
+
+Contributors in a checkout of this repository can install this tree with `pip install -e integrations/openai-agents`. The published install is `pip install botsrated-openai-agents`.
+
+## Opt-in payment guard
+
+`pip install botsrated-openai-agents` does not attach a guard. Call `attach_payment_guard` yourself (depends on `botsrated>=0.3.1,<0.4`). Preflight and the guard are free, no key, rate limits, at `https://botsrated.com`. `botsrated_preflight_tools()` is unchanged: free preflight only.
+
+```python
+from botsrated_openai_agents import attach_payment_guard, botsrated_preflight_tools
+
+free = botsrated_preflight_tools()  # free preflight only; no guard attached
+guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open")
+# token=... is remote_policy on botsrated 0.3.0+ (see the token paragraph above)
+```
+
+`preset` is yours: `warn` (advice only; the default when you omit it), `carefulBuyer`, or `strict` (same stops
+as `carefulBuyer`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays open. The guard
+reports measurements and receipt links. It does not sign a payment and does not hold funds.
+
+`x402_client` is your x402 client. `token` is sent as `remote_policy` on botsrated 0.3.0 and later. A configured token without `parse_remote_policy` raises and is not dropped.
 
 ## Behavior
 

@@ -8,7 +8,8 @@ the user sets.
 PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.1,
 [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.4 (includes `attach_payment_guard`),
 [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.4 (includes `attach_payment_guard`),
-[`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4 (middleware, check tool, and `attach_payment_guard`).
+[`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.4 (middleware, check tool, and `attach_payment_guard`),
+[`botsrated-openai-agents`](https://pypi.org/project/botsrated-openai-agents/) 0.1.0 (includes `attach_payment_guard`).
 npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) 0.3.1,
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.3 (includes `attachPaymentGuard`).
 Other pair-with packages are not on a registry yet. Those stacks attach today with `pip install "botsrated[x402]"` or `npm install @botsrated/x402-preflight` (`@botsrated/ai-sdk` 0.1.3 is on npm). Production publishes use GitHub OIDC only.
@@ -18,7 +19,7 @@ Other pair-with packages are not on a registry yet. Those stacks attach today wi
 Pair-with only — not a second runtime. Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
 - [LangChain](langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.4)
-- [OpenAI Agents](openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [OpenAI Agents](openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install botsrated-openai-agents` (PyPI 0.1.0, `attach_payment_guard`)
 - [LangGraph](langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
 - [Llama Stack](llama-stack/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llama-stack) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
 - [Google ADK](google-adk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#google-adk) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
@@ -54,7 +55,7 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 | `strands/` | guide (uses `botsrated` + the hosted MCP server) | Strands Agents: MCP tools and a pre-payment `@tool` |
 | `haystack/` | guide (uses `botsrated` + the hosted MCP server via `mcp-haystack`) | Haystack Agents: `MCPToolset` and a pre-payment `@tool`, with live tests |
 | [`microsoft-agent-framework/`](microsoft-agent-framework/) | `agent-framework-botsrated` (PyPI 0.1.4) | Microsoft Agent Framework: `attach_payment_guard` on the caller's x402 client, plus middleware for named payment tools. Pairs with Microsoft Agent Framework; not an agent or workflow runtime. Omit `preset` for advice only |
-| [`openai-agents/`](openai-agents/) | `botsrated-openai-agents` (not published) | OpenAI Agents SDK: `attach_payment_guard` on the caller's x402 client. Pairs with the SDK; not an Agent or Runner. Omit `preset` for advice only |
+| [`openai-agents/`](openai-agents/) | `botsrated-openai-agents` (PyPI 0.1.0) | OpenAI Agents SDK: `attach_payment_guard` on the caller's x402 client. Pairs with the SDK; not an Agent or Runner. Omit `preset` for advice only |
 | [`pydantic-ai/`](pydantic-ai/) | `pydantic-ai-botsrated` (not published) | Pydantic AI: `attach_payment_guard` on the caller's x402 client, plus an optional `Hooks` capability for named paid tools. Pairs with Pydantic AI; not an agent or graph runtime. Omit `preset` for advice only |
 | [`mastra/`](mastra/) | `@botsrated/mastra` (not published) | Mastra: `attachPaymentGuard` on the caller's x402 client, plus an optional `hooks.beforeToolCall` for named paid tools. Pairs with Mastra; not an agent, workflow, or tool runtime. Omit `preset` for advice only |
 | `fixtures/` | | real BotsRated responses used by the tests |

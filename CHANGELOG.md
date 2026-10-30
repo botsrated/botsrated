@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Docs: public install lines for `botsrated-openai-agents` name PyPI 0.1.0 (`pip install botsrated-openai-agents`, `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. No package version bump. LangGraph, Llama Stack, Google ADK, CrewAI, and pydantic-ai stay off PyPI.
 - Docs: public plans copy lists alerts-free at $0 (1 seller, daily digest) and Pro at the standing prices ($19 / month by card, or alerts-50 at $29 / 30 days USDC, up to 50 sellers or tools on the same slots). Paid BotPulse is retired; the free feed stays. No package version bump.
 - `langchain-botsrated` and `botsrated-openai-agents`: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN` (explicit `token` wins; empty means unset), matching the other wedges. All Python wedges pin `botsrated>=0.3.1,<0.4`. Not in `langchain-botsrated` 0.1.4 on PyPI. (#36)
 - Maintenance: `@botsrated/x402-preflight` dev dependencies `@x402/core`, `@x402/evm`, `@x402/fetch` 2.28.0 -> 2.29.0, which moves them to zod 4.6.6+ and clears GHSA-mrhx-c7xc-m3w5 (high, zod < 4.6.6) from the dev tree. Test-only; the published package has no runtime dependencies. `npm audit` 0. No package version bump.

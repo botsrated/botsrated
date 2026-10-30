@@ -27,7 +27,7 @@ Free. No key for local attach. Preflight and the guard surface signed receipt li
 ### Six LIVE wedges (one-click)
 
 - [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.4).
-- [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
+- [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install botsrated-openai-agents` (PyPI 0.1.0, `attach_payment_guard`).
 - [LangGraph](integrations/langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
 - [Llama Stack](integrations/llama-stack/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llama-stack) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
 - [Google ADK](integrations/google-adk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#google-adk) — Free. No key for local attach. `pip install "botsrated[x402]"` then `PaymentGuard`. Pair-with package not on PyPI yet.
