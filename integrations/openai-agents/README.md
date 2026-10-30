@@ -1,5 +1,20 @@
 # botsrated-openai-agents
 
+## One-click attach
+
+Pairs with the host runtime. Not a second runtime. Free. No key for local attach. Not on the registry yet — install from a checkout.
+
+```bash
+pip install -e integrations/openai-agents
+```
+
+```python
+from botsrated_openai_agents import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Default install
 
 Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not a runtime. Not on the registry yet: `pip install -e integrations/openai-agents` (`botsrated>=0.3.1,<0.4`).

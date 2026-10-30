@@ -1,12 +1,27 @@
 # langchain-botsrated
 
+## One-click attach
+
+Pairs with the host runtime. Not a second runtime. Free. No key for local attach. Published on PyPI.
+
+```bash
+pip install langchain-botsrated
+```
+
+```python
+from langchain_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Default install
 
-Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free. No key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy.
+Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free. No key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy *(main reads env when `token` omitted; PyPI 0.1.4 needs `token=` passed explicitly)*.
 
 ```python
 # Free. No key for local attach. Not a runtime.
-# Optional BOTSRATED_TOKEN for Desk remote policy.
+# Optional BOTSRATED_TOKEN for Desk remote policy (main env-read; PyPI 0.1.4 needs token=).
 from langchain_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.
 guard = attach_payment_guard(x402_client)

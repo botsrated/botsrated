@@ -1,5 +1,20 @@
 # llama-stack-botsrated
 
+## One-click attach
+
+Pairs with the host runtime. Not a second runtime. Free. No key for local attach. Not on the registry yet — install from a checkout.
+
+```bash
+pip install -e integrations/llama-stack
+```
+
+```python
+from llama_stack_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Default install
 
 Pairs with [Llama Stack](https://llama-stack.readthedocs.io/). Payment-client wrap only. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred. Not on the registry yet: `pip install -e integrations/llama-stack` (`botsrated>=0.3.1,<0.4`).

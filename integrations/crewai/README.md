@@ -1,5 +1,20 @@
 # crewai-botsrated
 
+## One-click attach
+
+Pairs with the host runtime. Not a second runtime. Free. No key for local attach. Not on the registry yet — install from a checkout.
+
+```bash
+pip install -e integrations/crewai
+```
+
+```python
+from crewai_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
+
 ## Default install
 
 Pairs with [CrewAI](https://docs.crewai.com/en/learn/tool-hooks). Payment-client wrap and an optional before-pay tool hook. Not a crew, process, flow, or agent loop. Not on the registry yet: `pip install -e integrations/crewai` (`botsrated>=0.3.1,<0.4`).
