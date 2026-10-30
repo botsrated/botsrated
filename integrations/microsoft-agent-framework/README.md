@@ -2,7 +2,7 @@
 
 ## One-click attach
 
-Pairs with Microsoft Agent Framework. Not a second runtime. Free. No key for local attach. Published on PyPI.
+Free. No key for local attach. Pairs with Microsoft Agent Framework. Not a second runtime. Published on PyPI. Paid checks are not required to attach.
 
 ```bash
 pip install agent-framework-botsrated
@@ -15,11 +15,13 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Attach is pair-with. Free. No key for local attach. Not a second runtime.
+
 Live docs: [botsrated.com/docs/guard#microsoft-agent-framework](https://botsrated.com/docs/guard#microsoft-agent-framework).
 
 ## Install in 3 steps
 
-1. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.4). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`.
+1. Free. No key for local attach. Install the published package: `pip install agent-framework-botsrated` (PyPI 0.1.4). That release includes the middleware, the check tool, and `attach_payment_guard`. It depends on `botsrated>=0.3.0,<0.4`. Paid checks are not required to attach.
 2. Name the payment tools. Installing does not attach an x402 guard:
 ```python
 from agent_framework_botsrated import BotsRatedPaymentMiddleware
