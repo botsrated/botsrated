@@ -12,6 +12,8 @@ from crewai_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
+It does not sign a payment and does not hold funds.
+
 ## Install in 3 steps
 
 1. Install. Not on the registry yet. From a checkout, in a clean virtualenv: `pip install -e integrations/crewai` (pulls `botsrated>=0.3.1,<0.4`).

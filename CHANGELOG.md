@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- `langchain-botsrated` and `botsrated-openai-agents`: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN` (explicit `token` wins; empty means unset), matching the other wedges. All Python wedges pin `botsrated>=0.3.1,<0.4`. Not in `langchain-botsrated` 0.1.4 on PyPI. (#36)
 - Maintenance: `@botsrated/x402-preflight` dev dependencies `@x402/core`, `@x402/evm`, `@x402/fetch` 2.28.0 -> 2.29.0, which moves them to zod 4.6.6+ and clears GHSA-mrhx-c7xc-m3w5 (high, zod < 4.6.6) from the dev tree. Test-only; the published package has no runtime dependencies. `npm audit` 0. No package version bump.
 - Receipt check: `spec/verify.mjs` keeps an object `payment` (signed on `mcp_probe`) and still drops string `payment` hints. `spec/receipt-page.mjs` is the browser page for that same check (`signature valid` / `signature invalid` / `key unknown`). The pasted CLI URL is single-quoted and built only from a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s`. `verify.mjs` needs `verify-core.mjs` and `verify-node.mjs` beside it. The page is not on the live host until Pages returns it. `GET /v1/verify` is not mounted; `verifyResultJson` is the same result for a later free route. No package version bump.
 - Docs: public install and status lines for `@botsrated/ai-sdk` name npm 0.1.3 (0.1.4 is not published). `langchain-botsrated` 0.1.4 copy names the published dependency `botsrated>=0.3.0,<0.4`.
