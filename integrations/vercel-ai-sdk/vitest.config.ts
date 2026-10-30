@@ -9,7 +9,10 @@ const root = path.dirname(fileURLToPath(import.meta.url));
  * (0.3.0, which exports `normalizeRemotePolicy`). The package import stays that name.
  */
 export default defineConfig({
-  test: { environment: "node" },
+  test: {
+    environment: "node",
+    setupFiles: ["./test/setup-circuit.ts"],
+  },
   resolve: {
     alias: {
       "@botsrated/x402-preflight/payment-guard": path.resolve(root, "../x402-client/src/payment-guard.ts"),

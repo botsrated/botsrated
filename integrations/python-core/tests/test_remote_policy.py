@@ -19,7 +19,7 @@ from botsrated import (
     RemotePolicy,
 )
 from botsrated.client import BotsRatedClient
-from botsrated.payment_guard import interpret_policy_body
+from botsrated.payment_guard import interpret_policy_body, reset_hosted_lookup_circuit
 
 DEAD = "0x000000000000000000000000000000000000dEaD"
 
@@ -138,6 +138,7 @@ def test_503_and_null_decision_follow_fail_mode_and_do_not_invent_a_pass(found):
         (200, {"decision": "safe"}),
     ]
     for status, body in cases:
+        reset_hosted_lookup_circuit()
         closed, _ = _payment_guard(found, lambda r, s=status, b=body: (s, b), remote_policy={"token": TOKEN, "fail_mode": "closed"})
         with closed.request(url):
             blocked = closed.decide(ctx(url, req(found)))
@@ -146,6 +147,7 @@ def test_503_and_null_decision_follow_fail_mode_and_do_not_invent_a_pass(found):
         assert any(r.code == "remote_policy_unavailable" and r.effect == "block" and "fail_mode is closed" in r.fact for r in blocked.reasons)
         assert blocked.remote_decision != "pass"
 
+        reset_hosted_lookup_circuit()
         opened, _ = _payment_guard(found, lambda r, s=status, b=body: (s, b), remote_policy={"token": TOKEN, "failMode": "open"})
         with opened.request(url):
             allowed = opened.decide(ctx(url, req(found)))
@@ -154,6 +156,7 @@ def test_503_and_null_decision_follow_fail_mode_and_do_not_invent_a_pass(found):
         assert any(r.code == "remote_policy_unavailable" and r.effect == "info" and "fail_mode is open" in r.fact for r in allowed.reasons)
 
     # A local block still stops the payment when fail_mode is open and the check returns nothing.
+    reset_hosted_lookup_circuit()
     strict, _ = _payment_guard(
         found,
         lambda r: (503, {"decision": None}),
@@ -258,17 +261,20 @@ def test_pre_payment_guard_block_wins_503_and_does_not_sign(found):
     def down(_request):
         return 503, {"decision": None, "decided_by": "your_policy", "not_a_botsrated_rating": True}
 
+    reset_hosted_lookup_circuit()
     closed, _ = _pre(found, down, remote_policy={"token": TOKEN, "fail_mode": "closed"})
     blocked = closed.decide(url, req(found), request_url=url)
     assert blocked.action == "block" and blocked.remote_decision is None
     assert any("fail_mode is closed" in r.detail for r in blocked.reasons)
 
+    reset_hosted_lookup_circuit()
     opened, _ = _pre(found, down, remote_policy={"token": TOKEN, "fail_mode": "open"})
     allowed = opened.decide(url, req(found), request_url=url)
     assert allowed.action == "allow" and allowed.remote_decision is None
     assert any(r.effect == "info" and "fail_mode is open" in r.detail for r in allowed.reasons)
 
     # Remote pass does not clear a local block.
+    reset_hosted_lookup_circuit()
     passed, _ = _pre(found, lambda r: (200, {"decision": "pass"}), policy=STRICT_GUARD_POLICY, remote_policy={"token": TOKEN, "fail_mode": "open"})
     still = passed.decide(url, req(found, payTo=DEAD), request_url=url)
     assert still.action == "block" and still.remote_decision == "pass"

@@ -7,8 +7,9 @@ What it does, and nothing more:
   stops a payment only when you choose a blocking policy (e.g. ``POLICIES["carefulBuyer"]``, an alias of
   ``POLICIES["strict"]``).
 - When ``remote_policy`` is set: ``POST /v1/policy/check`` with that host and the quote, merged with the local rules
-  (a remote block stops the payment). HTTP 503 or ``decision: null`` follows your ``fail_mode``. The policy decision
-  is not signed.
+  (a remote block stops the payment). HTTP 503, 429, a timeout, or ``decision: null`` follows your ``fail_mode``
+  and is not a pass. 503, 429 and a timeout open a short in-process circuit so later hosted lookups skip. The policy
+  decision is not signed.
 - While the payload is built: adds a random x402 ``payment-identifier`` retry key, only when the seller advertises
   that extension, through x402's extension mechanism.
 - After: records the payment locally (never the signature) and offers a read-only on-chain check of whether it
@@ -26,6 +27,7 @@ Structural limits (enforced by tests in tests/test_c1_no_repay.py):
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import threading
 import time
@@ -351,7 +353,7 @@ def _named_decision(body: Any) -> RemoteDecision | None:
 
 
 def interpret_policy_body(status: int | None, body: Any, fail_mode: FailMode, host: str) -> RemotePolicyEffect:
-    """Map a policy-check response. 503, 404, transport failure and ``decision: null`` use ``fail_mode``."""
+    """Map a policy-check response. 503, 429, 404, transport failure and ``decision: null`` use ``fail_mode``. A non-2xx body is never a pass."""
     decided_by, rating, version = _framing(body)
     if status is not None and 200 <= status < 300:
         decision = _named_decision(body)
@@ -385,19 +387,124 @@ def _read_policy_response(resp: httpx.Response) -> tuple[int, Any]:
     return resp.status_code, body if isinstance(body, dict) else {}
 
 
+# Hosted lookup limits. The default stays 3 s. Callers cannot hang the attach path past 10 s.
+# 503, 429 and a transport timeout open one in-process circuit per origin (Retry-After, else 5 s, at most 60 s).
+DEFAULT_HOSTED_TIMEOUT_S = 3.0
+MAX_HOSTED_TIMEOUT_S = 10.0
+DEFAULT_HOSTED_CIRCUIT_S = 5.0
+MAX_HOSTED_CIRCUIT_S = 60.0
+
+_CIRCUIT_LOCK = threading.Lock()
+_CIRCUITS: dict[str, float] = {}
+_MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+
+
+def clamp_hosted_timeout(timeout: float) -> float:
+    """Seconds for one hosted lookup. Non-finite or negative values use the default. Above 10 is 10."""
+    try:
+        value = float(timeout)
+    except (TypeError, ValueError):
+        return DEFAULT_HOSTED_TIMEOUT_S
+    if not math.isfinite(value) or value < 0:
+        return DEFAULT_HOSTED_TIMEOUT_S
+    return min(value, MAX_HOSTED_TIMEOUT_S)
+
+
+def reset_hosted_lookup_circuit() -> None:
+    """Clears the in-process hosted-lookup circuit. The next lookup calls BotsRated again."""
+    with _CIRCUIT_LOCK:
+        _CIRCUITS.clear()
+
+
+def _hosted_origin(base: str) -> str:
+    try:
+        return _policy_origin(base)
+    except (TypeError, ValueError):
+        return str(base)
+
+
+def _circuit_open(origin: str) -> bool:
+    now = time.monotonic()
+    with _CIRCUIT_LOCK:
+        return now < _CIRCUITS.get(origin, 0.0)
+
+
+def _clamp_circuit_s(seconds: float) -> float:
+    if not math.isfinite(seconds) or seconds < 0:
+        return DEFAULT_HOSTED_CIRCUIT_S
+    return min(seconds, MAX_HOSTED_CIRCUIT_S)
+
+
+def _retry_after_seconds(header: str | None) -> float:
+    """``Retry-After`` delta-seconds or an IMF-fixdate. Missing or unreadable values use the short default."""
+    if header is None:
+        return DEFAULT_HOSTED_CIRCUIT_S
+    text = header.strip()
+    if not text:
+        return DEFAULT_HOSTED_CIRCUIT_S
+    # Delta-seconds may be a list. An HTTP-date has a comma after the weekday, so only split digit values.
+    delta = text.split(",")[0].strip()
+    if delta.isdigit():
+        return _clamp_circuit_s(float(delta))
+    parts = text.split()
+    if len(parts) == 6 and parts[5].upper() == "GMT":
+        try:
+            day = int(parts[1])
+            month = _MONTHS[parts[2].lower()]
+            year = int(parts[3])
+            hour, minute, second = (int(piece) for piece in parts[4].split(":"))
+            when = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+        except (KeyError, ValueError):
+            return DEFAULT_HOSTED_CIRCUIT_S
+        return _clamp_circuit_s(max(0.0, (when - datetime.now(timezone.utc)).total_seconds()))
+    return DEFAULT_HOSTED_CIRCUIT_S
+
+
+def _open_hosted_circuit(origin: str, retry_after: str | None) -> None:
+    until = time.monotonic() + _retry_after_seconds(retry_after)
+    with _CIRCUIT_LOCK:
+        prev = _CIRCUITS.get(origin, 0.0)
+        if until > prev:
+            _CIRCUITS[origin] = until
+
+
+class _HostedOverload(Exception):
+    """503 or 429 from a hosted lookup. The message stays internal; the guard reports a miss."""
+
+    def __init__(self, retry_after: str | None) -> None:
+        super().__init__("hosted overload")
+        self.retry_after = retry_after
+
+
+def _policy_origin_of(policy: RemotePolicy) -> str:
+    return _hosted_origin(policy.base_url or BOTSRATED_BASE_URL)
+
+
+def _policy_effect_from_response(policy: RemotePolicy, host: str, origin: str, resp: httpx.Response) -> RemotePolicyEffect:
+    if resp.status_code in (503, 429):
+        _open_hosted_circuit(origin, resp.headers.get("retry-after"))
+    status, body = _read_policy_response(resp)
+    return interpret_policy_body(status, body, policy.fail_mode, host)
+
+
 def fetch_remote_policy(http: httpx.Client, policy: RemotePolicy, host: str, req: Any, timeout: float | None = None) -> RemotePolicyEffect:
-    """POST /v1/policy/check. Transport errors and non-decisions follow ``policy.fail_mode``."""
+    """POST /v1/policy/check. Transport errors and non-decisions follow ``policy.fail_mode`` and are not a pass."""
+    origin = _policy_origin_of(policy)
+    if _circuit_open(origin):
+        return interpret_policy_body(None, {}, policy.fail_mode, host)
     url = f"{(policy.base_url or BOTSRATED_BASE_URL)}/v1/policy/check"
     payload = {"host": host, "quote": policy_quote(req)}
     try:
         kwargs: dict[str, Any] = {"json": payload, "headers": _policy_headers(policy.token), "follow_redirects": False}
         if timeout is not None:
-            kwargs["timeout"] = timeout
+            kwargs["timeout"] = clamp_hosted_timeout(timeout)
         resp = http.post(url, **kwargs)
-        status, body = _read_policy_response(resp)
+    except httpx.TimeoutException:
+        _open_hosted_circuit(origin, None)
+        return interpret_policy_body(None, {}, policy.fail_mode, host)
     except Exception:  # noqa: BLE001 - a failed check is fail_mode, not a pass
-        status, body = None, {}
-    return interpret_policy_body(status, body, policy.fail_mode, host)
+        return interpret_policy_body(None, {}, policy.fail_mode, host)
+    return _policy_effect_from_response(policy, host, origin, resp)
 
 
 def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: PaymentGuardPolicy) -> list[GuardReason]:
@@ -577,15 +684,19 @@ class PaymentGuard:
             ``preset`` is ``dry-run-only`` (that preset always dry-runs).
         hosted: Call BotsRated's free hosted preflight. With False nothing is sent to botsrated.com.
         fail_open: When BotsRated can't be reached (or the guard errors): True allows (default), False stops.
+            HTTP 503, HTTP 429 and a transport timeout are that miss. They open a short in-process circuit
+            (``Retry-After`` when present, else 5 s, at most 60 s). A skipped lookup is not a pass.
         retry_key: Add a ``payment-identifier`` id where the seller advertises it. Default True.
         onchain: Keyword arguments for :func:`botsrated.onchain.check_payment_state` (``rpcs``, ``transport``...), or False.
         base_url, timeout, cache_ttl: Hosted lookup settings (defaults: botsrated.com, 3 s, 300 s).
+            ``timeout`` is clamped to 10 s.
         http / async_http: Optional ``httpx.Client`` / ``httpx.AsyncClient`` for the hosted lookup.
         preflight: Replace the hosted lookup: ``(host) -> (found, body)``. Receives a host name only.
         on_decision: Receives every decision. Errors raised in it are ignored.
         remote_policy: Optional private policy check (``token``, ``fail_mode`` ``open`` or ``closed``, optional
             ``base_url``). Before paying, ``POST /v1/policy/check`` with the host and quote. A remote block stops
-            the payment. HTTP 503, 404 or ``decision: null`` follows ``fail_mode`` and is never read as a pass.
+            the payment. HTTP 503, 429, 404, a timeout, or ``decision: null`` follows ``fail_mode`` and is never read as a pass.
+            503, 429 and a timeout share the in-process circuit with preflight.
             The last ``policy_version`` is kept on ``remote_policy_version``. Unset: local rules only.
     """
 
@@ -623,7 +734,7 @@ class PaymentGuard:
         self.onchain = onchain
         self.base_url = base_url.rstrip("/")
         self._own_host = try_host_of(self.base_url) or "botsrated.com"
-        self._timeout = timeout
+        self._timeout = clamp_hosted_timeout(timeout)
         self._cache_ttl = cache_ttl
         self._cache: dict[str, tuple[float, tuple[bool, dict[str, Any]]]] = {}
         self._http = http
@@ -758,6 +869,9 @@ class PaymentGuard:
 
     async def _remote_async(self, host: str, req: Any) -> RemotePolicyEffect:
         assert self.remote_policy is not None
+        origin = _policy_origin_of(self.remote_policy)
+        if _circuit_open(origin):
+            return interpret_policy_body(None, {}, self.remote_policy.fail_mode, host)
         url = f"{(self.remote_policy.base_url or BOTSRATED_BASE_URL)}/v1/policy/check"
         headers = _policy_headers(self.remote_policy.token)
         payload = {"host": host, "quote": policy_quote(req)}
@@ -767,10 +881,12 @@ class PaymentGuard:
             else:
                 async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as c:
                     resp = await c.post(url, json=payload, headers=headers)
-            status, body = _read_policy_response(resp)
+        except httpx.TimeoutException:
+            _open_hosted_circuit(origin, None)
+            return interpret_policy_body(None, {}, self.remote_policy.fail_mode, host)
         except Exception:  # noqa: BLE001 - a failed check is fail_mode, not a pass
-            status, body = None, {}
-        return interpret_policy_body(status, body, self.remote_policy.fail_mode, host)
+            return interpret_policy_body(None, {}, self.remote_policy.fail_mode, host)
+        return _policy_effect_from_response(self.remote_policy, host, origin, resp)
 
     def _local(self, ctx: Any) -> tuple[list[GuardReason], str | None, str | None, Any, str | None]:
         pr = _get(ctx, "payment_required", "paymentRequired")
@@ -847,6 +963,8 @@ class PaymentGuard:
         return value
 
     def _parse(self, resp: httpx.Response) -> tuple[bool, dict[str, Any]]:
+        if resp.status_code in (503, 429):
+            raise _HostedOverload(resp.headers.get("retry-after"))
         if len(resp.content) > 1_000_000:
             body: Any = {}
         else:
@@ -863,8 +981,47 @@ class PaymentGuard:
         return (body.get("found") is not False, body)
 
     def _url_for(self, host: str) -> tuple[str, dict[str, str], dict[str, str]]:
-        # Host name only: never the path, query, wallet, amount, tx hash or payment header.
+        # Host name only: never the path, query, wallet, amount, tx hash or payment header. This does not fetch the seller.
         return f"{self.base_url}/v1/preflight", {"url": host}, {"accept": "application/json", "user-agent": USER_AGENT}
+
+    def _lookup_http(self, host: str) -> tuple[bool, dict[str, Any]] | None:
+        """Sync HTTP preflight. ``None`` is a miss (circuit open, overload, or timeout), not a pass."""
+        origin = _hosted_origin(self.base_url)
+        if _circuit_open(origin):
+            return None
+        url, params, headers = self._url_for(host)
+        try:
+            if self._http is not None:
+                resp = self._http.get(url, params=params, headers=headers, timeout=self._timeout, follow_redirects=False)
+            else:
+                with httpx.Client(timeout=self._timeout, follow_redirects=False) as c:
+                    resp = c.get(url, params=params, headers=headers)
+            return self._store(host, self._parse(resp))
+        except _HostedOverload as exc:
+            _open_hosted_circuit(origin, exc.retry_after)
+            return None
+        except httpx.TimeoutException:
+            _open_hosted_circuit(origin, None)
+            return None
+
+    async def _lookup_http_async(self, host: str) -> tuple[bool, dict[str, Any]] | None:
+        origin = _hosted_origin(self.base_url)
+        if _circuit_open(origin):
+            return None
+        url, params, headers = self._url_for(host)
+        try:
+            if self._async_http is not None:
+                resp = await self._async_http.get(url, params=params, headers=headers, timeout=self._timeout, follow_redirects=False)
+            else:
+                async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as c:
+                    resp = await c.get(url, params=params, headers=headers)
+            return self._store(host, self._parse(resp))
+        except _HostedOverload as exc:
+            _open_hosted_circuit(origin, exc.retry_after)
+            return None
+        except httpx.TimeoutException:
+            _open_hosted_circuit(origin, None)
+            return None
 
     def _lookup_sync(self, host: str) -> tuple[bool, dict[str, Any]] | None:
         try:
@@ -873,13 +1030,7 @@ class PaymentGuard:
                 return hit
             if self._preflight is not None:
                 return self._store(host, self._preflight(host))
-            url, params, headers = self._url_for(host)
-            if self._http is not None:
-                resp = self._http.get(url, params=params, headers=headers, timeout=self._timeout, follow_redirects=False)
-            else:
-                with httpx.Client(timeout=self._timeout, follow_redirects=False) as c:
-                    resp = c.get(url, params=params, headers=headers)
-            return self._store(host, self._parse(resp))
+            return self._lookup_http(host)
         except Exception:  # noqa: BLE001
             return None
 
@@ -890,13 +1041,7 @@ class PaymentGuard:
                 return hit
             if self._preflight is not None:
                 return self._store(host, self._preflight(host))
-            url, params, headers = self._url_for(host)
-            if self._async_http is not None:
-                resp = await self._async_http.get(url, params=params, headers=headers, timeout=self._timeout, follow_redirects=False)
-            else:
-                async with httpx.AsyncClient(timeout=self._timeout, follow_redirects=False) as c:
-                    resp = await c.get(url, params=params, headers=headers)
-            return self._store(host, self._parse(resp))
+            return await self._lookup_http_async(host)
         except Exception:  # noqa: BLE001
             return None
 

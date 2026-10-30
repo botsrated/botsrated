@@ -5,6 +5,7 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Payment guard (`botsrated` and `@botsrated/x402-preflight`): hosted preflight and `POST /v1/policy/check` keep a 3 s default and clamp `timeout` / `timeoutMs` to 10 s. HTTP 503, HTTP 429, and a transport timeout read `Retry-After` (else 5 s, at most 60 s) and open an in-process circuit so later hosted lookups in that process skip until the wait ends. Those cases stay `botsrated_unreachable` / `remote_policy_unavailable` on the fail-open path. They are not a pass. The lookup still sends only the host name and does not fetch the seller. No package version bump; publish is separate.
 - Docs: public install lines for `botsrated-openai-agents` name PyPI 0.1.0 (`pip install botsrated-openai-agents`, `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. No package version bump. LangGraph, Llama Stack, Google ADK, CrewAI, and pydantic-ai stay off PyPI.
 - Docs: public plans copy lists alerts-free at $0 (1 seller, daily digest) and Pro at the standing prices ($19 / month by card, or alerts-50 at $29 / 30 days USDC, up to 50 sellers or tools on the same slots). Paid BotPulse is retired; the free feed stays. No package version bump.
 - `langchain-botsrated` and `botsrated-openai-agents`: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN` (explicit `token` wins; empty means unset), matching the other wedges. All Python wedges pin `botsrated>=0.3.1,<0.4`. Not in `langchain-botsrated` 0.1.4 on PyPI. (#36)

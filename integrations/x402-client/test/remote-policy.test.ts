@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BotsRatedClient, createPrePaymentGuard, strictGuardPolicy } from "../src/index";
-import { createPaymentGuard, interpretPolicyBody, policies, type GuardDecision } from "../src/payment-guard";
+import { createPaymentGuard, interpretPolicyBody, policies, resetHostedLookupCircuit, type GuardDecision } from "../src/payment-guard";
 import { FOUND, OTHER_PAYTO, SELLER_URL, json, pr, req } from "./helpers";
 
 const TOKEN = "policy-token-1";
@@ -92,6 +92,7 @@ describe("remotePolicy", () => {
       { status: 200, body: { decision: "safe" } },
     ];
     for (const answer of cases) {
+      resetHostedLookupCircuit();
       const closedFetch = splitFetch(() => answer);
       const closedSeen: GuardDecision[] = [];
       const closed = createPaymentGuard({
@@ -104,6 +105,7 @@ describe("remotePolicy", () => {
       expect(closedSeen[0].reasons).toContainEqual(expect.objectContaining({ code: "remote_policy_unavailable", effect: "block" }));
       expect(closedSeen[0].reasons.map((r) => r.fact).join(" ")).toContain("fail_mode is closed");
 
+      resetHostedLookupCircuit();
       const openFetch = splitFetch(() => answer);
       const openSeen: GuardDecision[] = [];
       const opened = createPaymentGuard({
@@ -117,6 +119,7 @@ describe("remotePolicy", () => {
       expect(openSeen[0].reasons).toContainEqual(expect.objectContaining({ code: "remote_policy_unavailable", effect: "info" }));
     }
 
+    resetHostedLookupCircuit();
     const { f } = splitFetch(() => ({ status: 503, body: { decision: null } }));
     const seen: GuardDecision[] = [];
     const strict = createPaymentGuard({
@@ -196,6 +199,7 @@ describe("remotePolicy", () => {
     expect(String(posted.init?.body)).not.toContain("PRODKEYSIG");
 
     const down = () => ({ status: 503, body: { decision: null, decided_by: "your_policy", not_a_botsrated_rating: true } });
+    resetHostedLookupCircuit();
     const closed = createPrePaymentGuard({
       client: new BotsRatedClient({ fetch: splitFetch(down).f }),
       remotePolicy: { token: TOKEN, failMode: "closed" },
@@ -205,6 +209,7 @@ describe("remotePolicy", () => {
     expect(blocked.remote_decision).toBeNull();
     expect(blocked.reasons.map((r) => r.detail).join(" ")).toContain("fail_mode is closed");
 
+    resetHostedLookupCircuit();
     const opened = createPrePaymentGuard({
       client: new BotsRatedClient({ fetch: splitFetch(down).f }),
       remotePolicy: { token: TOKEN, failMode: "open" },
@@ -214,6 +219,7 @@ describe("remotePolicy", () => {
     expect(allowed.remote_decision).toBeNull();
     expect(allowed.reasons).toContainEqual(expect.objectContaining({ effect: "info", code: "remote_policy_unavailable" }));
 
+    resetHostedLookupCircuit();
     const passed = createPrePaymentGuard({
       client: new BotsRatedClient({ fetch: splitFetch(() => ({ status: 200, body: { decision: "pass" } })).f }),
       policy: strictGuardPolicy,
