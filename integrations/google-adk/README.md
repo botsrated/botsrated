@@ -5,7 +5,7 @@
 Pairs with [Google ADK](https://google.github.io/adk-docs/). Payment-client wrap and an optional before-tool callback. Not an agent runtime, and not an Agent, Runner, or session service. Not on the registry yet: `pip install -e integrations/google-adk` (`botsrated>=0.3.1,<0.4`).
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from google_adk_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.

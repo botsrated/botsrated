@@ -5,7 +5,7 @@
 Pairs with [Llama Stack](https://llama-stack.readthedocs.io/). Payment-client wrap only. Llama Stack stays the runtime, the distribution, and the inference server. A secondary before-tool hook is deferred. Not on the registry yet: `pip install -e integrations/llama-stack` (`botsrated>=0.3.1,<0.4`).
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from llama_stack_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.

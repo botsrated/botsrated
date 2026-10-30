@@ -5,7 +5,7 @@
 Pairs with [LangGraph](https://docs.langchain.com/oss/python/langgraph). Payment-client wrap and an optional pre-pay node helper. Not an orchestration framework, and not a StateGraph, checkpoint store, or agent loop. Not on the registry yet: `pip install -e integrations/langgraph` (`botsrated>=0.3.1,<0.4`).
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from langgraph_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.

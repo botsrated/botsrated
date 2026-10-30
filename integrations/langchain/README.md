@@ -2,10 +2,10 @@
 
 ## Default install
 
-Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free forever, no key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy.
+Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.4; published dependency metadata is `botsrated>=0.3.0,<0.4`). Installing does not attach a guard. Free. No key for local attach. Optional `BOTSRATED_TOKEN` for Desk remote policy.
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from langchain_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.

@@ -5,7 +5,7 @@
 Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. Not a runtime. Not on the registry yet: `pip install -e integrations/openai-agents` (`botsrated>=0.3.1,<0.4`).
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from botsrated_openai_agents import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.

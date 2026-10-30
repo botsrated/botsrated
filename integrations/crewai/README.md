@@ -5,7 +5,7 @@
 Pairs with [CrewAI](https://docs.crewai.com/en/learn/tool-hooks). Payment-client wrap and an optional before-pay tool hook. Not a crew, process, flow, or agent loop. Not on the registry yet: `pip install -e integrations/crewai` (`botsrated>=0.3.1,<0.4`).
 
 ```python
-# Free forever. No key for local attach. Not a runtime.
+# Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from crewai_botsrated import attach_payment_guard
 # Omit preset = advice. Omit fail_mode = open.
