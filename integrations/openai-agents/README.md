@@ -21,7 +21,7 @@ Live docs: [botsrated.com/docs/guard#openai-agents](https://botsrated.com/docs/g
 
 ## Default install
 
-Free. No key for local attach. Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. The guard is not a runtime. Published: `pip install botsrated-openai-agents` (PyPI 0.1.0; dependency `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Paid checks are not required to attach. Optional `BOTSRATED_TOKEN` for Desk remote policy (omit `token` and the guard reads the env).
+Free. No key for local attach. Pairs with the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/). Payment-client hook only: it does not replace `Agent` or `Runner`. The guard is not a runtime. Published: `pip install botsrated-openai-agents` (PyPI 0.1.1; dependency `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Paid checks are not required to attach. Optional `BOTSRATED_TOKEN` for Desk remote policy (omit `token` and the guard reads the env).
 
 ```python
 # Free. No key for local attach. Not a runtime.
@@ -33,7 +33,7 @@ guard = attach_payment_guard(x402_client)
 
 ## Install in 3 steps
 
-1. Free. No key for local attach. Install: `pip install botsrated-openai-agents` (PyPI 0.1.0, includes `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
+1. Free. No key for local attach. Install: `pip install botsrated-openai-agents` (PyPI 0.1.1, includes `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from botsrated_openai_agents import attach_payment_guard
@@ -48,10 +48,10 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 OpenAI Agents SDK hook for [BotsRated](https://botsrated.com). Use it as a pre-payment check before
 an agent pays an x402 seller. You keep the SDK's `Agent` and `Runner`.
 
-**Status: published on PyPI: [`botsrated-openai-agents`](https://pypi.org/project/botsrated-openai-agents/) 0.1.0** (this release; includes `attach_payment_guard`).
+**Status: published on PyPI: [`botsrated-openai-agents`](https://pypi.org/project/botsrated-openai-agents/) 0.1.1** (this release; includes `attach_payment_guard`).
 Depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.1,<0.4` (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
-PyPI 0.1.0 matches that pin. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`.
+PyPI 0.1.1 matches that pin. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`.
 
 ```bash
 pip install botsrated-openai-agents

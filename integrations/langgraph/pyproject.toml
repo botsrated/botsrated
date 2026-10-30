@@ -1,6 +1,6 @@
 [project]
 name = "langgraph-botsrated"
-version = "0.1.0"
+version = "0.1.1"
 description = "Payment-client wrap that pairs with LangGraph. Registers BotsRated PaymentGuard on an x402 client and offers an optional pre-pay node helper. Not an orchestration runtime."
 readme = "README.md"
 license = "MIT"

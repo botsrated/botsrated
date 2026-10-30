@@ -5,8 +5,9 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Docs-truth 0.1.1: `botsrated-openai-agents`, `langgraph-botsrated`, and `llama-stack-botsrated` bump 0.1.0 → 0.1.1 so a republish refreshes the PyPI long_description. Install lines lead with `pip install <package>` and `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change. Google ADK, CrewAI, and pydantic-ai stay off PyPI. Publish is separate.
 - Payment guard (`botsrated` and `@botsrated/x402-preflight`): hosted preflight and `POST /v1/policy/check` keep a 3 s default and clamp `timeout` / `timeoutMs` to 10 s. HTTP 503, HTTP 429, and a transport timeout read `Retry-After` (else 5 s, at most 60 s) and open an in-process circuit so later hosted lookups in that process skip until the wait ends. Those cases stay `botsrated_unreachable` / `remote_policy_unavailable` on the fail-open path. They are not a pass. The lookup still sends only the host name and does not fetch the seller. No package version bump; publish is separate.
-- Docs: public install lines for `botsrated-openai-agents` name PyPI 0.1.0 (`pip install botsrated-openai-agents`, `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. No package version bump. LangGraph, Llama Stack, Google ADK, CrewAI, and pydantic-ai stay off PyPI.
+- Docs: public install lines for `botsrated-openai-agents` name PyPI 0.1.0 (`pip install botsrated-openai-agents`, `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. No package version bump in that pass. Google ADK, CrewAI, and pydantic-ai stay off PyPI.
 - Docs: public plans copy lists alerts-free at $0 (1 seller, daily digest) and Pro at the standing prices ($19 / month by card, or alerts-50 at $29 / 30 days USDC, up to 50 sellers or tools on the same slots). Paid BotPulse is retired; the free feed stays. No package version bump.
 - `langchain-botsrated` and `botsrated-openai-agents`: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN` (explicit `token` wins; empty means unset), matching the other wedges. All Python wedges pin `botsrated>=0.3.1,<0.4`. Not in `langchain-botsrated` 0.1.4 on PyPI. (#36)
 - Maintenance: `@botsrated/x402-preflight` dev dependencies `@x402/core`, `@x402/evm`, `@x402/fetch` 2.28.0 -> 2.29.0, which moves them to zod 4.6.6+ and clears GHSA-mrhx-c7xc-m3w5 (high, zod < 4.6.6) from the dev tree. Test-only; the published package has no runtime dependencies. `npm audit` 0. No package version bump.
@@ -265,6 +266,30 @@ Changed:
 ### 0.1.0
 - First release: `BotsRatedPaymentMiddleware` (a `FunctionMiddleware` pre-payment check), a check tool and the
   hosted MCP server helper.
+
+## botsrated-openai-agents (PyPI)
+
+### 0.1.1
+- README long_description refresh. Status names 0.1.1 and `pip install botsrated-openai-agents` with `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change from 0.1.0. PyPI 0.1.0 still carried the pre-publish "not on PyPI" description.
+
+### 0.1.0
+- First published release. `attach_payment_guard` on the caller's x402 client. Pairs with the OpenAI Agents SDK; does not replace `Agent` or `Runner`.
+
+## langgraph-botsrated (PyPI)
+
+### 0.1.1
+- README long_description refresh. Status names 0.1.1 and `pip install langgraph-botsrated` with `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change from 0.1.0. PyPI 0.1.0 still said the package was not on PyPI.
+
+### 0.1.0
+- First published release. Payment-client wrap plus an optional pre-pay node helper. Not a graph runtime.
+
+## llama-stack-botsrated (PyPI)
+
+### 0.1.1
+- README long_description refresh. Status names 0.1.1 and `pip install llama-stack-botsrated` with `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change from 0.1.0. PyPI 0.1.0 still said the package was not on PyPI. Payment-client wrap only; a before-tool hook stays deferred.
+
+### 0.1.0
+- First published release. Payment-client wrap. Llama Stack stays the runtime, the distribution, and the inference server.
 
 ## @botsrated/x402-preflight (npm)
 

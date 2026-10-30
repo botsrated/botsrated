@@ -19,10 +19,10 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 |---|---|---|
 | `integrations/python-core` | `botsrated` (PyPI) | Python >= 3.10 |
 | `integrations/langchain` | `langchain-botsrated` (PyPI) | Python |
-| `integrations/langgraph` | `langgraph-botsrated` (not published) | Python |
+| `integrations/langgraph` | `langgraph-botsrated` (PyPI) | Python |
 | `integrations/google-adk` | `google-adk-botsrated` (not published) | Python |
 | `integrations/crewai` | `crewai-botsrated` (not published) | Python |
-| `integrations/llama-stack` | `llama-stack-botsrated` (not published) | Python |
+| `integrations/llama-stack` | `llama-stack-botsrated` (PyPI) | Python |
 | `integrations/pydantic-ai` | `pydantic-ai-botsrated` (not published) | Python |
 | `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI) | Python |
 | `integrations/microsoft-agent-framework` | `agent-framework-botsrated` (PyPI) | Python |
