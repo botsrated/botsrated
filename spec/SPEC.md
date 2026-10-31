@@ -6,7 +6,7 @@
 | Date | 2026-10-23 |
 | Editors | BotsRated (https://botsrated.com) |
 | Reference implementation | https://botsrated.com. Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
-| Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs), [`verify-core.mjs`](verify-core.mjs), [`receipt-page.mjs`](receipt-page.mjs) |
+| Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs), [`verify-core.mjs`](verify-core.mjs), [`receipt-page.mjs`](receipt-page.mjs), [`courthouse/`](courthouse/README.md) |
 | License | Text CC BY 4.0. Schema, examples and code MIT (§12) |
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as described in RFC 2119 and RFC 8174.
@@ -156,6 +156,8 @@ New producers MUST use the first rule for every kind they create, and MAY add a 
 Free path: `GET /v1/preflight?url=` returns `latest_probe.receipt_url` for an x402 host and `servers[].latest_receipt_url` for an MCP host (`?mcp=&day=&s=`). From a checkout of `spec/`: `node spec/verify.mjs '<receipt_url>'`. Without a checkout, download `verify.mjs`, `verify-core.mjs`, and `verify-node.mjs` from the same git ref into one directory (the receipt page one-liner uses `ref=main` for all three) and run `node verify.mjs '<receipt_url>'`. The URL in that command is single-quoted and is built only from a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s`.
 
 `spec/receipt-page.mjs` is the browser page for that same check (`prefersHtml` on `Accept: text/html`, fields `id`, `kind`, `ts`, `host`, `key_id`, status `signature valid` / `signature invalid` / `key unknown`). It is not on the live host until the Pages receipt handler returns it. That handler should send `Content-Security-Policy` from `RECEIPT_PAGE_CSP` as a response header, serve `verify-browser.mjs` and `verify-core.mjs` at `/spec/`, and build the pasted command with `receiptCliUrl` (not `request.url`). Keep JSON otherwise. A browser without WebCrypto Ed25519 stays on `signature invalid`. `verifyResultJson` is the `{valid, id, key_id, errors}` body for a later free `GET /v1/verify`. That route is not mounted in this repository.
+
+[`spec/courthouse/`](courthouse/README.md) is that same check as a static folder you serve yourself (`index.html`, `verify-booth.mjs`, and a byte copy of `verify-core.mjs`). Paste a receipt link or JSON. A link is fetched only after it is rebuilt to `https://botsrated.com/receipt/<20 hex>` with `host`, `mcp`, `day`, and `s` only. The page loads `https://botsrated.com/.well-known/botsrated-key` and calls the same `verifyReceipt`. Opening `index.html` as `file://` does not run the module. The folder does not upload the paste or keep a share store. A matching signature checks this record only. It is not a rating of the seller.
 
 ### 4.5 Optional VC envelope (non-normative)
 A producer MAY wrap a receipt as `credentialSubject` of a W3C VC 2.0 with a Data Integrity proof (`eddsa-jcs-2022`, which also uses Ed25519 and JCS). The plain receipt and its `sig` stay authoritative in v0.1 (Q5).
