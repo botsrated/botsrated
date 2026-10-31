@@ -123,4 +123,8 @@ jobs:
         with:
           node-version: "22"
       - name: Syntax check
-        run: node --check spec/verify.mjs
+        run: |
+          node --check spec/verify.mjs
+          node --check spec/courthouse/verify-booth.mjs
+      - name: Verifier tests
+        run: node --test spec/verify.test.mjs
