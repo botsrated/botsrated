@@ -101,7 +101,9 @@ test("HTML panel shows receipt fields, MCP query, and CLI", () => {
   const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/mcp-probe.payment.json"), "utf8"));
   const pageUrl = raw.receipt.receipt_url;
   const html = renderReceiptPage(raw, { pageUrl });
-  assert.match(html, /id="status">signature invalid/);
+  assert.match(html, /id="status">checking signature\u2026<\/h1>/);
+  assert.equal(html.includes("stays signature invalid"), false);
+  assert.ok(html.includes('<p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only \u2014 not a seller rating. If this browser can\u2019t run the check, status stays checking signature\u2026</p>'));
   assert.match(html, /Verify signature/);
   assert.match(html, new RegExp(raw.receipt.id));
   assert.match(html, /mcp_probe/);
