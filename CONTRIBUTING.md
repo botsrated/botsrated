@@ -20,8 +20,8 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 | `integrations/python-core` | `botsrated` (PyPI) | Python >= 3.10 |
 | `integrations/langchain` | `langchain-botsrated` (PyPI) | Python |
 | `integrations/langgraph` | `langgraph-botsrated` (PyPI) | Python |
-| `integrations/google-adk` | `google-adk-botsrated` (not published) | Python |
-| `integrations/crewai` | `crewai-botsrated` (not published) | Python |
+| `integrations/google-adk` | `google-adk-botsrated` (PyPI 0.1.0; long_description still says not on PyPI) | Python |
+| `integrations/crewai` | `crewai-botsrated` (PyPI 0.1.0; long_description still says not on PyPI) | Python |
 | `integrations/llama-stack` | `llama-stack-botsrated` (PyPI) | Python |
 | `integrations/pydantic-ai` | `pydantic-ai-botsrated` (not published) | Python |
 | `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI) | Python |
@@ -77,6 +77,11 @@ pay, but they need network access.
 - Results are facts, not opinions: wording in docs and tool descriptions must not endorse or accuse any seller.
 
 ## AI-Assisted Contributions
+
+Coding agents that scaffold an x402 pay client follow the Guard attach recipe in
+[llms-install.md](llms-install.md) (section “When scaffolding x402 pay (coding agents)”). The same words are in
+[`.cursor/rules/botsrated-guard-attach.mdc`](.cursor/rules/botsrated-guard-attach.mdc) and
+[`docs/agent-skills/botsrated-guard-attach/SKILL.md`](docs/agent-skills/botsrated-guard-attach/SKILL.md).
 
 AI-assisted changes are welcome. Say so in the pull request, and only open it once you have read and tested the
 change yourself.
