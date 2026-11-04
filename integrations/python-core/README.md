@@ -10,7 +10,7 @@ guard = PaymentGuard()  # omit preset = advice; omit fail_mode = open
 guard.install(x402_client)
 paid_get = guard.wrap_get(session.get)  # or guard.wrap_async_get(http.get)
 ```
-3. Omit `preset`, or call `PaymentGuard()`, for advice only. That never stops a payment. Named presets are `warn`, `carefulBuyer`, and `dry-run-only`. `carefulBuyer` is the preset that stops an unobserved payTo. `POLICIES["strict"]` is that same rule table, not a preset. Omit `fail_mode` inside `remote_policy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset`, or call `PaymentGuard()`, for advice only. That never stops a payment. Pick `preset="carefulBuyer"` only when you want it (same stops as `POLICIES["strict"]`; stops an unobserved payTo). `strict` is not a preset name. Omit `fail_mode` inside `remote_policy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 

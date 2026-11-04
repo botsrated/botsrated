@@ -10,7 +10,7 @@ const guard = createPaymentGuard(); // omit preset = advice; omit failMode = ope
 guard.install(client);
 const paidFetch = guard.wrapFetch(payingFetch); // payingFetch already pays, e.g. wrapFetchWithPayment(fetch, client)
 ```
-3. Omit `preset`, or call `createPaymentGuard()`, for advice only. That never stops a payment. Named presets are `warn`, `carefulBuyer`, and `dry-run-only`. `carefulBuyer` is the preset that stops an unobserved payTo. `policies.strict` is that same rule table, not a preset. Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset`, or call `createPaymentGuard()`, for advice only. That never stops a payment. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). `strict` is not a preset name. Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
