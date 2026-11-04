@@ -44,7 +44,7 @@ Ed25519 runs in the browser through `verifyReceipt`. The paste is not uploaded.
 
 ## Claim ceiling
 
-The page shows one status: `signature valid`, `signature invalid`, or `key unknown`.
+The page shows one status: `signature valid`, `signature invalid`, or `key unknown`. A pasted receipt with `withheld_fields`, `withheld_note`, or a signature hint that starts with `withheld fields:` shows `not offline-verifiable`. Use `GET /v1/verify` for the stored record.
 
 A matching signature checks this record only. It is not a rating of the seller.
 

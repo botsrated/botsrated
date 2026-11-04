@@ -8,7 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { checkBooth, DATASET_SIG_URL, DATASET_URL, KEYS_URL, mountBooth, parseBoothInput, receiptBoothUrl, signatureStatus as boothStatus, softGuardOn } from "./courthouse/verify-booth.mjs";
 import { prefersHtml, quoteShellArg, receiptCliUrl, renderReceiptPage, signatureStatus, verifyResultJson } from "./receipt-page.mjs";
-import { ed25519WebCryptoAvailable } from "./verify-browser.mjs";
+import { ed25519WebCryptoAvailable, runReceiptPage } from "./verify-browser.mjs";
 import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
 import { nodeDeps } from "./verify-node.mjs";
 
@@ -124,6 +124,110 @@ test("HTML panel shows receipt fields, MCP query, and CLI", () => {
     assert.equal(new RegExp(`\\b${word}\\b`, "i").test(html), false, word);
   }
   assert.equal(/\bsafe\b/i.test(html), false);
+});
+
+function redactedProbe() {
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  delete raw.listed_amount;
+  delete raw.listed_payTo;
+  raw.withheld_fields = ["listed_amount", "listed_payTo", "checks.*listing*"];
+  raw.withheld_note = "listed_amount, listed_payTo and the listing comparisons are withheld";
+  raw.signature = "withheld fields: the per-receipt signature covers the full stored record (see withheld_note)";
+  return raw;
+}
+
+test("withheld receipt is not offline-verifiable", async () => {
+  const raw = redactedProbe();
+  const wrapped = { beta: true, receipt: raw, stored_in: "archive" };
+  const result = await verifyReceipt(wrapped, keys, nodeDeps());
+  assert.equal(result.status, "not offline-verifiable");
+  assert.equal(result.valid, false);
+  assert.equal(result.offline_verifiable, false);
+  assert.equal(result.id, "ac16e0eeff1e0d9ffcfc");
+  assert.deepEqual(result.errors, ["withheld_fields"]);
+  assert.deepEqual(result.withheld_fields, ["listed_amount", "listed_payTo", "checks.*listing*"]);
+  assert.match(result.lines.join("\n"), /INFO  redacted copy: not offline-verifiable; use \/v1\/verify/);
+  assert.equal(result.lines.some((line) => line.startsWith("FAIL")), false);
+  const body = verifyResultJson(result);
+  assert.equal(body.valid, false);
+  assert.equal(body.offline_verifiable, false);
+  assert.deepEqual(body.errors, ["withheld_fields"]);
+  assert.equal(signatureStatus(result, false), "not offline-verifiable");
+  assert.equal(signatureStatus(result, true), "not offline-verifiable");
+
+  const noted = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  noted.withheld_note = "listing fields withheld";
+  const notedResult = await verifyReceipt(noted, keys, nodeDeps());
+  assert.equal(notedResult.status, "not offline-verifiable");
+  const hinted = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  hinted.signature = "withheld fields: the per-receipt signature covers the full stored record";
+  const hintedResult = await verifyReceipt(hinted, keys, nodeDeps());
+  assert.equal(hintedResult.status, "not offline-verifiable");
+  assert.equal(hintedResult.valid, false);
+
+  const stripped = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  delete stripped.listed_amount;
+  delete stripped.listed_payTo;
+  const broken = await verifyReceipt(stripped, keys, nodeDeps());
+  assert.equal(broken.status, "signature invalid");
+  assert.equal(broken.valid, false);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "botsrated-withheld-"));
+  try {
+    const file = path.join(dir, "live.json");
+    fs.writeFileSync(file, JSON.stringify(wrapped));
+    const ran = cli([file, "--keys", "spec/examples/keys.json"]);
+    assert.equal(ran.status, 3, ran.stderr || ran.stdout);
+    assert.match(ran.stdout, /INFO  withheld fields: listed_amount, listed_payTo, checks\.\*listing\*/);
+    assert.match(ran.stdout, /not offline-verifiable; use \/v1\/verify/);
+    assert.doesNotMatch(ran.stdout, /\bINVALID\b/);
+    assert.doesNotMatch(ran.stdout, /\bVALID\b/);
+    assert.doesNotMatch(ran.stdout, /\bFAIL\b/);
+    assert.equal(ran.stdout.includes("signature invalid"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  const pageUrl = "https://botsrated.com/receipt/ac16e0eeff1e0d9ffcfc?host=api.exa.ai&day=2026-10-23";
+  const html = renderReceiptPage(wrapped, { pageUrl });
+  assert.match(html, /id="status">not offline-verifiable<\/h1>/);
+  assert.match(html, /id="offline-note">Redacted copy: not offline-verifiable\. Use <a href="\/v1\/verify\?id=ac16e0eeff1e0d9ffcfc&amp;host=api\.exa\.ai&amp;day=2026-10-23">\/v1\/verify<\/a>\.<\/p>/);
+  assert.match(html, /id="f-withheld">listed_amount, listed_payTo, checks\.\*listing\*<\/dd>/);
+  assert.doesNotMatch(html, /id="cli"/);
+  assert.doesNotMatch(html, /id="cli-oneliner"/);
+  assert.doesNotMatch(html, /id="verify-btn"/);
+  assert.doesNotMatch(html, /node spec\/verify\.mjs/);
+  assert.doesNotMatch(html, /curl -fsSL/);
+  assert.doesNotMatch(html, /signature invalid/);
+  assert.doesNotMatch(html, /signature valid/);
+  assert.doesNotMatch(html, /checking signature/);
+  const plain = renderReceiptPage(JSON.parse(fs.readFileSync(path.join(root, "spec/examples/mcp-probe.payment.json"), "utf8")), { pageUrl });
+  const desk = plain.match(/<p class="desk">[\s\S]*?<\/p>/);
+  assert.ok(desk);
+  assert.ok(html.includes(desk[0]));
+  assert.match(html, /\/v1\/preflight\?url=api\.exa\.ai/);
+  for (const word of ["verified", "trusted", "scam", "grade"]) {
+    assert.equal(new RegExp(`\\b${word}\\b`, "i").test(html), false, word);
+  }
+  assert.equal(/\bsafe\b/i.test(html), false);
+
+  const status = { textContent: "checking signature\u2026" };
+  const data = { textContent: JSON.stringify(wrapped) };
+  const previous = globalThis.document;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === "status") return status;
+      if (id === "receipt-data") return data;
+      return null;
+    },
+  };
+  try {
+    await runReceiptPage();
+    assert.equal(status.textContent, "not offline-verifiable");
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
 });
 
 function decodeHtml(s) {
@@ -383,6 +487,8 @@ test("courthouse unsigned receipt asks for the snapshot and the page keeps Soft 
   assert.equal(calls.includes(DATASET_URL), true);
   assert.equal(calls.includes(DATASET_SIG_URL), true);
   assert.equal(boothStatus({ status: "signature valid" }, false), signatureStatus({ status: "signature valid" }, false));
+  assert.equal(boothStatus({ status: "not offline-verifiable" }, false), "not offline-verifiable");
+  assert.equal(signatureStatus({ status: "not offline-verifiable" }, false), "not offline-verifiable");
   assert.equal(boothStatus({ status: "key unknown" }, true), "key unknown");
   assert.equal(softGuardOn(""), false);
   assert.equal(softGuardOn("?soft=1"), true);
@@ -424,4 +530,39 @@ test("courthouse unsigned receipt asks for the snapshot and the page keeps Soft 
   assert.equal(/\b(safe|trusted|verified|scam|risky|ranking)\b/i.test(readme), false);
   const boothSrc = fs.readFileSync(path.join(root, "spec/courthouse/verify-booth.mjs"), "utf8");
   assert.equal(/\b(safe|trusted|verified|scam|risky|ranking)\b/i.test(boothSrc), false);
+  const held = redactedProbe();
+  const heldCalls = [];
+  const heldOut = await checkBooth(JSON.stringify(held), {
+    fetchImpl: async (url) => { heldCalls.push(String(url)); return jsonResponse(keys); },
+    cryptoOk: false,
+    deps: nodeDeps(),
+  });
+  assert.equal(heldOut.status, "not offline-verifiable");
+  assert.equal(heldOut.fields.id, "ac16e0eeff1e0d9ffcfc");
+  assert.deepEqual(heldCalls, []);
+  const heldUrl = "https://botsrated.com/receipt/" + held.id + "?host=api.exa.ai&day=2026-10-23";
+  const urlCalls = [];
+  const urlOut = await checkBooth(heldUrl, {
+    fetchImpl: async (url) => {
+      urlCalls.push(String(url));
+      if (url === KEYS_URL) return jsonResponse(keys);
+      if (url === heldUrl) return jsonResponse({ receipt: held });
+      throw new Error("unexpected " + url);
+    },
+    cryptoOk: true,
+    deps: nodeDeps(),
+  });
+  assert.equal(urlOut.status, "not offline-verifiable");
+  assert.deepEqual(urlCalls, [KEYS_URL, heldUrl]);
+  const quietCalls = [];
+  const quiet = await checkBooth(heldUrl, {
+    fetchImpl: async (url) => {
+      quietCalls.push(String(url));
+      if (url === heldUrl) return jsonResponse(held);
+      throw new Error("unexpected " + url);
+    },
+    cryptoOk: false,
+  });
+  assert.equal(quiet.status, "not offline-verifiable");
+  assert.deepEqual(quietCalls, [heldUrl]);
 });

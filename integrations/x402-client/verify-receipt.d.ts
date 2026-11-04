@@ -1,9 +1,9 @@
 /** Claim ceiling for a match: this record only. Not a rating of the seller. */
 export const RECEIPT_CHECK_CLAIM: "this record only";
 
-export const RECEIPT_CHECK_STATUSES: readonly ["signature valid", "signature invalid", "key unknown"];
+export const RECEIPT_CHECK_STATUSES: readonly ["signature valid", "signature invalid", "key unknown", "not offline-verifiable"];
 
-export type ReceiptCheckStatus = "signature valid" | "signature invalid" | "key unknown";
+export type ReceiptCheckStatus = "signature valid" | "signature invalid" | "key unknown" | "not offline-verifiable";
 
 export interface ReceiptSnapshotSig {
   sha256: string;
@@ -31,6 +31,9 @@ export interface ReceiptCheckResult {
   kind: string | null;
   ts: string | null;
   host: string | null;
+  /** Present and false when the copy carries withheld markers. */
+  offline_verifiable?: boolean;
+  withheld_fields?: string[];
 }
 
 /** Node sha256 and Ed25519. Offline. */

@@ -14,6 +14,24 @@ export function unwrapReceipt(raw) {
   return raw;
 }
 
+// deco() withholds discovery-only listing fields and adds these markers.
+// The per-receipt signature covers the stored record, so this copy is not offline-verifiable.
+export const WITHHELD_STATUS = "not offline-verifiable";
+const WITHHELD_FIELD = /^[A-Za-z0-9_.*-]{1,64}$/;
+
+export function withheldMarker(raw) {
+  const r = unwrapReceipt(raw);
+  if (!r || typeof r !== "object" || Array.isArray(r)) return null;
+  const rawFields = Array.isArray(r.withheld_fields) ? r.withheld_fields : null;
+  const fields = rawFields
+    ? rawFields.filter((item) => typeof item === "string" && WITHHELD_FIELD.test(item)).slice(0, 12)
+    : [];
+  const noted = typeof r.withheld_note === "string" && r.withheld_note.trim().length > 0;
+  const hinted = typeof r.signature === "string" && r.signature.startsWith("withheld fields:");
+  if (!(rawFields && rawFields.length > 0) && !noted && !hinted) return null;
+  return { fields };
+}
+
 // receipt_url, tx_url, and signature are API hints. payment is an API hint when it is a string or null.
 // An object payment is part of the signed body (mcp_probe).
 export function stripPresentation(receipt) {
@@ -59,6 +77,28 @@ function statusOf(ok, errors) {
 
 // deps: { sha256(string|bytes) -> hex, ed25519(pubB64, message, sigB64) -> bool, loadSnapshot()? -> { bytes, sig } }
 export async function verifyReceipt(raw, keyset, deps) {
+  const marker = withheldMarker(raw);
+  if (marker) {
+    const r0 = unwrapReceipt(raw) || {};
+    const listed = marker.fields.length ? marker.fields.join(", ") : "withheld_fields";
+    return {
+      ok: false,
+      valid: false,
+      offline_verifiable: false,
+      status: WITHHELD_STATUS,
+      lines: [
+        `INFO  withheld fields: ${listed}`,
+        "INFO  redacted copy: not offline-verifiable; use /v1/verify",
+      ],
+      errors: ["withheld_fields"],
+      id: typeof r0.id === "string" ? r0.id : undefined,
+      key_id: r0.sig && r0.sig.key_id || null,
+      kind: r0.kind || null,
+      ts: r0.ts || null,
+      host: r0.host || null,
+      withheld_fields: marker.fields,
+    };
+  }
   const lines = [];
   const errors = [];
   let ok = true;

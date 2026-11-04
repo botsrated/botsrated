@@ -1,6 +1,7 @@
 // Browser entry for the receipt page. Same verifyReceipt as the CLI.
 // No WebCrypto Ed25519 means signature invalid. The page does not claim a pass.
-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+// A withheld copy stays not offline-verifiable and does not run the offline check.
+import { WITHHELD_STATUS, verifyReceipt, webcryptoDeps, withheldMarker } from "./verify-core.mjs";
 import { signatureStatus } from "./receipt-page.mjs";
 
 export async function ed25519WebCryptoAvailable() {
@@ -24,11 +25,20 @@ function keyOrigin() {
 
 export async function runReceiptPage() {
   const el = document.getElementById("status");
+  const dataEl = document.getElementById("receipt-data");
+  let raw = null;
+  if (dataEl) {
+    try { raw = JSON.parse(dataEl.textContent); } catch { raw = null; }
+  }
+  if (withheldMarker(raw)) {
+    if (el) el.textContent = WITHHELD_STATUS;
+    return;
+  }
   if (!(await ed25519WebCryptoAvailable())) {
     el.textContent = signatureStatus(null, false);
     return;
   }
-  const raw = JSON.parse(document.getElementById("receipt-data").textContent);
+  if (!raw) raw = JSON.parse(dataEl.textContent);
   const origin = keyOrigin();
   let keyset;
   try {

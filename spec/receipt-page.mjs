@@ -4,7 +4,10 @@
 // Content-Security-Policy to RECEIPT_PAGE_CSP on the response (the meta tag repeats it).
 // Serve verify-browser.mjs and verify-core.mjs at /spec/.
 // The pasted CLI URL comes from receiptCliUrl (checked id + allowlisted host, mcp, day, s), not from request.url.
-// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result for that later free route.
+// A copy with withheld_fields, withheld_note, or a signature hint that starts with "withheld fields:"
+// is not offline-verifiable. The page says so and links to /v1/verify. It does not offer the offline CLI.
+// GET /v1/verify checks the stored record. verifyResultJson is the offline result for a later free route.
+import { WITHHELD_STATUS, withheldMarker } from "./verify-core.mjs";
 
 export const RECEIPT_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://botsrated.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
@@ -102,6 +105,23 @@ export function quoteShellArg(url) {
   return "'" + url + "'";
 }
 
+// Same allowlists as receiptCliUrl. Relative path for the receipt page.
+export function receiptVerifyPath(id, query, receiptHost) {
+  const page = receiptCliUrl(id, query, receiptHost);
+  if (!page) return "/v1/verify";
+  let url;
+  try { url = new URL(page); } catch { return "/v1/verify"; }
+  const m = /^\/receipt\/([0-9a-f]{20})$/.exec(url.pathname);
+  if (!m) return "/v1/verify";
+  const q = new URLSearchParams();
+  q.set("id", m[1]);
+  for (const key of ["host", "mcp", "day", "s"]) {
+    const value = url.searchParams.get(key);
+    if (value) q.set(key, value);
+  }
+  return "/v1/verify?" + q.toString();
+}
+
 export function receiptShellCommands(id, query, receiptHost) {
   const quoted = quoteShellArg(receiptCliUrl(id, query, receiptHost));
   const cli = quoted ? "node spec/verify.mjs " + quoted : "node spec/verify.mjs";
@@ -112,18 +132,21 @@ export function receiptShellCommands(id, query, receiptHost) {
 
 // Missing WebCrypto is not a pass. Only the three check results are shown, and only when crypto ran.
 export function signatureStatus(result, cryptoOk) {
+  if (result && result.status === WITHHELD_STATUS) return WITHHELD_STATUS;
   if (!cryptoOk || !result) return "signature invalid";
   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
   return "signature invalid";
 }
 
 export function verifyResultJson(result) {
-  return {
+  const body = {
     valid: !!result.valid,
     id: result.id ?? null,
     key_id: result.key_id ?? null,
     errors: Array.isArray(result.errors) ? result.errors : [],
   };
+  if (result && result.offline_verifiable === false) body.offline_verifiable = false;
+  return body;
 }
 
 export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec/verify-browser.mjs" } = {}) {
@@ -136,7 +159,18 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
   const hostPath = host ? "/s/" + encodeURIComponent(host) : "/sellers";
   const preflight = host ? "/v1/preflight?url=" + encodeURIComponent(host) : "/v1/preflight";
   // pageUrl is not pasted. Only an allowlisted id and host/mcp/day/s are.
-  const { cli, oneLiner } = receiptShellCommands(id, query != null ? query : pageUrl, host);
+  const marker = withheldMarker(raw);
+  const source = query != null ? query : pageUrl;
+  const verifyPath = receiptVerifyPath(id, source, host);
+  const { cli, oneLiner } = receiptShellCommands(id, source, host);
+  const statusText = marker ? WITHHELD_STATUS : "checking signature\u2026";
+  const withheldRow = marker && marker.fields.length
+    ? `\n    <dt>withheld</dt><dd id="f-withheld">${esc(marker.fields.join(", "))}</dd>`
+    : "";
+  const verifyButton = marker ? "" : `  <p><button type="button" id="verify-btn">Verify signature</button></p>\n`;
+  const checkBlock = marker
+    ? `  <p class="note" id="offline-note">Redacted copy: not offline-verifiable. Use <a href="${esc(verifyPath)}">/v1/verify</a>.</p>`
+    : `  <h2>CLI</h2>\n  <pre id="cli">${esc(cli)}</pre>\n  <pre id="cli-oneliner">${esc(oneLiner)}</pre>\n  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only \u2014 not a seller rating. If this browser can\u2019t run the check, status stays checking signature\u2026</p>`;
   const embedded = JSON.stringify(raw).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -165,21 +199,17 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
 <body>
 <main>
   <p class="eyebrow">BotsRated receipt</p>
-  <h1 id="status">checking signature…</h1>
+  <h1 id="status">${esc(statusText)}</h1>
   <dl>
     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
     <dt>ts</dt><dd id="f-ts">${esc(ts)}</dd>
     <dt>host</dt><dd id="f-host">${host ? `<a href="${esc(hostPath)}">${esc(host)}</a>` : ""}</dd>
-    <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>
+    <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>${withheldRow}
   </dl>
-  <p><button type="button" id="verify-btn">Verify signature</button></p>
-  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
+${verifyButton}  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
   <p class="desk"><a href="/desk">Map many hosts free in Desk →</a></p>
-  <h2>CLI</h2>
-  <pre id="cli">${esc(cli)}</pre>
-  <pre id="cli-oneliner">${esc(oneLiner)}</pre>
-  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…</p>
+${checkBlock}
 </main>
 <script type="application/json" id="receipt-data">${embedded}</script>
 <script type="module" src="${esc(scriptSrc)}"></script>

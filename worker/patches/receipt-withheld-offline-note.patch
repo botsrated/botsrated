@@ -1,0 +1,409 @@
+# Soft OPEN. Prefer KEEP withheld_fields receipt UX (option 1).
+# Soft CTA tip tip 84f45f14 want 433883f1 LOCK. Soft CTA walls HOLD.
+# Do not tip. Do not deploy. SC no tip. Absolute No-Grade. No tip until Security MATCH.
+# LO report md5 0387a63e55f1aa03e8d1318c1f58e773.
+# Apply on the private receipts-mvp tree from the repo root:
+#   patch -p1 < worker/patches/receipt-withheld-offline-note.patch
+# Live Pages serves these three, byte-identical to public spec before this patch:
+#   spec/receipt-page.mjs spec/verify-browser.mjs spec/verify-core.mjs
+# spec/verify.mjs is the offline CLI (the page one-liner downloads it from git, not from Pages).
+# spec/courthouse/verify-core.mjs and integrations/x402-client/vendor/verify-core.mjs
+# are byte copies of spec/verify-core.mjs. spec/courthouse/verify-booth.mjs passes the same status.
+# Ship the three served files together. Do not change deco(). Do not un-redact listed_*.
+# Do not add a second signature. Home and Soft CTA walls are not in this patch.
+
+diff --git a/integrations/x402-client/vendor/verify-core.mjs b/integrations/x402-client/vendor/verify-core.mjs
+index 8d780f7..cbb0acb 100644
+--- a/integrations/x402-client/vendor/verify-core.mjs
++++ b/integrations/x402-client/vendor/verify-core.mjs
+@@ -14,6 +14,24 @@ export function unwrapReceipt(raw) {
+   return raw;
+ }
+ 
++// deco() withholds discovery-only listing fields and adds these markers.
++// The per-receipt signature covers the stored record, so this copy is not offline-verifiable.
++export const WITHHELD_STATUS = "not offline-verifiable";
++const WITHHELD_FIELD = /^[A-Za-z0-9_.*-]{1,64}$/;
++
++export function withheldMarker(raw) {
++  const r = unwrapReceipt(raw);
++  if (!r || typeof r !== "object" || Array.isArray(r)) return null;
++  const rawFields = Array.isArray(r.withheld_fields) ? r.withheld_fields : null;
++  const fields = rawFields
++    ? rawFields.filter((item) => typeof item === "string" && WITHHELD_FIELD.test(item)).slice(0, 12)
++    : [];
++  const noted = typeof r.withheld_note === "string" && r.withheld_note.trim().length > 0;
++  const hinted = typeof r.signature === "string" && r.signature.startsWith("withheld fields:");
++  if (!(rawFields && rawFields.length > 0) && !noted && !hinted) return null;
++  return { fields };
++}
++
+ // receipt_url, tx_url, and signature are API hints. payment is an API hint when it is a string or null.
+ // An object payment is part of the signed body (mcp_probe).
+ export function stripPresentation(receipt) {
+@@ -59,6 +77,28 @@ function statusOf(ok, errors) {
+ 
+ // deps: { sha256(string|bytes) -> hex, ed25519(pubB64, message, sigB64) -> bool, loadSnapshot()? -> { bytes, sig } }
+ export async function verifyReceipt(raw, keyset, deps) {
++  const marker = withheldMarker(raw);
++  if (marker) {
++    const r0 = unwrapReceipt(raw) || {};
++    const listed = marker.fields.length ? marker.fields.join(", ") : "withheld_fields";
++    return {
++      ok: false,
++      valid: false,
++      offline_verifiable: false,
++      status: WITHHELD_STATUS,
++      lines: [
++        `INFO  withheld fields: ${listed}`,
++        "INFO  redacted copy: not offline-verifiable; use /v1/verify",
++      ],
++      errors: ["withheld_fields"],
++      id: typeof r0.id === "string" ? r0.id : undefined,
++      key_id: r0.sig && r0.sig.key_id || null,
++      kind: r0.kind || null,
++      ts: r0.ts || null,
++      host: r0.host || null,
++      withheld_fields: marker.fields,
++    };
++  }
+   const lines = [];
+   const errors = [];
+   let ok = true;
+diff --git a/spec/courthouse/verify-booth.mjs b/spec/courthouse/verify-booth.mjs
+index dfe24db..3a4ec4f 100644
+--- a/spec/courthouse/verify-booth.mjs
++++ b/spec/courthouse/verify-booth.mjs
+@@ -1,10 +1,11 @@
+ // Browser entry for the courthouse booth. Imports ./verify-core.mjs (byte copy of ../verify-core.mjs).
+ // Paste a receipt link or JSON. Status is signature valid, signature invalid, or key unknown.
++// A copy with withheld markers shows not offline-verifiable and does not run the offline check.
+ // A link is fetched only after it is rebuilt to https://botsrated.com/receipt/<20 hex> plus host, mcp, day, and s.
+ // Keys come from https://botsrated.com/.well-known/botsrated-key.
+ // A matching signature checks this record only. It is not a rating of the seller.
+ // The Attach Guard link stays hidden unless the page search has soft=1.
+-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
++import { WITHHELD_STATUS, verifyReceipt, webcryptoDeps, withheldMarker } from "./verify-core.mjs";
+ 
+ export const KEYS_URL = "https://botsrated.com/.well-known/botsrated-key";
+ export const DATASET_URL = "https://botsrated.com/dataset.json";
+@@ -20,6 +21,7 @@ const BOOTH_URL = /^https:\/\/botsrated\.com\/receipt\/[0-9a-f]{20}(?:\?(?:host|
+ const FETCH_INIT = { credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" };
+ 
+ export function signatureStatus(result, cryptoOk) {
++  if (result && result.status === WITHHELD_STATUS) return WITHHELD_STATUS;
+   if (!cryptoOk || !result) return "signature invalid";
+   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
+   return "signature invalid";
+@@ -108,8 +110,19 @@ async function readOk(res) {
+ export async function checkBooth(text, options = {}) {
+   const fetchImpl = options.fetchImpl || globalThis.fetch;
+   const cryptoOk = Object.prototype.hasOwnProperty.call(options, "cryptoOk") ? !!options.cryptoOk : await ed25519WebCryptoAvailable();
+-  if (!cryptoOk) return { status: "signature invalid", fields: emptyFields() };
+   const parsed = parseBoothInput(text);
++  if (parsed.kind === "json" && withheldMarker(parsed.value)) {
++    return { status: WITHHELD_STATUS, fields: fieldsOf(parsed.value) };
++  }
++  if (!cryptoOk) {
++    if (parsed.kind === "url") {
++      try {
++        const fetched = await (await readOk(await fetchImpl(parsed.url, FETCH_INIT))).json();
++        if (withheldMarker(fetched)) return { status: WITHHELD_STATUS, fields: fieldsOf(fetched) };
++      } catch { /* the offline check did not run */ }
++    }
++    return { status: "signature invalid", fields: emptyFields() };
++  }
+   if (parsed.kind !== "json" && parsed.kind !== "url") return { status: "signature invalid", fields: emptyFields() };
+   let keyset;
+   try {
+diff --git a/spec/courthouse/verify-core.mjs b/spec/courthouse/verify-core.mjs
+index 8d780f7..cbb0acb 100644
+--- a/spec/courthouse/verify-core.mjs
++++ b/spec/courthouse/verify-core.mjs
+@@ -14,6 +14,24 @@ export function unwrapReceipt(raw) {
+   return raw;
+ }
+ 
++// deco() withholds discovery-only listing fields and adds these markers.
++// The per-receipt signature covers the stored record, so this copy is not offline-verifiable.
++export const WITHHELD_STATUS = "not offline-verifiable";
++const WITHHELD_FIELD = /^[A-Za-z0-9_.*-]{1,64}$/;
++
++export function withheldMarker(raw) {
++  const r = unwrapReceipt(raw);
++  if (!r || typeof r !== "object" || Array.isArray(r)) return null;
++  const rawFields = Array.isArray(r.withheld_fields) ? r.withheld_fields : null;
++  const fields = rawFields
++    ? rawFields.filter((item) => typeof item === "string" && WITHHELD_FIELD.test(item)).slice(0, 12)
++    : [];
++  const noted = typeof r.withheld_note === "string" && r.withheld_note.trim().length > 0;
++  const hinted = typeof r.signature === "string" && r.signature.startsWith("withheld fields:");
++  if (!(rawFields && rawFields.length > 0) && !noted && !hinted) return null;
++  return { fields };
++}
++
+ // receipt_url, tx_url, and signature are API hints. payment is an API hint when it is a string or null.
+ // An object payment is part of the signed body (mcp_probe).
+ export function stripPresentation(receipt) {
+@@ -59,6 +77,28 @@ function statusOf(ok, errors) {
+ 
+ // deps: { sha256(string|bytes) -> hex, ed25519(pubB64, message, sigB64) -> bool, loadSnapshot()? -> { bytes, sig } }
+ export async function verifyReceipt(raw, keyset, deps) {
++  const marker = withheldMarker(raw);
++  if (marker) {
++    const r0 = unwrapReceipt(raw) || {};
++    const listed = marker.fields.length ? marker.fields.join(", ") : "withheld_fields";
++    return {
++      ok: false,
++      valid: false,
++      offline_verifiable: false,
++      status: WITHHELD_STATUS,
++      lines: [
++        `INFO  withheld fields: ${listed}`,
++        "INFO  redacted copy: not offline-verifiable; use /v1/verify",
++      ],
++      errors: ["withheld_fields"],
++      id: typeof r0.id === "string" ? r0.id : undefined,
++      key_id: r0.sig && r0.sig.key_id || null,
++      kind: r0.kind || null,
++      ts: r0.ts || null,
++      host: r0.host || null,
++      withheld_fields: marker.fields,
++    };
++  }
+   const lines = [];
+   const errors = [];
+   let ok = true;
+diff --git a/spec/receipt-page.mjs b/spec/receipt-page.mjs
+index 6b68a89..d34259c 100644
+--- a/spec/receipt-page.mjs
++++ b/spec/receipt-page.mjs
+@@ -4,7 +4,10 @@
+ // Content-Security-Policy to RECEIPT_PAGE_CSP on the response (the meta tag repeats it).
+ // Serve verify-browser.mjs and verify-core.mjs at /spec/.
+ // The pasted CLI URL comes from receiptCliUrl (checked id + allowlisted host, mcp, day, s), not from request.url.
+-// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result for that later free route.
++// A copy with withheld_fields, withheld_note, or a signature hint that starts with "withheld fields:"
++// is not offline-verifiable. The page says so and links to /v1/verify. It does not offer the offline CLI.
++// GET /v1/verify checks the stored record. verifyResultJson is the offline result for a later free route.
++import { WITHHELD_STATUS, withheldMarker } from "./verify-core.mjs";
+ 
+ export const RECEIPT_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://botsrated.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+ 
+@@ -102,6 +105,23 @@ export function quoteShellArg(url) {
+   return "'" + url + "'";
+ }
+ 
++// Same allowlists as receiptCliUrl. Relative path for the receipt page.
++export function receiptVerifyPath(id, query, receiptHost) {
++  const page = receiptCliUrl(id, query, receiptHost);
++  if (!page) return "/v1/verify";
++  let url;
++  try { url = new URL(page); } catch { return "/v1/verify"; }
++  const m = /^\/receipt\/([0-9a-f]{20})$/.exec(url.pathname);
++  if (!m) return "/v1/verify";
++  const q = new URLSearchParams();
++  q.set("id", m[1]);
++  for (const key of ["host", "mcp", "day", "s"]) {
++    const value = url.searchParams.get(key);
++    if (value) q.set(key, value);
++  }
++  return "/v1/verify?" + q.toString();
++}
++
+ export function receiptShellCommands(id, query, receiptHost) {
+   const quoted = quoteShellArg(receiptCliUrl(id, query, receiptHost));
+   const cli = quoted ? "node spec/verify.mjs " + quoted : "node spec/verify.mjs";
+@@ -112,18 +132,21 @@ export function receiptShellCommands(id, query, receiptHost) {
+ 
+ // Missing WebCrypto is not a pass. Only the three check results are shown, and only when crypto ran.
+ export function signatureStatus(result, cryptoOk) {
++  if (result && result.status === WITHHELD_STATUS) return WITHHELD_STATUS;
+   if (!cryptoOk || !result) return "signature invalid";
+   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
+   return "signature invalid";
+ }
+ 
+ export function verifyResultJson(result) {
+-  return {
++  const body = {
+     valid: !!result.valid,
+     id: result.id ?? null,
+     key_id: result.key_id ?? null,
+     errors: Array.isArray(result.errors) ? result.errors : [],
+   };
++  if (result && result.offline_verifiable === false) body.offline_verifiable = false;
++  return body;
+ }
+ 
+ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec/verify-browser.mjs" } = {}) {
+@@ -136,7 +159,18 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
+   const hostPath = host ? "/s/" + encodeURIComponent(host) : "/sellers";
+   const preflight = host ? "/v1/preflight?url=" + encodeURIComponent(host) : "/v1/preflight";
+   // pageUrl is not pasted. Only an allowlisted id and host/mcp/day/s are.
+-  const { cli, oneLiner } = receiptShellCommands(id, query != null ? query : pageUrl, host);
++  const marker = withheldMarker(raw);
++  const source = query != null ? query : pageUrl;
++  const verifyPath = receiptVerifyPath(id, source, host);
++  const { cli, oneLiner } = receiptShellCommands(id, source, host);
++  const statusText = marker ? WITHHELD_STATUS : "checking signature\u2026";
++  const withheldRow = marker && marker.fields.length
++    ? `\n    <dt>withheld</dt><dd id="f-withheld">${esc(marker.fields.join(", "))}</dd>`
++    : "";
++  const verifyButton = marker ? "" : `  <p><button type="button" id="verify-btn">Verify signature</button></p>\n`;
++  const checkBlock = marker
++    ? `  <p class="note" id="offline-note">Redacted copy: not offline-verifiable. Use <a href="${esc(verifyPath)}">/v1/verify</a>.</p>`
++    : `  <h2>CLI</h2>\n  <pre id="cli">${esc(cli)}</pre>\n  <pre id="cli-oneliner">${esc(oneLiner)}</pre>\n  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only \u2014 not a seller rating. If this browser can\u2019t run the check, status stays checking signature\u2026</p>`;
+   const embedded = JSON.stringify(raw).replace(/</g, "\\u003c");
+   return `<!doctype html>
+ <html lang="en">
+@@ -165,21 +199,17 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
+ <body>
+ <main>
+   <p class="eyebrow">BotsRated receipt</p>
+-  <h1 id="status">checking signature…</h1>
++  <h1 id="status">${esc(statusText)}</h1>
+   <dl>
+     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
+     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
+     <dt>ts</dt><dd id="f-ts">${esc(ts)}</dd>
+     <dt>host</dt><dd id="f-host">${host ? `<a href="${esc(hostPath)}">${esc(host)}</a>` : ""}</dd>
+-    <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>
++    <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>${withheldRow}
+   </dl>
+-  <p><button type="button" id="verify-btn">Verify signature</button></p>
+-  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
++${verifyButton}  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
+   <p class="desk"><a href="/desk">Map many hosts free in Desk →</a></p>
+-  <h2>CLI</h2>
+-  <pre id="cli">${esc(cli)}</pre>
+-  <pre id="cli-oneliner">${esc(oneLiner)}</pre>
+-  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…</p>
++${checkBlock}
+ </main>
+ <script type="application/json" id="receipt-data">${embedded}</script>
+ <script type="module" src="${esc(scriptSrc)}"></script>
+diff --git a/spec/verify-browser.mjs b/spec/verify-browser.mjs
+index 6fd2eb3..5ad2323 100644
+--- a/spec/verify-browser.mjs
++++ b/spec/verify-browser.mjs
+@@ -1,6 +1,7 @@
+ // Browser entry for the receipt page. Same verifyReceipt as the CLI.
+ // No WebCrypto Ed25519 means signature invalid. The page does not claim a pass.
+-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
++// A withheld copy stays not offline-verifiable and does not run the offline check.
++import { WITHHELD_STATUS, verifyReceipt, webcryptoDeps, withheldMarker } from "./verify-core.mjs";
+ import { signatureStatus } from "./receipt-page.mjs";
+ 
+ export async function ed25519WebCryptoAvailable() {
+@@ -24,11 +25,20 @@ function keyOrigin() {
+ 
+ export async function runReceiptPage() {
+   const el = document.getElementById("status");
++  const dataEl = document.getElementById("receipt-data");
++  let raw = null;
++  if (dataEl) {
++    try { raw = JSON.parse(dataEl.textContent); } catch { raw = null; }
++  }
++  if (withheldMarker(raw)) {
++    if (el) el.textContent = WITHHELD_STATUS;
++    return;
++  }
+   if (!(await ed25519WebCryptoAvailable())) {
+     el.textContent = signatureStatus(null, false);
+     return;
+   }
+-  const raw = JSON.parse(document.getElementById("receipt-data").textContent);
++  if (!raw) raw = JSON.parse(dataEl.textContent);
+   const origin = keyOrigin();
+   let keyset;
+   try {
+diff --git a/spec/verify-core.mjs b/spec/verify-core.mjs
+index 8d780f7..cbb0acb 100644
+--- a/spec/verify-core.mjs
++++ b/spec/verify-core.mjs
+@@ -14,6 +14,24 @@ export function unwrapReceipt(raw) {
+   return raw;
+ }
+ 
++// deco() withholds discovery-only listing fields and adds these markers.
++// The per-receipt signature covers the stored record, so this copy is not offline-verifiable.
++export const WITHHELD_STATUS = "not offline-verifiable";
++const WITHHELD_FIELD = /^[A-Za-z0-9_.*-]{1,64}$/;
++
++export function withheldMarker(raw) {
++  const r = unwrapReceipt(raw);
++  if (!r || typeof r !== "object" || Array.isArray(r)) return null;
++  const rawFields = Array.isArray(r.withheld_fields) ? r.withheld_fields : null;
++  const fields = rawFields
++    ? rawFields.filter((item) => typeof item === "string" && WITHHELD_FIELD.test(item)).slice(0, 12)
++    : [];
++  const noted = typeof r.withheld_note === "string" && r.withheld_note.trim().length > 0;
++  const hinted = typeof r.signature === "string" && r.signature.startsWith("withheld fields:");
++  if (!(rawFields && rawFields.length > 0) && !noted && !hinted) return null;
++  return { fields };
++}
++
+ // receipt_url, tx_url, and signature are API hints. payment is an API hint when it is a string or null.
+ // An object payment is part of the signed body (mcp_probe).
+ export function stripPresentation(receipt) {
+@@ -59,6 +77,28 @@ function statusOf(ok, errors) {
+ 
+ // deps: { sha256(string|bytes) -> hex, ed25519(pubB64, message, sigB64) -> bool, loadSnapshot()? -> { bytes, sig } }
+ export async function verifyReceipt(raw, keyset, deps) {
++  const marker = withheldMarker(raw);
++  if (marker) {
++    const r0 = unwrapReceipt(raw) || {};
++    const listed = marker.fields.length ? marker.fields.join(", ") : "withheld_fields";
++    return {
++      ok: false,
++      valid: false,
++      offline_verifiable: false,
++      status: WITHHELD_STATUS,
++      lines: [
++        `INFO  withheld fields: ${listed}`,
++        "INFO  redacted copy: not offline-verifiable; use /v1/verify",
++      ],
++      errors: ["withheld_fields"],
++      id: typeof r0.id === "string" ? r0.id : undefined,
++      key_id: r0.sig && r0.sig.key_id || null,
++      kind: r0.kind || null,
++      ts: r0.ts || null,
++      host: r0.host || null,
++      withheld_fields: marker.fields,
++    };
++  }
+   const lines = [];
+   const errors = [];
+   let ok = true;
+diff --git a/spec/verify.mjs b/spec/verify.mjs
+index 2bd6cfe..d88e0e5 100644
+--- a/spec/verify.mjs
++++ b/spec/verify.mjs
+@@ -8,11 +8,13 @@
+ // (3) optional: for paid test-buys, the on-chain USDC Transfer(payer -> payTo, paid amount) in the tx receipt.
+ // Presentation fields receipt_url, tx_url, and signature are removed. payment is removed only when it is not an object
+ // (string hints on unpaid probes). An object payment is signed (mcp_probe) and stays.
++// withheld_fields, withheld_note, or a signature hint that starts with "withheld fields:" means the copy
++// is not offline-verifiable. This program prints that and exits 3. It does not print a signature verdict for that copy.
+ import crypto from "node:crypto";
+ import fs from "node:fs";
+ import path from "node:path";
+ import { pathToFileURL } from "node:url";
+-import { stripPresentation, unwrapReceipt, verifyReceipt } from "./verify-core.mjs";
++import { stripPresentation, unwrapReceipt, verifyReceipt, withheldMarker } from "./verify-core.mjs";
+ import { nodeDeps } from "./verify-node.mjs";
+ 
+ function invokedAsCli() {
+@@ -33,6 +35,11 @@ async function main() {
+     return raw ? buf : JSON.parse(buf);
+   };
+   const parsed = await load(src);
++  if (withheldMarker(parsed)) {
++    const held = await verifyReceipt(parsed, { keys: [] }, nodeDeps());
++    for (const line of held.lines) console.log(line);
++    process.exit(3);
++  }
+   const keyset = await load(opt("--keys", `${B}/.well-known/botsrated-key`));
+   const deps = nodeDeps();
+   deps.loadSnapshot = async () => ({

@@ -8,11 +8,13 @@
 // (3) optional: for paid test-buys, the on-chain USDC Transfer(payer -> payTo, paid amount) in the tx receipt.
 // Presentation fields receipt_url, tx_url, and signature are removed. payment is removed only when it is not an object
 // (string hints on unpaid probes). An object payment is signed (mcp_probe) and stays.
+// withheld_fields, withheld_note, or a signature hint that starts with "withheld fields:" means the copy
+// is not offline-verifiable. This program prints that and exits 3. It does not print a signature verdict for that copy.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { stripPresentation, unwrapReceipt, verifyReceipt } from "./verify-core.mjs";
+import { stripPresentation, unwrapReceipt, verifyReceipt, withheldMarker } from "./verify-core.mjs";
 import { nodeDeps } from "./verify-node.mjs";
 
 function invokedAsCli() {
@@ -33,6 +35,11 @@ async function main() {
     return raw ? buf : JSON.parse(buf);
   };
   const parsed = await load(src);
+  if (withheldMarker(parsed)) {
+    const held = await verifyReceipt(parsed, { keys: [] }, nodeDeps());
+    for (const line of held.lines) console.log(line);
+    process.exit(3);
+  }
   const keyset = await load(opt("--keys", `${B}/.well-known/botsrated-key`));
   const deps = nodeDeps();
   deps.loadSnapshot = async () => ({
