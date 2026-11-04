@@ -44,9 +44,14 @@ export * from "./payment-guard.js";
 export * from "./onchain.js";
 export {
   guardAttach,
+  strictModeHalt,
+  evaluateHalt,
+  STRICT_MODE_HALT_CHIPS,
   type GuardAttach,
   type GuardAttachOptions,
   type GuardAttachClient,
+  type HaltDecision,
+  type HaltOn,
 } from "./guard-attach.js";
 export {
   GUARD_CHIPS,

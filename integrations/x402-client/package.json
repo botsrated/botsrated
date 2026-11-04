@@ -23,6 +23,14 @@
       "types": "./dist/guard-policy.d.ts",
       "import": "./dist/guard-policy.js"
     },
+    "./halt-policy": {
+      "types": "./dist/halt-policy.d.ts",
+      "import": "./dist/halt-policy.js"
+    },
+    "./verify-receipt": {
+      "types": "./verify-receipt.d.ts",
+      "import": "./verify-receipt.mjs"
+    },
     "./onchain": {
       "types": "./dist/onchain.d.ts",
       "import": "./dist/onchain.js"
@@ -31,6 +39,8 @@
   },
   "files": [
     "dist",
+    "verify-receipt.mjs",
+    "verify-receipt.d.ts",
     "README.md",
     "LICENSE"
   ],
@@ -41,7 +51,7 @@
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build",
     "pretest": "npm run build",
-    "test": "vitest run && node --test ../../spec/verify.test.mjs",
+    "test": "vitest run && node --test ../../spec/verify.test.mjs test/verify-receipt.parity.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [

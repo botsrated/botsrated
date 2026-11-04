@@ -58,6 +58,16 @@ export interface CustomerPolicy {
   pay_to?: unknown;
   networks?: unknown;
   resource_hosts?: unknown;
+  /**
+   * Opt-in chip list for the client halt. `evaluateCustomerPolicy` does not
+   * read this. See halt-policy.
+   */
+  halt_on?: unknown;
+  /**
+   * Opt-in sample for the client halt. `evaluateCustomerPolicy` does not read
+   * this. See halt-policy.
+   */
+  strict_mode?: unknown;
 }
 
 export interface MeasuredFacts {

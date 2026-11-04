@@ -69,6 +69,10 @@ This layer does not apply the SDK `$1` spend cap. That cap stays in the SDK. See
 
 `as_of` and `last_checked` are the same timestamp when a measurement is present. `expires_at` is the caller-supplied end of that window. An evidence URL is kept only when it is `https://botsrated.com/…` (or `www`). Anything else is stored as null. The receipt records `as_of`. It does not add a minutes-to-detect figure.
 
+## Halt
+
+A client may abort when one of these chips is on the customer's halt list. That abort is not a new verdict and not a new chip. The signed body on this page is unchanged. `verdict` stays the customer's pass, fail, or null. `evaluateCustomerPolicy` does not read the halt fields. See [`halt-policy.md`](halt-policy.md). `fail_mode` is unchanged: see [`fail-mode.md`](fail-mode.md).
+
 ## Ids
 
 `org_id`, `team_id`, `agent_id`, `policy_id`, `policy_version`, and the signing key id are labels: they start with a letter or digit and then use only letters, digits, `.`, `_`, `:`, and `-`, at most 80 characters. The HTTP stub takes `org_id` from the bearer, not from a conflicting body field.

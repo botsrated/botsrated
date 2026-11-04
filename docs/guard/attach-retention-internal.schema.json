@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://botsrated.com/docs/guard/attach-retention-internal.schema.json",
+  "title": "Guard attach retention (internal)",
+  "description": "Internal shape for week-over-week retained outside Guard attaches: distinct callers_week keys with channel guard, excluding internal. Download counts are not the measure. Not a public badge. publish is false when count is null, count <= 0, or qa_clean is false. Site and API must not expose the scoreboard in those cases.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec",
+    "visibility",
+    "window",
+    "metric",
+    "key",
+    "channel",
+    "excludes_internal",
+    "downloads_are_not_the_measure",
+    "qa_clean",
+    "count",
+    "publish",
+    "publish_gate",
+    "public_badge",
+    "owners",
+    "packed_by"
+  ],
+  "properties": {
+    "spec": { "const": "botsrated-guard-attach-retention-internal/1" },
+    "visibility": { "const": "internal" },
+    "window": { "const": "wow" },
+    "metric": { "const": "callers_week_retained" },
+    "key": { "const": "callers_week" },
+    "channel": { "const": "guard" },
+    "excludes_internal": { "const": true },
+    "downloads_are_not_the_measure": { "const": true },
+    "qa_clean": { "type": "boolean" },
+    "count": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "publish": { "type": "boolean" },
+    "publish_gate": { "const": "count_gt_0_and_qa_clean" },
+    "public_badge": { "const": false },
+    "owners": {
+      "const": ["revenue", "caller_convert", "data_checker"]
+    },
+    "packed_by": { "const": "guard" },
+    "as_of": {
+      "oneOf": [
+        { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$" },
+        { "type": "null" }
+      ]
+    },
+    "note": { "type": "string", "maxLength": 240 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "properties": { "count": { "type": "null" } }, "required": ["count"] },
+          { "properties": { "count": { "type": "integer", "maximum": 0 } }, "required": ["count"] },
+          { "properties": { "qa_clean": { "const": false } }, "required": ["qa_clean"] }
+        ]
+      },
+      "then": {
+        "properties": { "publish": { "const": false } }
+      }
+    }
+  ]
+}
