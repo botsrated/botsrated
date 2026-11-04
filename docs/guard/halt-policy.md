@@ -46,6 +46,8 @@ const attach = guardAttach({
 
 That measurement carries `payTo changed`. The sample halt aborts. The policy verdict can still be `pass`. `fail_mode` stays `open`. `failOpenDefault` stays true.
 
+Copy-paste client sample: [`examples/strict-mode-halt.md`](examples/strict-mode-halt.md) and `integrations/x402-client/examples/strict-mode-halt.ts`.
+
 ## Chips
 
 The chip vocabulary stays the fixed measurement set from [`fail-mode.md`](fail-mode.md): `live`, `402 ok`, `payTo changed`, `probe failed`, `no data yet`.

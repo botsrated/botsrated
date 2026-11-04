@@ -31,7 +31,7 @@ const attach = guardAttach({
 client.onBeforePaymentCreation(attach.onBeforePaymentCreation);
 ```
 
-Opt in to a chip halt with `haltOn` or `strictModeHalt()`. The sample stops the payment when the measurement shows `payTo changed` or `probe failed`. Omit it and chip halt stays off. The policy verdict is unchanged. This does not set `failOpen` to false. Wording is in `docs/guard/halt-policy.md`.
+Opt in to a chip halt with `haltOn` or `strictModeHalt()`. The sample stops the payment when the measurement shows `payTo changed` or `probe failed`. Omit it and chip halt stays off. The policy verdict is unchanged. This does not set `failOpen` to false. Wording is in `docs/guard/halt-policy.md`. Copy-paste client sample: [`examples/strict-mode-halt.ts`](examples/strict-mode-halt.ts) and [`docs/guard/examples/strict-mode-halt.md`](../../docs/guard/examples/strict-mode-halt.md).
 
 ```ts
 import { guardAttach, strictModeHalt } from "@botsrated/x402-preflight/guard-attach";

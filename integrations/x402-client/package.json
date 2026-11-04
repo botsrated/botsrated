@@ -52,7 +52,7 @@
     "prepack": "npm run build",
     "pretest": "npm run build",
     "test": "vitest run && node --test ../../spec/verify.test.mjs test/verify-receipt.parity.test.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json --noEmit"
   },
   "keywords": [
     "x402",
