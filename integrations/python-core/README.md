@@ -3,13 +3,16 @@
 ## Install in 3 steps
 
 1. Install: `pip install "botsrated[x402]"` (PyPI 0.3.1).
-2. Attach to your x402 client:
+2. Attach to your x402 client (omit `preset` for advice only; omit `fail_mode` to stay open):
 ```python
 from botsrated import PaymentGuard
-guard = PaymentGuard(preset="carefulBuyer")
-guard.install(client)
+guard = PaymentGuard()
+guard.install(x402_client)
+paid_get = guard.wrap_get(session.get)  # or guard.wrap_async_get(http.get)
 ```
-3. Pick `preset` (omit it, or call `PaymentGuard()`, for advice only; `carefulBuyer` / `strict` stop an unobserved payTo). Omit `fail_mode` inside `remote_policy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Wrap the paying call with `guard.wrap_get` / `guard.wrap_async_get` so the guard knows the paid URL.
+3. Pick `preset` only when you want it (`carefulBuyer` / `strict` stop an unobserved payTo). Omit `fail_mode` inside `remote_policy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remote_policy` on botsrated 0.3.0 and later, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk). Nothing defaults you to closed.
 
