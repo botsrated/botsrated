@@ -286,3 +286,13 @@ Rules for router and wallet builders:
 3. A missing verdict (`null`, `501`, timeout) is not a pass. Open records info and continues; closed stops the payment. Omit `fail_mode` to stay open.
 4. Defaults are unchanged. Client-side `createPaymentGuard()` keeps `failOpen` true, and the SDK `$1` spend control still runs first.
 5. Calling Guard from a router is optional. It is not required to try BotsRated.
+
+## How we count outside attaches
+
+This section explains how attaches are counted. It does not publish a number.
+
+- **What counts:** distinct weekly caller keys (`callers_week`, week plus HMAC key) with `channel='guard'`. Rows tagged `internal` (our own probes, tests, and self-calls) are excluded.
+- **What sticks:** a key counts as retained when it shows up again the next week. Retained outside attaches, plus scaffolds made from the coding-agent recipe above, are the measure we follow.
+- **Not a success metric:** npm or PyPI download counts. Version lines in this repo state which release is published. They do not show that anyone attached Guard.
+- **No funnel math:** counts are reported side by side. We do not join them into a conversion rate.
+- **Today:** there is no public retained-attach figure yet. The measurement lands with Caller Convert and Live Ops digests, and a figure is published only once it is real.

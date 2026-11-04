@@ -55,3 +55,5 @@ The client enforces. BotsRated holds no funds, signs no payment, and has no escr
 ## What this page does not change
 
 No package version, no default, no live route. `failOpen` stays `true`. The SDK `$1` cap stays in the SDK.
+
+How outside Guard attaches are counted (and why download counts are not the measure): [`llms-install.md` → How we count outside attaches](../../llms-install.md#how-we-count-outside-attaches).

@@ -86,6 +86,7 @@ Attaching Guard before the first paid request is a required step of that recipe.
 all three copies so the text from the section heading down is byte-identical. If a copy drifts, `llms-install.md`
 wins. The default path the recipe follows is [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md).
 There is no counter for recipe-originated attaches today; that measurement lands with Caller Convert instrumentation.
+The counting method (`callers_week`, `channel='guard'`, `internal` excluded, retained week over week; downloads are not the measure) is in [`llms-install.md` → How we count outside attaches](llms-install.md#how-we-count-outside-attaches).
 The section “Router or wallet: call Guard before pay” sits after “Optional” in `llms-install.md` only. It is outside
 the recipe and is not copied into the rule or skill. Keep it pointing at [`docs/guard/guard-check.md`](docs/guard/guard-check.md).
 
