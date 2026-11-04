@@ -67,6 +67,8 @@ Order in the scaffold:
 
 The canon for this path is `docs/guard/default-middleware.md` (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff). Defaults stay as shipped: omit preset for advice only, omit fail_mode to stay open.
 
+Core JS, Python, and curl paste: [`docs/guard/copy-paste-attach.md`](docs/guard/copy-paste-attach.md). Curl does not attach. The stack attach below stays the pair-with call.
+
 Versions below were measured on 2026-10-31 against PyPI and the npm registry.
 
 ### Choose stack → install → attach
@@ -262,6 +264,22 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
 7. The attach step is not optional in pay code you write. Do not ship a scaffold that can send a paid request before the attach call runs. This rule is about the code you write. It is not a claim to the user that attach is required to try BotsRated.
+
+## Chip halt sample
+
+Opt-in chip halt on `@botsrated/x402-preflight`. Canon: [`docs/guard/halt-policy.md`](docs/guard/halt-policy.md). Full sample: [`docs/guard/examples/strict-mode-halt.md`](docs/guard/examples/strict-mode-halt.md) and [`integrations/x402-client/examples/strict-mode-halt.ts`](integrations/x402-client/examples/strict-mode-halt.ts). Pair-with `attach_payment_guard` / `attachPaymentGuard` do not take `haltOn`.
+
+`strictModeHalt()` is imported from `@botsrated/x402-preflight/guard-attach` and returns `{ strict_mode: true }` for `guardAttach({ haltOn })`. The same sample is `haltOn: { strict_mode: true }`, or a chip list. Sample chips: `payTo changed`, `probe failed`. Measured chips, not grades. A customer list replaces the sample. It is not `policies.strict`, and it is not a closed `fail_mode`. Omit `haltOn`, `strict_mode`, and `halt_on` and chip halt stays off. An empty chip list is on and matches nothing. `failOpen` stays the default. The halt aborts the payment hook only. The policy receipt verdict can still be `pass`.
+
+```ts
+import { guardAttach, strictModeHalt } from "@botsrated/x402-preflight/guard-attach";
+
+const attach = guardAttach({
+  policy: { /* customer policy; fail_mode stays theirs */ },
+  measured: { /* caller-supplied facts */ },
+  haltOn: strictModeHalt(),
+});
+```
 
 ## Optional: your policy on BotsRated
 

@@ -12,11 +12,15 @@ npm install @botsrated/x402-preflight
 
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
-const guard = createPaymentGuard({ preset: "carefulBuyer" }); // omit preset = warn only
+const guard = createPaymentGuard(); // omit preset = advice; omit failMode = open
 guard.install(x402Client); // the x402 client your agent already pays with
 ```
 
 The pair-with package is not on npm yet: `npm install` in `integrations/mastra`, then `attachPaymentGuard` from `@botsrated/mastra`.
+
+Core JS, Python, and curl paste (curl does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
+
+Chip halt is not this attach. `strictModeHalt()` from `@botsrated/x402-preflight/guard-attach` is `guardAttach({ haltOn })`. Sample chips: `payTo changed`, `probe failed`. Canon: [`docs/guard/halt-policy.md`](../../docs/guard/halt-policy.md). Sample: [`docs/guard/examples/strict-mode-halt.md`](../../docs/guard/examples/strict-mode-halt.md) and [`integrations/x402-client/examples/strict-mode-halt.ts`](../x402-client/examples/strict-mode-halt.ts). Omit `haltOn` and chip halt stays off. It is not `policies.strict`, and it is not a closed `fail_mode`. `failOpen` stays the default.
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
