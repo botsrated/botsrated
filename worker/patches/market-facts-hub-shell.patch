@@ -1,0 +1,821 @@
+# Soft OPEN #51 slice 2. Pages tip base 84f45f14. Want 433883f1 (Pages tip id, not a git SHA).
+# Soft CTA walls HOLD. Do not tip, deploy, or edit Soft CTA strings.
+# Apply on the private receipts-mvp tree:
+#   patch -p1 < worker/patches/market-facts-hub-shell.patch
+# Adds worker/src/market_facts.ts and worker/test/market_facts_unit.ts.
+# Then mount the two calls in the file header (router + shared HTML helper).
+# Peer rows are HOLD APPLY. MARKET_FACTS_PUBLISH_ROWS stays false until Legal slice-5 + MATCH.
+# prefer-us Watch link is omitted (gate OPEN). `/` page source is not in this diff.
+# /market.json is not added.
+
+--- a/worker/src/market_facts.ts
++++ b/worker/src/market_facts.ts
+@@ -0,0 +1,622 @@
++// Soft OPEN #51 slice 2 — /market facts hub shell.
++// Pages tip base 84f45f14. Want 433883f1 is a Pages tip id, not a git SHA.
++// Soft CTA walls HOLD. This file does not edit the `/` page or the Desk module.
++// Do not tip or deploy from this pack.
++//
++// Design LOCK body md5 66f00532103d285c17afbd8118aad9e0.
++// Legal cfd69bf1 GO-with-gates. Seed 2a09d33f. Claim language 32edd145.
++// Peer rows are HOLD APPLY: structured below, not emitted until
++// MARKET_FACTS_PUBLISH_ROWS is set true after Legal slice-5 and Security MATCH.
++//
++// Mount on the private receipts-mvp tree (shell + html already exist):
++//
++//   import { decorateSiteHtml, marketFactsDispatch } from "./market_facts";
++//
++//   const market = marketFactsDispatch(url, request, c, { shell, html });
++//   if (market) return market;
++//
++// And inside the shared HTML helper, before the response is built:
++//
++//   document = decorateSiteHtml(document);
++//
++// decorateSiteHtml appends the Evidence link and the /docs list line.
++// It does not reorder other links. prefer-us Watch link is omitted (gate OPEN).
++
++export const MARKET_PATH = "/market";
++export const MARKET_CANONICAL = "https://botsrated.com/market";
++export const MARKET_TITLE = "Market facts — BotsRated";
++export const MARKET_DESC =
++  "Facts about the check-before-pay space for x402 and MCP: offers, payment rails, and prices as published, each with a date and a source.";
++export const MARKET_LEAD =
++  "Facts about the check-before-pay space for x402 and MCP: what each service says it offers, the payment rails it lists, and its price as published — each with a date and a source link.";
++export const MARKET_NOTE =
++  "Listed the same way for every service, BotsRated included. Not a rating, ranking, or review.";
++
++/** Flip only after Legal slice-5 unpaid re-spot and Security MATCH. Default off. */
++export const MARKET_FACTS_PUBLISH_ROWS = false;
++
++export const SEED_AS_OF = "2026-11-04";
++/** Seed header: fetched ~1:30pm CT on 2026-11-04 (CST, UTC-6). Date grain for every row. */
++export const SEED_AS_OF_ISO = "2026-11-04T19:30:00Z";
++
++export type RailsLabel = "x402" | "MCP" | "x402 + MCP" | "Not published";
++export type ChangeKind = "Offer" | "Rail" | "Price" | "Product";
++
++export interface MarketFactRow {
++  name: string;
++  /** One published-claim sentence. Banned judgment words are left out of this field. */
++  offers: string;
++  rails: RailsLabel;
++  /** Exact seed price, or the LOCK empty cell `Not published`. */
++  price_as_published: string;
++  as_of: string;
++  as_of_iso: string;
++  source_url: string;
++  /** ISO date when the seed cites one, else empty (cell renders `No data yet`). */
++  first_seen: string;
++  /** ISO date when the seed cites a dated page fact, else empty (`—`). */
++  last_changed: string;
++  last_changed_iso?: string;
++  /** Ops fetch state. Omitted when the seed status is simply live. */
++  ops?: "unreachable";
++  /** True only when a signed receipt for this row is passed in. Never inferred. */
++  receipt_backed?: boolean;
++  measured_chips?: string[];
++}
++
++export interface MarketChange {
++  at: string;
++  at_iso: string;
++  name: string;
++  kind: ChangeKind | "First seen";
++  from?: string;
++  to?: string;
++  source_url: string;
++}
++
++export interface MarketShellOpts {
++  title: string;
++  desc: string;
++  path: string;
++  body: string;
++  script?: boolean;
++}
++
++export interface MarketDeps {
++  shell: (c: unknown, opts: MarketShellOpts) => string;
++  html: (c: unknown, document: string, status?: number) => Response;
++  /** Courthouse LIVE 200. Default false: omit `Open signed receipt`. */
++  courthouseLive?: boolean;
++  now?: Date;
++}
++
++const NOT_PUBLISHED = "Not published";
++const NO_DATA_CELL = "No data yet";
++const NO_CHANGE = "—";
++const NO_CHANGE_TITLE = "No change recorded";
++
++/**
++ * HOLD APPLY rows from seed 2a09d33f, phrased with claim language 32edd145.
++ * Prices and source URLs are the seed's. Offers are one sentence and do not reuse
++ * a peer's judgment words as our label. APEX stays in the list and is hidden:
++ * the seed has no source_url. No change-board events are invented from these rows.
++ */
++export const MARKET_FACTS_HOLD_ROWS: readonly MarketFactRow[] = [
++  {
++    name: "Agent Embassy",
++    offers: "Lists paid tools with signed outcome receipts, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Check ping $0.001; trust preflight $0.25; trust report $0.25; (full list on pricing.md)",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://aemb.pro/pricing.md",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Attest",
++    offers: "Publishes a letter report on endpoints before pay, as their product output.",
++    rails: "x402 + MCP",
++    price_as_published: NOT_PUBLISHED,
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://attestagent.org/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Blackwall",
++    offers: "Publishes GO, HOLD, or STOP output as their product, as published.",
++    rails: "x402 + MCP",
++    price_as_published: 'free under $10 at risk; "about a cent" demo call (no rate card)',
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://x402.blackwalltier.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "BotsRated",
++    offers: "Free preflight at $0.001 a check, plus Guard and a fleet change pulse, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Free preflight $0.001 a check; Pro $19/mo; Data Pro $199 / 30 days in USDC",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://botsrated.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Fizzl / x402 Doctor",
++    offers: "Calls paid x402 endpoints it finds and lists a free prompt-injection check, as published.",
++    rails: "x402",
++    price_as_published: "$0.001 (paid services); free 10 checks/hour (injection check)",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://fizzl.eu/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Lumi",
++    offers: "Publishes allow, warn, or block style output as their product, as published.",
++    rails: "x402",
++    price_as_published: "Pay check free; paid verdict routes $0.005–$0.02; Watch free $0; $5 per endpoint per 30 days",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://lumitrades.io/agents/",
++    first_seen: "",
++    last_changed: "2026-11-04",
++    last_changed_iso: "2026-11-04T00:00:00Z",
++  },
++  {
++    name: "MEO",
++    offers: "Lists a read-only Preflight pilot for machines. x402 is not stated on the page.",
++    rails: "MCP",
++    price_as_published: NOT_PUBLISHED,
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://machineeconomyobservatory.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "paidfor.dev",
++    offers: "Lists a free x402 seller check and mail when a recorded result changes, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Free, no account, no key",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://paidfor.dev/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Preflight402",
++    offers: "Lists a free preflight in the GitHub README. The hosted endpoint was unreachable at fetch.",
++    rails: "x402 + MCP",
++    price_as_published: '"One free call" (README)',
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://github.com/duskwire/preflight402",
++    first_seen: "",
++    last_changed: "",
++    ops: "unreachable",
++  },
++  {
++    name: "probe402",
++    offers: "Publishes a free per-endpoint report as their product output.",
++    rails: "x402 + MCP",
++    price_as_published: "Free grade; paid 30-day history $0.005 per call",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://probe402.com/",
++    first_seen: "",
++    last_changed: "2026-10-08",
++    last_changed_iso: "2026-10-08T00:00:00Z",
++  },
++  {
++    name: "Proof Rail",
++    offers: "Lists signed records and an agent payee check for a current public EVM wallet record, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Agent payee check 0.01 USDC on Base; first standard record free",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://proofrail.me/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "PulseFeed",
++    offers: "Lists a check of liveness before pay, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "free /verify; $0.004; $0.01+",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://pulsefeed.dev/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Settlens",
++    offers: "Lists an MCP preflight of pay, review, or do_not_pay against a spending policy, as published.",
++    rails: "x402 + MCP",
++    price_as_published: NOT_PUBLISHED,
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://settlens.com/mcp",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Settled",
++    offers: "Publishes allow, warn, or block style output as their product, as published.",
++    rails: "x402",
++    price_as_published: "Free 25 checks/day (300 with free key); paid check $0.002; preflight $0.005; day pass $0.05",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://settled.tools/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "Tanod",
++    offers: "Publishes route reports as their product output, and lists a check before send, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "txpeek USD 0.005 per check; small free daily allowance",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://tanod.dev/",
++    first_seen: "",
++    last_changed: "2026-10-22",
++    last_changed_iso: "2026-10-22T00:00:00Z",
++  },
++  {
++    name: "Toll",
++    offers: "Lists an x402 payee check. Settlement is stated as USDG on Robinhood Chain, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Free tier (coins/day, more with $TOLL holdings); pay per check over x402 (per-check amount not shown in text read)",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://t0ll.xyz/pricing",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "UseTested / Market402 (Market402)",
++    offers: "Publishes a 0–100 product figure as their product output.",
++    rails: "x402",
++    price_as_published: NOT_PUBLISHED,
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://market402.com/",
++    first_seen: "",
++    last_changed: "2026-11-04",
++    last_changed_iso: "2026-11-04T03:13:00Z",
++  },
++  {
++    name: "UseTested / Market402 (UseTested)",
++    offers: "Spends on services and publishes write-ups anchored to on-chain payment proofs, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Free to read; top-10 $0.05; provider self-report $0.005; re-test $1 fee + 20 probes",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://usetested.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "vet402",
++    offers: "Buys from x402 APIs and publishes the result of each purchase, as published.",
++    rails: "x402",
++    price_as_published: "Free $0 (1,000); Pro $49/mo (50,000); Scale $199/mo (500,000)",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://vet402.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "x402-trust",
++    offers: "Publishes endpoint history and a highlighted list as their product, and lists an MCP server, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "Trust score $0.005; endpoint history $0.02; alternatives $0.005; watch ~$0.20; bulk $0.045–$0.50",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://x402-trust.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "x402check",
++    offers: "Lists a preflight of the live 402 response and history, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "$0.01 / tool · 1 free regular / wallet · deep $0.05 · watch $5/30d",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://x402check.dev/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "x402station",
++    offers: "Lists a pre-flight policy output, a provider mark, and a watch, as published.",
++    rails: "x402 + MCP",
++    price_as_published: "$0.001 per check; badge $1 / 30 days; watch $0.01 / 30 days; report $0.001",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://x402station.io/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "XRPreflight",
++    offers: "Lists XRPL payment checks, as published.",
++    rails: "x402",
++    price_as_published: "Preflight 1000 drops (0.001 XRP); other checks 500 drops",
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "https://xrpreflight.com/",
++    first_seen: "",
++    last_changed: "",
++  },
++  {
++    name: "APEX",
++    offers: "No canonical product page in the seed. Row held until a source URL exists.",
++    rails: NOT_PUBLISHED,
++    price_as_published: NOT_PUBLISHED,
++    as_of: SEED_AS_OF,
++    as_of_iso: SEED_AS_OF_ISO,
++    source_url: "",
++    first_seen: "",
++    last_changed: "",
++  },
++];
++
++/** No change-board events in slice 2. Do not synthesize moves from row dates. */
++export const MARKET_FACTS_HOLD_CHANGES: readonly MarketChange[] = [];
++
++export function esc(s: string): string {
++  return String(s).replace(/[&<>"']/g, (c) => {
++    if (c === "&") return "&amp;";
++    if (c === "<") return "&lt;";
++    if (c === ">") return "&gt;";
++    if (c === '"') return "&quot;";
++    return "&#39;";
++  });
++}
++
++export function sourceHost(url: string): string {
++  try {
++    return new URL(url).hostname.replace(/^www\./, "");
++  } catch {
++    return "";
++  }
++}
++
++export function visibleMarketRows(rows: readonly MarketFactRow[]): MarketFactRow[] {
++  return rows
++    .filter((row) => row.as_of.trim() !== "" && sourceHost(row.source_url) !== "")
++    .slice()
++    .sort((a, b) => {
++      const aa = a.name.toLowerCase();
++      const bb = b.name.toLowerCase();
++      if (aa < bb) return -1;
++      if (aa > bb) return 1;
++      return 0;
++    });
++}
++
++const FOOTER_NEEDLE = '<li><a href="/leaderboard">Recent checks</a></li>';
++const FOOTER_LINK = '<li><a href="/market">Market facts</a></li>';
++const DOCS_NEEDLE = '<li><a href="/leaderboard">/leaderboard</a>: 300 x402 sellers, by recency of our checks.</li>';
++const DOCS_LINK = '<li><a href="/market">Market facts — published claims across the x402 and MCP space, with dates and sources</a></li>';
++
++/** Evidence column + /docs reference list. Idempotent. Other links stay put. */
++export function decorateSiteHtml(html: string): string {
++  let out = html;
++  if (out.includes(FOOTER_NEEDLE) && !out.includes(FOOTER_NEEDLE + FOOTER_LINK)) {
++    out = out.replace(FOOTER_NEEDLE, FOOTER_NEEDLE + FOOTER_LINK);
++  }
++  if (out.includes(DOCS_NEEDLE) && !out.includes(DOCS_NEEDLE + DOCS_LINK)) {
++    out = out.replace(DOCS_NEEDLE, DOCS_NEEDLE + DOCS_LINK);
++  }
++  return out;
++}
++
++function mono(text: string, title?: string): string {
++  const t = title ? ` title="${esc(title)}"` : "";
++  return `<span class="mf-mono"${t}>${esc(text)}</span>`;
++}
++
++function dateCell(isoDate: string, isoTitle: string | undefined, empty: string, emptyTitle?: string): string {
++  if (!isoDate) {
++    if (emptyTitle) return `<span class="mf-mono" title="${esc(emptyTitle)}">${esc(empty)}</span>`;
++    return esc(empty);
++  }
++  return mono(isoDate, isoTitle || `${isoDate}T00:00:00Z`);
++}
++
++function changedMark(at: string, now: Date): string {
++  const event = Date.parse(`${at}T00:00:00Z`);
++  const fresh = Number.isFinite(event) && now.getTime() - event < 7 * 86400000 && now.getTime() >= event;
++  const cls = fresh ? "mf-mark" : "mf-mark mf-mark-old";
++  return `<span class="${cls}">Changed</span>`;
++}
++
++function sourceLink(url: string, unreachable: boolean, asOfIso: string): string {
++  const host = sourceHost(url);
++  const link = `<a href="${esc(url)}" rel="nofollow noopener">${mono(host)}</a>`;
++  if (!unreachable) return link;
++  const day = asOfIso.slice(0, 10);
++  return `${link} <span class="mf-muted">Source unreachable as of ${esc(day)}</span>`;
++}
++
++function chipsHtml(row: MarketFactRow, courthouseLive: boolean): string {
++  if (!row.receipt_backed) return "";
++  const chips = (row.measured_chips || []).filter((chip) => chip.trim() !== "");
++  if (!chips.length) return "";
++  const pills = chips.map((chip) => `<span class="mf-chip">${esc(chip)}</span>`).join("");
++  const receipt = courthouseLive ? `<a href="/courthouse">Open signed receipt</a>` : "";
++  return `<p class="mf-measured">${pills}${receipt ? " " + receipt : ""}</p>`;
++}
++
++function rowCells(row: MarketFactRow, courthouseLive: boolean): string[] {
++  const ops = row.ops === "unreachable" ? ` <span class="mf-ops">unreachable</span>` : "";
++  const measured = chipsHtml(row, courthouseLive);
++  const prov = measured ? "" : ` <span class="mf-prov">Published</span>`;
++  const service = `<span class="mf-name">${esc(row.name)}</span>${ops}${prov} <a class="mf-upd" href="/disputes">Request update</a>${measured}`;
++  return [
++    service,
++    esc(row.offers),
++    esc(row.rails),
++    mono(row.price_as_published),
++    dateCell(row.as_of, row.as_of_iso, NO_DATA_CELL),
++    dateCell(row.first_seen, row.first_seen ? `${row.first_seen}T00:00:00Z` : undefined, NO_DATA_CELL),
++    dateCell(row.last_changed, row.last_changed_iso, NO_CHANGE, NO_CHANGE_TITLE),
++    sourceLink(row.source_url, false, row.as_of_iso),
++  ];
++}
++
++const HEADERS = [
++  "Service",
++  "Offers (as published)",
++  "Rails",
++  "Price (as published)",
++  "as of",
++  "First seen",
++  "Changed",
++  "Source",
++];
++
++function tableHtml(rows: readonly MarketFactRow[], courthouseLive: boolean): string {
++  const head = HEADERS.map((h) => `<th scope="col">${esc(h)}</th>`).join("");
++  const body = rows
++    .map((row) => `<tr>${rowCells(row, courthouseLive).map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
++    .join("");
++  return `<table class="mf-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
++}
++
++function cardsHtml(rows: readonly MarketFactRow[], courthouseLive: boolean): string {
++  return rows
++    .map((row) => {
++      const cells = rowCells(row, courthouseLive);
++      const rest = HEADERS.slice(1)
++        .map((label, i) => `<div class="mf-kv"><span>${esc(label)}</span><span>${cells[i + 1]}</span></div>`)
++        .join("");
++      return `<article class="mf-card"><h3>${cells[0]}</h3>${rest}</article>`;
++    })
++    .join("");
++}
++
++function changeLine(event: MarketChange, now: Date): string {
++  const host = sourceHost(event.source_url);
++  if (!event.at || !host) return "";
++  const source = `<a href="${esc(event.source_url)}" rel="nofollow noopener">${mono(host)}</a>`;
++  const mark = changedMark(event.at, now);
++  const when = mono(event.at, event.at_iso || `${event.at}T00:00:00Z`);
++  if (event.kind === "First seen") {
++    return `<li>${mark} ${when} · ${esc(event.name)} · First seen · ${source}</li>`;
++  }
++  const from = event.from ?? "";
++  const to = event.to ?? "";
++  return `<li>${mark} ${when} · ${esc(event.name)} · ${esc(event.kind)} · ${esc(from)} → ${esc(to)} · ${source}</li>`;
++}
++
++export function renderMarketChanges(changes: readonly MarketChange[], now = new Date()): string {
++  const lines = changes
++    .slice()
++    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
++    .slice(0, 20)
++    .map((event) => changeLine(event, now))
++    .filter((line) => line !== "");
++  if (!lines.length) return `<p class="mf-empty">No changes yet.</p>`;
++  return `<ul class="mf-changes">${lines.join("")}</ul>`;
++}
++
++export function renderMarketFactsBody(opts?: {
++  publishRows?: boolean;
++  rows?: readonly MarketFactRow[];
++  changes?: readonly MarketChange[];
++  courthouseLive?: boolean;
++  now?: Date;
++}): string {
++  const publish = opts?.publishRows ?? MARKET_FACTS_PUBLISH_ROWS;
++  const rows = publish ? visibleMarketRows(opts?.rows ?? MARKET_FACTS_HOLD_ROWS) : [];
++  const changes = opts?.changes ?? MARKET_FACTS_HOLD_CHANGES;
++  const courthouseLive = opts?.courthouseLive === true;
++  const now = opts?.now ?? new Date();
++  const side = rows.length
++    ? `${tableHtml(rows, courthouseLive)}<div class="mf-cards">${cardsHtml(rows, courthouseLive)}</div>`
++    : `<p class="mf-empty">No data yet.</p>`;
++  return `<style>${MARKET_CSS}</style><div class="pg mf"><h1>Market facts</h1><p class="lede">${esc(MARKET_LEAD)}</p><p class="small mf-note">${esc(MARKET_NOTE)}</p><h2>Side by side</h2>${side}<h2>What changed</h2>${renderMarketChanges(changes, now)}<div class="mf-notes"><p>Peer entries are their published claims, quoted with a date and a source link. We do not probe or monitor them unless a row says Measured.</p><p>Changes are what we recorded from public sources when we last looked (as of the date shown), not continuous monitoring.</p><p>Something wrong or out of date? <a href="/disputes">Request an update</a></p><p><a href="/methodology">How we measure our own rows</a></p><p class="mf-muted"><a href="/docs">How Desk alerts work</a></p></div></div>`;
++}
++
++function ensureHead(doc: string): string {
++  let out = doc;
++  if (!out.includes('rel="canonical"')) {
++    out = out.replace("</head>", `<link rel="canonical" href="${MARKET_CANONICAL}"></head>`);
++  } else if (!out.includes(`href="${MARKET_CANONICAL}"`)) {
++    out = out.replace(/<link rel="canonical" href="[^"]*">/, `<link rel="canonical" href="${MARKET_CANONICAL}">`);
++  }
++  if (!out.includes('property="og:url"')) {
++    out = out.replace("</head>", `<meta property="og:url" content="${MARKET_CANONICAL}"></head>`);
++  }
++  if (!out.includes('property="og:title"')) {
++    out = out.replace("</head>", `<meta property="og:title" content="${esc(MARKET_TITLE)}"></head>`);
++  }
++  if (!out.includes('property="og:description"')) {
++    out = out.replace("</head>", `<meta property="og:description" content="${esc(MARKET_DESC)}"></head>`);
++  }
++  return out;
++}
++
++export function marketFactsDispatch(url: URL, request: Request, c: unknown, deps: MarketDeps): Response | null {
++  const path = url.pathname;
++  if (path !== MARKET_PATH && path !== `${MARKET_PATH}/`) return null;
++  if (request.method !== "GET" && request.method !== "HEAD") return null;
++  if (path === `${MARKET_PATH}/`) {
++    return new Response(null, { status: 301, headers: { Location: MARKET_PATH } });
++  }
++  const body = renderMarketFactsBody({
++    publishRows: MARKET_FACTS_PUBLISH_ROWS,
++    courthouseLive: deps.courthouseLive === true,
++    now: deps.now,
++  });
++  const doc = decorateSiteHtml(ensureHead(deps.shell(c, {
++    title: MARKET_TITLE,
++    desc: MARKET_DESC,
++    path: MARKET_PATH,
++    body,
++    script: false,
++  })));
++  return deps.html(c, doc, 200);
++}
++
++const MARKET_CSS = `
++.mf h1{letter-spacing:-0.02em;font-family:var(--bw-font)}
++.mf .lede{max-width:68ch}
++.mf-note,.mf-notes,.mf-muted,.mf-ops,.mf-prov,.mf-upd{color:var(--bw-muted)}
++.mf-notes{margin-top:28px}
++.mf-notes p{margin:0 0 8px}
++.mf-mono{font-family:var(--bw-mono)}
++.mf a{color:var(--bw-fg)}
++.mf a:hover{color:var(--bw-muted)}
++.mf-table{width:100%;border-collapse:collapse;font-family:var(--bw-font)}
++.mf-table th,.mf-table td{border-bottom:1px solid var(--bw-line);text-align:left;vertical-align:top;padding:10px 8px;font-weight:400}
++.mf-table th{color:var(--bw-muted);font-weight:400}
++.mf-card{background:var(--bw-bg-2);border:1px solid var(--bw-line);border-radius:12px;padding:16px;margin:0 0 12px}
++.mf-card h3{margin:0 0 10px;font-size:1.05rem;font-weight:500}
++.mf-kv{display:grid;grid-template-columns:minmax(9rem,34%) 1fr;gap:8px;padding:6px 0;border-top:1px solid var(--bw-line)}
++.mf-kv span:first-child{color:var(--bw-muted)}
++.mf-prov,.mf-ops{font-size:.85rem;margin-left:6px}
++.mf-upd{font-size:.85rem;margin-left:8px}
++.mf-chip{display:inline-block;color:var(--bw-fg);border:1px solid var(--bw-line);border-radius:8px;padding:2px 8px;margin:0 4px 0 0}
++.mf-changes{list-style:none;padding:0;margin:0}
++.mf-changes li{border-top:1px solid var(--bw-line);padding:8px 0}
++.mf-mark{color:var(--bw-fg)}
++.mf-mark-old{color:var(--bw-muted)}
++.mf-empty{color:var(--bw-muted)}
++@media (max-width:899px){.mf-table{display:none}}
++@media (min-width:900px){.mf-cards{display:none}}
++`;
+
+--- a/worker/test/market_facts_unit.ts
++++ b/worker/test/market_facts_unit.ts
+@@ -0,0 +1,182 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import {
++  decorateSiteHtml,
++  MARKET_CANONICAL,
++  MARKET_DESC,
++  MARKET_FACTS_HOLD_ROWS,
++  MARKET_FACTS_PUBLISH_ROWS,
++  MARKET_NOTE,
++  MARKET_TITLE,
++  marketFactsDispatch,
++  renderMarketChanges,
++  renderMarketFactsBody,
++  visibleMarketRows,
++  type MarketChange,
++  type MarketDeps,
++  type MarketFactRow,
++} from "../src/market_facts.ts";
++
++const JUDGMENT = /\b(verified|safe|trusted|scam|risky|grades?|scores?|ranks?|better|shame|pioneer)\b|first-mover|got here first|independent reviews|top-\d+/i;
++
++function shell(_c: unknown, o: { title: string; desc: string; path: string; body: string }): string {
++  return `<!doctype html><html><head><title>${o.title}</title><meta name="description" content="${o.desc}"><link rel="canonical" href="https://botsrated.com${o.path}"><meta property="og:image" content="https://botsrated.com/og.png"></head><body><header class="top"><nav class="nav"><a href="/desk">Desk</a></nav></header><main id="main">${o.body}</main><footer class="foot"><nav aria-label="Evidence"><ul><li><a href="/methodology">Methodology</a></li><li><a href="/leaderboard">Recent checks</a></li><li><a href="/v1/coverage">Coverage</a></li></ul></nav></footer></body></html>`;
++}
++
++function html(_c: unknown, document: string, status = 200): Response {
++  return new Response(document, { status, headers: { "content-type": "text/html; charset=UTF-8" } });
++}
++
++const deps: MarketDeps = { shell, html };
++
++test("publish gate stays off", () => {
++  assert.equal(MARKET_FACTS_PUBLISH_ROWS, false);
++});
++
++test("default page is empty states and locked chrome", async () => {
++  const res = marketFactsDispatch(new URL("https://botsrated.com/market"), new Request("https://botsrated.com/market"), {}, deps);
++  assert.ok(res);
++  assert.equal(res.status, 200);
++  const page = await res.text();
++  assert.match(page, /<title>Market facts — BotsRated<\/title>/);
++  assert.match(page, new RegExp(`<meta name="description" content="${MARKET_DESC.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">`));
++  assert.match(page, /property="og:title" content="Market facts — BotsRated"/);
++  assert.match(page, new RegExp(`property="og:description" content="${MARKET_DESC.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
++  assert.match(page, /property="og:url" content="https:\/\/botsrated.com\/market"/);
++  assert.match(page, /rel="canonical" href="https:\/\/botsrated.com\/market"/);
++  assert.match(page, /property="og:image" content="https:\/\/botsrated.com\/og.png"/);
++  assert.match(page, /<h1>Market facts<\/h1>/);
++  assert.match(page, /<h2>Side by side<\/h2>/);
++  assert.match(page, /<h2>What changed<\/h2>/);
++  assert.match(page, /No data yet\./);
++  assert.match(page, /No changes yet\./);
++  assert.match(page, /Peer entries are their published claims/);
++  assert.match(page, /not continuous monitoring/);
++  assert.match(page, /<a href="\/disputes">Request an update<\/a>/);
++  assert.match(page, /<a href="\/methodology">How we measure our own rows<\/a>/);
++  assert.match(page, /<a href="\/docs">How Desk alerts work<\/a>/);
++  assert.doesNotMatch(page, /Watch in Desk/);
++  assert.doesNotMatch(page, /vet402|Attest|APEX|probe402/);
++  assert.equal(page.includes(MARKET_NOTE), true);
++  assert.equal(JUDGMENT.test(page), false, page.match(JUDGMENT)?.[0]);
++  assert.equal(/#[0-9a-fA-F]{3,8}/.test(page), false);
++  assert.match(page, /href="\/leaderboard">Recent checks<\/a><\/li><li><a href="\/market">Market facts<\/a>/);
++  assert.equal(page.includes('id="pulse"'), false);
++});
++
++test("trailing slash redirects", () => {
++  const res = marketFactsDispatch(new URL("https://botsrated.com/market/"), new Request("https://botsrated.com/market/"), {}, deps);
++  assert.ok(res);
++  assert.equal(res.status, 301);
++  assert.equal(res.headers.get("Location"), "/market");
++});
++
++test("other paths and methods are ignored", () => {
++  assert.equal(marketFactsDispatch(new URL("https://botsrated.com/"), new Request("https://botsrated.com/"), {}, deps), null);
++  assert.equal(marketFactsDispatch(new URL("https://botsrated.com/market.json"), new Request("https://botsrated.com/market.json"), {}, deps), null);
++  assert.equal(marketFactsDispatch(new URL("https://botsrated.com/market"), new Request("https://botsrated.com/market", { method: "POST" }), {}, deps), null);
++});
++
++test("HOLD rows hide a missing source and sort by name", () => {
++  const rows = visibleMarketRows(MARKET_FACTS_HOLD_ROWS);
++  assert.equal(rows.some((row) => row.name === "APEX"), false);
++  assert.equal(rows.some((row) => row.name === "BotsRated"), true);
++  assert.deepEqual(rows.map((row) => row.name), [
++    "Agent Embassy",
++    "Attest",
++    "Blackwall",
++    "BotsRated",
++    "Fizzl / x402 Doctor",
++    "Lumi",
++    "MEO",
++    "paidfor.dev",
++    "Preflight402",
++    "probe402",
++    "Proof Rail",
++    "PulseFeed",
++    "Settled",
++    "Settlens",
++    "Tanod",
++    "Toll",
++    "UseTested / Market402 (Market402)",
++    "UseTested / Market402 (UseTested)",
++    "vet402",
++    "x402-trust",
++    "x402check",
++    "x402station",
++    "XRPreflight",
++  ]);
++  const blank: MarketFactRow = { ...rows[0], name: "Hidden", as_of: "", source_url: "https://example.com/" };
++  assert.equal(visibleMarketRows([blank]).length, 0);
++});
++
++test("published render keeps one schema and skips measured chips without a receipt", () => {
++  const page = renderMarketFactsBody({ publishRows: true, now: new Date("2026-11-04T20:00:00Z") });
++  assert.match(page, /<th scope="col">Service<\/th><th scope="col">Offers \(as published\)<\/th><th scope="col">Rails<\/th><th scope="col">Price \(as published\)<\/th><th scope="col">as of<\/th><th scope="col">First seen<\/th><th scope="col">Changed<\/th><th scope="col">Source<\/th>/);
++  assert.match(page, /class="mf-card"/);
++  assert.equal(page.includes("(us)"), false);
++  assert.equal(page.includes(">Measured<"), false);
++  assert.equal(page.includes("Open signed receipt"), false);
++  assert.equal(page.includes("Watch in Desk"), false);
++  assert.match(page, /No data yet/);
++  assert.match(page, /title="No change recorded"/);
++  assert.match(page, /rel="nofollow noopener"/);
++  const bots = page.indexOf(">BotsRated<");
++  const vett = page.indexOf(">vet402<");
++  assert.ok(bots > 0 && vett > bots);
++  assert.equal(page.includes(">APEX<"), false);
++});
++
++test("change board is last-20 newest first and empty by default", () => {
++  assert.match(renderMarketChanges([]), /No changes yet\./);
++  const events: MarketChange[] = [
++    { at: "2026-11-01", at_iso: "2026-11-01T00:00:00Z", name: "Lumi", kind: "Price", from: "a", to: "b", source_url: "https://lumitrades.io/agents/" },
++    { at: "2026-11-04", at_iso: "2026-11-04T03:13:00Z", name: "Toll", kind: "First seen", source_url: "https://t0ll.xyz/pricing" },
++    { at: "2026-10-01", at_iso: "2026-10-01T00:00:00Z", name: "MEO", kind: "Offer", from: "old", to: "new", source_url: "https://machineeconomyobservatory.com/" },
++  ];
++  const html = renderMarketChanges(events, new Date("2026-11-04T20:00:00Z"));
++  const toll = html.indexOf("Toll");
++  const lumi = html.indexOf("Lumi");
++  const meo = html.indexOf("MEO");
++  assert.ok(toll < lumi && lumi < meo);
++  assert.match(html, /First seen/);
++  assert.match(html, /Price/);
++  assert.match(html, /mf-mark-old/);
++  assert.equal(html.includes("dropped"), false);
++});
++
++test("footer and docs links append once", () => {
++  const footer = '<li><a href="/leaderboard">Recent checks</a></li><li><a href="/v1/coverage">Coverage</a></li>';
++  const docs = '<li><a href="/leaderboard">/leaderboard</a>: 300 x402 sellers, by recency of our checks.</li></ul>';
++  const once = decorateSiteHtml(footer + docs);
++  assert.match(once, /Recent checks<\/a><\/li><li><a href="\/market">Market facts<\/a><\/li><li><a href="\/v1\/coverage">Coverage<\/a>/);
++  assert.match(once, /recency of our checks\.<\/li><li><a href="\/market">Market facts — published claims across the x402 and MCP space, with dates and sources<\/a><\/li><\/ul>/);
++  assert.equal(decorateSiteHtml(once), once);
++  assert.equal(decorateSiteHtml("<p>untouched</p>"), "<p>untouched</p>");
++});
++
++test("measured chips only when a receipt is supplied", () => {
++  const row = {
++    ...visibleMarketRows(MARKET_FACTS_HOLD_ROWS).find((item) => item.name === "BotsRated")!,
++    receipt_backed: true,
++    measured_chips: ["Measured · as-of 2026-11-04T19:30:00Z", "402 ok"],
++  };
++  const hidden = renderMarketFactsBody({ publishRows: true, rows: [row], courthouseLive: false });
++  assert.match(hidden, /mf-chip">Measured · as-of 2026-11-04T19:30:00Z</);
++  assert.match(hidden, /402 ok/);
++  assert.equal(hidden.includes(">Published<"), false);
++  assert.equal(hidden.includes("Open signed receipt"), false);
++  const live = renderMarketFactsBody({ publishRows: true, rows: [row], courthouseLive: true });
++  assert.match(live, /<a href="\/courthouse">Open signed receipt<\/a>/);
++  const peer = renderMarketFactsBody({
++    publishRows: true,
++    rows: [{ ...row, name: "vet402", receipt_backed: false, measured_chips: ["402 ok"] }],
++  });
++  assert.equal(peer.includes(">Measured<"), false);
++  assert.equal(peer.includes("402 ok"), false);
++});
++
++test("canonical constant", () => {
++  assert.equal(MARKET_CANONICAL, "https://botsrated.com/market");
++  assert.equal(MARKET_TITLE, "Market facts — BotsRated");
++});
