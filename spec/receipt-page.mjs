@@ -165,7 +165,7 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
 <body>
 <main>
   <p class="eyebrow">BotsRated receipt</p>
-  <h1 id="status">signature invalid</h1>
+  <h1 id="status">checking signature…</h1>
   <dl>
     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
@@ -179,7 +179,7 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
   <h2>CLI</h2>
   <pre id="cli">${esc(cli)}</pre>
   <pre id="cli-oneliner">${esc(oneLiner)}</pre>
-  <p class="note">Checks the public key at /.well-known/botsrated-key. Same canonical JSON and Ed25519 rules as spec/verify.mjs. A matching signature checks this record only. It is not a rating of the seller. If this browser cannot run the check, the status stays signature invalid.</p>
+  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…</p>
 </main>
 <script type="application/json" id="receipt-data">${embedded}</script>
 <script type="module" src="${esc(scriptSrc)}"></script>
