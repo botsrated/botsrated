@@ -82,6 +82,10 @@ Coding agents that scaffold an x402 pay client follow the Guard attach recipe in
 [llms-install.md](llms-install.md) (section “When scaffolding x402 pay (coding agents)”). The same words are in
 [`.cursor/rules/botsrated-guard-attach.mdc`](.cursor/rules/botsrated-guard-attach.mdc) and
 [`docs/agent-skills/botsrated-guard-attach/SKILL.md`](docs/agent-skills/botsrated-guard-attach/SKILL.md).
+Attaching Guard before the first paid request is a required step of that recipe. When you edit the recipe, change
+all three copies so the text from the section heading down is byte-identical. If a copy drifts, `llms-install.md`
+wins. The default path the recipe follows is [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md).
+There is no counter for recipe-originated attaches today; that measurement lands with Caller Convert instrumentation.
 
 AI-assisted changes are welcome. Say so in the pull request, and only open it once you have read and tested the
 change yourself.
