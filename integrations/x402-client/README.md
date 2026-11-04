@@ -6,11 +6,11 @@
 2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
-const guard = createPaymentGuard();
+const guard = createPaymentGuard(); // omit preset = advice; omit failMode = open
 guard.install(client);
 const paidFetch = guard.wrapFetch(payingFetch); // payingFetch already pays, e.g. wrapFetchWithPayment(fetch, client)
 ```
-3. Pick `preset` only when you want it (`carefulBuyer` / `strict` stop an unobserved payTo). Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset`, or call `createPaymentGuard()`, for advice only. That never stops a payment. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). `strict` is not a preset name. Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
@@ -78,14 +78,14 @@ one, a receipt link.
 
 Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). The same check is importable offline as `verifyReceipt` from `@botsrated/x402-preflight/verify-receipt` (status: `signature valid`, `signature invalid`, or `key unknown`). It loads `spec/verify-core.mjs` from this repository checkout. A match is this record only. It is not a rating of the seller. The receipt page uses that same check. It is not on the live host until Pages returns it.
 
-Pick a named preset. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
+Pick a named preset. Preset keys are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is not a preset key; it is `policies.strict`. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.
 
 | Name | How to select it | What you get |
 |---|---|---|
 | `warn` | `createPaymentGuard()` or `{ preset: "warn" }` or `{ policy: policies.warn }` | Advice only. The default. |
 | `carefulBuyer` | `{ preset: "carefulBuyer" }` or `{ policy: policies.carefulBuyer }` | Same rule effects as `policies.strict`. Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. |
-| `strict` | `{ policy: policies.strict }` | The same stops as `carefulBuyer`. |
+| `policies.strict` | `{ policy: policies.strict }` | The same stops as `carefulBuyer`. Not a preset. |
 | `dry-run-only` | `dryRunOnly(...)`, `{ preset: "dry-run-only" }`, or `presets["dry-run-only"]` | Logs `wouldBlock` and never stops a payment. No retry key. `preset: "dry-run-only"` and `dryRunOnly()` force dry-run. |
 
 ```ts

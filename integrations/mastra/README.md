@@ -12,11 +12,17 @@ npm install @botsrated/x402-preflight
 
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
-const guard = createPaymentGuard({ preset: "carefulBuyer" }); // omit preset = warn only
+const guard = createPaymentGuard(); // omit preset = advice; omit failMode = open
 guard.install(x402Client); // the x402 client your agent already pays with
 ```
 
 The pair-with package is not on npm yet: `npm install` in `integrations/mastra`, then `attachPaymentGuard` from `@botsrated/mastra`.
+
+Core JS, Python, and curl paste (curl does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
+
+Chip halt (`strictModeHalt()` / `haltOn`) is not this attach. Omit `haltOn` and it stays off. Sample chips: `payTo changed`, `probe failed`. Measured chips, not grades. Not `policies.strict`. Not a closed `fail_mode`. `failOpen` stays true.
+
+[`docs/guard/halt-policy.md`](../../docs/guard/halt-policy.md) · [`docs/guard/examples/strict-mode-halt.md`](../../docs/guard/examples/strict-mode-halt.md) · [`integrations/x402-client/examples/strict-mode-halt.ts`](../x402-client/examples/strict-mode-halt.ts)
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
@@ -31,7 +37,7 @@ import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
 const guard = createPaymentGuard({ preset: "carefulBuyer" });
 guard.install(x402Client);
 ```
-3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset` for advice only. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -49,7 +55,7 @@ guard.install(x402Client);
 
 Pair-with package (not on npm yet): `npm install` in `integrations/mastra`, then `attachPaymentGuard` from `@botsrated/mastra`.
 
-Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A `generate()` or `stream()` `hooks.beforeToolCall` overrides the agent hook; compose with `next`, or pass `botsratedBeforeToolCall` on that run.
+Omit `preset` for advice only. `carefulBuyer` blocks an unobserved payTo only when selected (same stops as `policies.strict`). Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A `generate()` or `stream()` `hooks.beforeToolCall` overrides the agent hook; compose with `next`, or pass `botsratedBeforeToolCall` on that run.
 
 ## Token and before-tool hook
 
