@@ -3,13 +3,16 @@
 ## Install in 3 steps
 
 1. Install: `npm install @botsrated/x402-preflight` (npm 0.3.1).
-2. Attach to your x402 client:
+2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
-const guard = createPaymentGuard({ preset: "carefulBuyer" });
+const guard = createPaymentGuard();
 guard.install(client);
+const paidFetch = guard.wrapFetch(payingFetch); // payingFetch already pays, e.g. wrapFetchWithPayment(fetch, client)
 ```
-3. Pick `preset` (omit it, or call `createPaymentGuard()`, for advice only; `carefulBuyer` / `strict` stop an unobserved payTo). Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block. Wrap the paying fetch with `guard.wrapFetch` so the guard knows the paid URL.
+3. Pick `preset` only when you want it (`carefulBuyer` / `strict` stop an unobserved payTo). Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+
+Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remotePolicy` on `@botsrated/x402-preflight` 0.3.0 and later, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk). Nothing defaults you to closed.
 

@@ -28,6 +28,8 @@ BotsRated is a **remote** MCP server. Do not clone, build, or run anything.
 These register a check on the x402 client the app already uses. They are not a second runtime.
 Free. No key for local attach. Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
+Copy-paste the core attach in TypeScript / JS, Python, or curl (preflight facts; curl does not attach): [`docs/guard/copy-paste-attach.md`](docs/guard/copy-paste-attach.md). Omit `preset` for advice only. Omit `fail_mode` to stay open.
+
 ### LIVE wedges (one-click)
 
 - [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.5). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
