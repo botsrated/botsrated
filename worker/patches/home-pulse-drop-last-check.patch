@@ -1,0 +1,56 @@
+# Soft OPEN. tip_base Pages deployment 102e5916. KEEP Soft CTA walls (429 / quota / free_quota.note) HOLD.
+# Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree, paths worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
+# Home #pulse drops the #p-t cell ("our last check" and "n/a · checks paused").
+# Sellers and MCP "Last Checked" columns stay. last_probe_at stays in JSON.
+# worker/src/site.client.js does not write #p-t. putN already skips a missing id.
+# Base lines match the tree that still renders the live 102e5916 home cell.
+# If a bundle guard still counts the literal "our last check" as 1, set that count to 0.
+# Do not run the Oct 30 deploy.sh whose want-hash is 4386cc7f.
+
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -816,18 +816,13 @@
+     return v;
+   } catch { noteQuery("rates", Date.now() - t0, false); const v = ratesDegradedStub(); ratesMemo = { at: Date.now(), v }; return v; }
+ }
+-// Growing-N strip. ids p-x / p-m / p-c / p-t / p-cd stay stable for /assets/site.js. B/W class bw-stats stays.
+-export const PROBE_PAUSE_MS = 90 * 60 * 1000;
++// Growing-N strip. ids p-x / p-m / p-c / p-cd stay stable for /assets/site.js. No #p-t last-check cell. B/W class bw-stats stays.
+ export function homePulseStrip(p: any) {
+   const homeN = p?.checks_run_home ?? p?.checks_run_7d;
+   const days = Number(p?.home_checks_days || 0);
+   const daysLabel = days > 0 ? `${days} days` : "closed days";
+   const title = p?.definitions?.checks_run_home || p?.definitions?.checks_run_7d || "";
+-  const paused = !!(p?.degraded || !p?.last_probe_at || Date.now() - Date.parse(p.last_probe_at) > PROBE_PAUSE_MS);
+-  const last = paused
+-    ? `<span title="Probe writers are paused while D1 cools. This is not a live check time."><b id="p-t" aria-live="off">n/a</b><span class="vh">: </span>checks paused</span>`
+-    : `<span><b id="p-t" aria-live="off">${ago(p.last_probe_at)}</b><span class="vh">: </span>our last check</span>`;
+-  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span>${last}<span hidden><i id="p-l"></i><i id="p-d"></i></span></div>`;
++  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div>`;
+ }
+ 
+ // ---------- status labels (neutral, factual) ----------
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -44,16 +44,16 @@
+ t("pulse D1 error does not throw", !!p && p.degraded === true && p.paid_services_watched == null);
+ t("pulse stub note", String(p.stale_note || "").includes("Nothing here is invented") || p.degraded === true);
+ const strip = homePulseStrip(p);
+-t("degraded strip is 200-shaped html", strip.includes('id="pulse"') && strip.includes('id="p-cd"') && strip.includes("checks paused") && strip.includes("bw-stats"));
++t("degraded strip is 200-shaped html", strip.includes('id="pulse"') && strip.includes('id="p-cd"') && !strip.includes('id="p-t"') && !strip.includes("checks paused") && !strip.includes("our last check") && strip.includes("bw-stats"));
+ const grown = homePulseStrip({ checks_run_home: 2225931, checks_run_7d: 100, home_checks_days: 11, definitions: { checks_run_home: "grows by one" }, last_probe_at: new Date(Date.now() - 3 * 3600e3).toISOString(), paid_services_watched: 5, mcp_servers_checked: 6 });
+-t("growing N", grown.includes(">2,225,931<") && grown.includes('id="p-cd">11 days') && grown.includes("grows by one") && grown.includes("checks paused"));
++t("growing N", grown.includes(">2,225,931<") && grown.includes('id="p-cd">11 days') && grown.includes("grows by one") && !grown.includes("checks paused") && !grown.includes("our last check") && !grown.includes('id="p-t"'));
+ const liveStrip = homePulseStrip({ checks_run_home: 10, home_checks_days: 8, definitions: { checks_run_home: "home" }, last_probe_at: new Date().toISOString(), paid_services_watched: 1, mcp_servers_checked: 2 });
+-t("fresh probe is not paused", liveStrip.includes("our last check") && !liveStrip.includes("checks paused"));
++t("fresh probe hides last check", !liveStrip.includes("our last check") && !liveStrip.includes("checks paused") && !liveStrip.includes('id="p-t"') && liveStrip.includes('id="p-x"'));
+ 
+ const nav = navHtml("/");
+ t("B/W strip marker", nav.includes("bw-strip") && nav.includes("Desk Guard") && SITE_CSS.includes(".bw-strip") && SITE_CSS.includes("--bw-bg"));
+ t("no html /pulse route invented", !nav.includes('href="/pulse"'));
+-t("site.js v9 growing N", SITE_JS.includes("checks_run_home") && SITE_JS.includes("p-cd") && !SITE_JS.includes("ago(p.last_probe_at)") && !SITE_JS.includes("checks_run_7d"));
++t("site.js v9 growing N", SITE_JS.includes("checks_run_home") && SITE_JS.includes("p-cd") && !SITE_JS.includes("ago(p.last_probe_at)") && !SITE_JS.includes("checks_run_7d") && !SITE_JS.includes('$("p-t")') && !SITE_JS.includes('getElementById("p-t")'));
+ t("degraded pulse does not fmt to 0", SITE_JS.includes("r.body.degraded") && SITE_JS.includes("n == null"));
+ t("no maintenance-tonight copy", !SITE_JS.includes("maintenance tonight") && !readFileSync("src/site.ts", "utf8").includes("maintenance tonight"));
+ const hero = readFileSync("src/site.ts", "utf8");
