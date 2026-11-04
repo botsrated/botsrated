@@ -267,9 +267,9 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 
 ## Chip halt sample
 
-Opt-in chip halt on `@botsrated/x402-preflight`. Canon: [`docs/guard/halt-policy.md`](docs/guard/halt-policy.md). Full sample: [`docs/guard/examples/strict-mode-halt.md`](docs/guard/examples/strict-mode-halt.md) and [`integrations/x402-client/examples/strict-mode-halt.ts`](integrations/x402-client/examples/strict-mode-halt.ts). Pair-with `attach_payment_guard` / `attachPaymentGuard` do not take `haltOn`.
+Opt-in on `@botsrated/x402-preflight`. Pair-with `attach_payment_guard` / `attachPaymentGuard` do not take `haltOn`. Canon: [`docs/guard/halt-policy.md`](docs/guard/halt-policy.md). Sample: [`docs/guard/examples/strict-mode-halt.md`](docs/guard/examples/strict-mode-halt.md), [`integrations/x402-client/examples/strict-mode-halt.ts`](integrations/x402-client/examples/strict-mode-halt.ts).
 
-`strictModeHalt()` is imported from `@botsrated/x402-preflight/guard-attach` and returns `{ strict_mode: true }` for `guardAttach({ haltOn })`. The same sample is `haltOn: { strict_mode: true }`, or a chip list. Sample chips: `payTo changed`, `probe failed`. Measured chips, not grades. A customer list replaces the sample. It is not `policies.strict`, and it is not a closed `fail_mode`. Omit `haltOn`, `strict_mode`, and `halt_on` and chip halt stays off. An empty chip list is on and matches nothing. `failOpen` stays the default. The halt aborts the payment hook only. The policy receipt verdict can still be `pass`.
+`strictModeHalt()` from `@botsrated/x402-preflight/guard-attach` returns `{ strict_mode: true }` for `haltOn`, or a customer chip list replaces it. Sample chips: `payTo changed`, `probe failed`. Measured chips, not grades. Not `policies.strict`. Not a closed `fail_mode`. Omit `haltOn`, `strict_mode`, and `halt_on` and chip halt stays off. An empty chip list is on and matches nothing. `failOpen` stays true. The halt aborts the payment hook only. The policy receipt can still be `pass`.
 
 ```ts
 import { guardAttach, strictModeHalt } from "@botsrated/x402-preflight/guard-attach";

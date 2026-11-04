@@ -18,7 +18,9 @@ const paidFetch = guard.wrapFetch(fetch);
 
 Core JS, Python, and curl paste (curl does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
-Chip halt is not this attach. `strictModeHalt()` from `@botsrated/x402-preflight/guard-attach` is `guardAttach({ haltOn })`. Sample chips: `payTo changed`, `probe failed`. Canon: [`docs/guard/halt-policy.md`](../../docs/guard/halt-policy.md). Sample: [`docs/guard/examples/strict-mode-halt.md`](../../docs/guard/examples/strict-mode-halt.md) and [`integrations/x402-client/examples/strict-mode-halt.ts`](../x402-client/examples/strict-mode-halt.ts). Omit `haltOn` and chip halt stays off. It is not `policies.strict`, and it is not a closed `fail_mode`. `failOpen` stays the default.
+Chip halt (`strictModeHalt()` / `haltOn`) is not this attach. Omit `haltOn` and it stays off. Sample chips: `payTo changed`, `probe failed`. Measured chips, not grades. Not `policies.strict`. Not a closed `fail_mode`. `failOpen` stays true.
+
+[`docs/guard/halt-policy.md`](../../docs/guard/halt-policy.md) · [`docs/guard/examples/strict-mode-halt.md`](../../docs/guard/examples/strict-mode-halt.md) · [`integrations/x402-client/examples/strict-mode-halt.ts`](../x402-client/examples/strict-mode-halt.ts)
 
 Preflight and the guard surface signed receipt links (`receipt_url`). When org ledger is enabled, paid checks write there by default. No custody. Facts, not grades.
 
