@@ -17,6 +17,7 @@ This repository documents the **remote** MCP server (nothing to install or run f
 Guard pairs with the x402 client your agent already pays with. It does not replace your agent runtime. Free. No key for local attach. It compares each payment request with BotsRated measurements and warns or blocks by your own rules. Facts and receipt links, not grades. Guard does not hold funds.
 
 - **Coding agents (Cursor, Claude Code, Cline, Codex):** follow [`llms-install.md` → When scaffolding x402 pay](llms-install.md#when-scaffolding-x402-pay-coding-agents). The same recipe ships as a Cursor rule ([`.cursor/rules/botsrated-guard-attach.mdc`](.cursor/rules/botsrated-guard-attach.mdc)) and an agent skill ([`docs/agent-skills/botsrated-guard-attach/SKILL.md`](docs/agent-skills/botsrated-guard-attach/SKILL.md)). If a copy drifts, `llms-install.md` wins.
+- **Default path:** hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff. Canon: [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md).
 - **Per stack:** [integrations/README.md](integrations/README.md) · live docs https://botsrated.com/docs/guard
 
 | Stack | Install | Attach |

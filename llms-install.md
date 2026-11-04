@@ -4,6 +4,8 @@ BotsRated is a **remote** MCP server. Do not clone, build, or run anything.
 
 > Coding agent scaffolding or editing an agent that pays over x402? Skip to [When scaffolding x402 pay (coding agents)](#when-scaffolding-x402-pay-coding-agents). That section attaches Guard on the existing payment client. It pairs with your runtime and does not replace it.
 
+> **Default middleware path (canon).** Guard on an x402 or MCP payment runs in four steps: hook on the existing client (`onBeforePaymentCreation`, `@x402/mcp` `onPaymentRequested`, or the stack's `attach_*` call) → measured seller facts from `preflight` → your policy's pass / fail receipt (`verdict`, `rule_hit`, `fail_mode`) → Desk / alerts handoff. The canon is [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md). Defaults are unchanged: omit `preset` for advice only, omit `fail_mode` to stay open.
+
 1. Add this entry to the MCP settings file (for Cline: `cline_mcp_settings.json`):
 ```json
 {

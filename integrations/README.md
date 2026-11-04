@@ -22,6 +22,8 @@ Pair-with only — not a second runtime. Free. No key for local attach. Prefligh
 
 Coding agents that scaffold an x402 pay client follow [`llms-install.md`](../llms-install.md#when-scaffolding-x402-pay-coding-agents) (section “When scaffolding x402 pay (coding agents)”). Same recipe: Cursor rule [`.cursor/rules/botsrated-guard-attach.mdc`](../.cursor/rules/botsrated-guard-attach.mdc) · agent skill [`docs/agent-skills/botsrated-guard-attach/SKILL.md`](../docs/agent-skills/botsrated-guard-attach/SKILL.md).
 
+Default path every attach below follows (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff): [`docs/guard/default-middleware.md`](../docs/guard/default-middleware.md).
+
 - [LangChain](langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.4). Published 0.1.4 does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
 - [OpenAI Agents](openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install botsrated-openai-agents` (PyPI 0.1.1, `attach_payment_guard`)
 - [LangGraph](langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install langgraph-botsrated` (PyPI 0.1.1, `attach_payment_guard`)

@@ -15,6 +15,8 @@ guard.install(client);
 
 ### Customer policy attach
 
+The default path (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff) is [`docs/guard/default-middleware.md`](../../docs/guard/default-middleware.md).
+
 `createPaymentGuard()` stays the free local attach. `failOpen` still defaults to true. `guardAttach` adds a pass or fail of **your** policy on the signed amount, payTo, network, and `resource.url` host. It does not replace the client, and it does not change the SDK `$1` spend cap. `fail_mode: "closed"` does not set `failOpen: false`. Wording is in `docs/guard/fail-mode.md`. The receipt shape is `docs/guard/policy-receipt-v1.md`.
 
 ```ts
