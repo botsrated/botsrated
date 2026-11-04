@@ -5,8 +5,8 @@
 # Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
 # Design LOCK body md5 809a05b9db9ad98b6a7c4aa55478ca95.
 # §1+§2+§3 together. Home href=/market becomes 3 (chip + nav Board + card Board).
-# Nav hunk anchors the literal default nav element tip pages emit when no item is current.
-# That element is the let nav binding. The existing longest-prefix pass sets aria-current.
+# Nav hunk edits export const NAV on tip site.ts. Board is ["/market", "Board"] after Guard.
+# navHtml renders that array. The existing longest-prefix pass sets aria-current.
 # Pack A strip string and Pack B chip string stay byte-identical. desk.ts is not in this patch.
 # Apply from the private tree root:
 #   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/board-whats-new-pack.patch
@@ -27,8 +27,8 @@
 +@media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}
  .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
 @@ -1 +1 @@
--  let nav = `<nav class="nav" aria-label="Main"><a href="/desk">Desk</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools/payment-guard">Guard</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools">Tools</a><span class="nav-dot" aria-hidden="true">·</span><a href="/pricing">Pricing</a><span class="nav-dot" aria-hidden="true">·</span><a href="/docs">Docs</a></nav>`;
-+  let nav = `<nav class="nav" aria-label="Main"><a href="/desk">Desk</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools/payment-guard">Guard</a><span class="nav-dot" aria-hidden="true">·</span><a href="/market">Board</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools">Tools</a><span class="nav-dot" aria-hidden="true">·</span><a href="/pricing">Pricing</a><span class="nav-dot" aria-hidden="true">·</span><a href="/docs">Docs</a></nav>`;
+-export const NAV: [string, string][] = [["/desk", "Desk"], ["/tools/payment-guard", "Guard"], ["/tools", "Tools"], ["/pricing", "Pricing"], ["/docs", "Docs"]];   // 2026-10-27 chrome-v1 (SYSTEM-V1 B8): Explore + How it works moved to footer
++export const NAV: [string, string][] = [["/desk", "Desk"], ["/tools/payment-guard", "Guard"], ["/market", "Board"], ["/tools", "Tools"], ["/pricing", "Pricing"], ["/docs", "Docs"]];   // 2026-10-27 chrome-v1 (SYSTEM-V1 B8): Explore + How it works moved to footer
 @@ -1,7 +1,12 @@
    const days = Number(p?.home_checks_days || 0);
    const daysLabel = days > 0 ? `${days} days` : "closed days";
