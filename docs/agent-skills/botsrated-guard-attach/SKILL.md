@@ -11,6 +11,19 @@ The default path this recipe follows (hook → measured seller facts → your po
 
 When you scaffold or edit an agent that pays over x402, attach BotsRated PaymentGuard on the existing x402 / payment HTTP client BEFORE the first paid request. Do not replace the host runtime (Agent, Runner, graph, generateText, etc.). Free. No key for local attach. Facts, not grades. The guard does not hold funds. Paid checks are optional.
 
+### Required step: scaffold Guard before the first paid request
+
+This step is not optional when you write or edit agent pay code. Put the attach call in the same change that adds or edits the x402 or MCP payment client, before any code path can send the first paid request. Do not leave it as a TODO, a code comment, a follow-up task, or a note for the user to do later.
+
+Order in the scaffold:
+
+1. Create or keep the existing payment client (x402 HTTP client or `@x402/mcp` client).
+2. Install the pair-with package for the stack (Choose stack below), or core if the stack is not listed (hard rule 5).
+3. Attach Guard on that client: `attach_payment_guard` / `attachPaymentGuard`, or `guard.install` for core. For an `@x402/mcp` client, use the `@x402/mcp` hook row in step 1 of the canon.
+4. Only then add the first paid request or paid tool call.
+
+The canon for this path is `docs/guard/default-middleware.md` (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff). Defaults stay as shipped: omit preset for advice only, omit fail_mode to stay open.
+
 Versions below were measured on 2026-10-31 against PyPI and the npm registry.
 
 ### Choose stack → install → attach
@@ -169,3 +182,4 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain and LlamaIndex on PyPI 0.1.4 do not read that variable; pass `token=` on those two when you use Desk policy.
 5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Google ADK and CrewAI are on PyPI at 0.1.0 with a stale long_description (see Omitted from Choose stack). They are not an exception that adds those package names to a scaffold. Use core for them.
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
+7. The attach step is not optional in pay code you write. Do not ship a scaffold that can send a paid request before the attach call runs. This rule is about the code you write. It is not a claim to the user that attach is required to try BotsRated.
