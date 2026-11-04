@@ -13,6 +13,21 @@ guard.install(client);
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remotePolicy` on `@botsrated/x402-preflight` 0.3.0 and later, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk). Nothing defaults you to closed.
 
+### Customer policy attach
+
+`createPaymentGuard()` stays the free local attach. `failOpen` still defaults to true. `guardAttach` adds a pass or fail of **your** policy on the signed amount, payTo, network, and `resource.url` host. It does not replace the client, and it does not change the SDK `$1` spend cap. `fail_mode: "closed"` does not set `failOpen: false`. Wording is in `docs/guard/fail-mode.md`. The receipt shape is `docs/guard/policy-receipt-v1.md`.
+
+```ts
+import { guardAttach } from "@botsrated/x402-preflight/guard-attach";
+
+const attach = guardAttach({
+  policy: { id: "pol_desk", version: "3", fail_mode: "open", pay_to: ["0x…"] },
+});
+client.onBeforePaymentCreation(attach.onBeforePaymentCreation);
+```
+
+For MCP, pass `policies: [attach.mcpPolicy]` into `createx402MCPClient` and `onPaymentRequested: attach.onPaymentRequested`. Those run as the SDK defines them. A quote above the SDK `$1` default can throw before this verdict is recorded. The compat notes are in `docs/guard/guard-check.md`.
+
 The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment check.
 
 - **Before your agent signs**, it looks up facts [BotsRated](https://botsrated.com) measured about the seller's host

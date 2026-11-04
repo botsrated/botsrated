@@ -42,6 +42,32 @@ export {
 } from "./util.js";
 export * from "./payment-guard.js";
 export * from "./onchain.js";
+export {
+  guardAttach,
+  type GuardAttach,
+  type GuardAttachOptions,
+  type GuardAttachClient,
+} from "./guard-attach.js";
+export {
+  GUARD_CHIPS,
+  POLICY_RECEIPT_SPEC,
+  POLICY_SIGNING_KEY_DENY,
+  POLICY_SIGNING_KEY_PREFIX,
+  assertPolicySigningKeyId,
+  buildPolicyReceipt,
+  canon,
+  evaluateCustomerPolicy,
+  signPolicyReceipt,
+  verifyPolicyReceipt,
+  type CustomerPolicy,
+  type FailMode,
+  type GuardChip,
+  type MeasuredFacts,
+  type PolicyEvaluation,
+  type PolicyReceiptBody,
+  type PolicyReceiptSignature,
+  type RuleHit,
+} from "./guard-policy.js";
 
 /** BotsRated's payTo on Base. Paid calls to any other payTo are refused. */
 export const BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349";

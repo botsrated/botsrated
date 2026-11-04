@@ -15,6 +15,14 @@
       "types": "./dist/payment-guard.d.ts",
       "import": "./dist/payment-guard.js"
     },
+    "./guard-attach": {
+      "types": "./dist/guard-attach.d.ts",
+      "import": "./dist/guard-attach.js"
+    },
+    "./guard-policy": {
+      "types": "./dist/guard-policy.d.ts",
+      "import": "./dist/guard-policy.js"
+    },
     "./onchain": {
       "types": "./dist/onchain.d.ts",
       "import": "./dist/onchain.js"
