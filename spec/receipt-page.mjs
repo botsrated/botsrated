@@ -4,7 +4,10 @@
 // Content-Security-Policy to RECEIPT_PAGE_CSP on the response (the meta tag repeats it).
 // Serve verify-browser.mjs and verify-core.mjs at /spec/.
 // The pasted CLI URL comes from receiptCliUrl (checked id + allowlisted host, mcp, day, s), not from request.url.
-// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result for that later free route.
+// GET /v1/verify checks the stored record on the live host. This file does not mount that route.
+// verifyResultJson mirrors verifyReceipt. A redacted copy (withheld_fields or withheld_note)
+// is status "redacted copy": not offline-verifiable, and not "signature invalid".
+import { redactedCopy, storedRecordVerifyUrl } from "./verify-core.mjs";
 
 export const RECEIPT_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://botsrated.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
@@ -110,20 +113,27 @@ export function receiptShellCommands(id, query, receiptHost) {
   return { cli, oneLiner };
 }
 
-// Missing WebCrypto is not a pass. Only the three check results are shown, and only when crypto ran.
+// Missing WebCrypto is not a pass. A redacted copy is reported even when crypto did not run.
 export function signatureStatus(result, cryptoOk) {
+  if (result && result.status === "redacted copy") return "redacted copy";
   if (!cryptoOk || !result) return "signature invalid";
   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
   return "signature invalid";
 }
 
 export function verifyResultJson(result) {
-  return {
+  const body = {
     valid: !!result.valid,
     id: result.id ?? null,
     key_id: result.key_id ?? null,
     errors: Array.isArray(result.errors) ? result.errors : [],
   };
+  if (result && result.status === "redacted copy") {
+    body.valid = false;
+    body.status = "redacted copy";
+    body.offline_verifiable = false;
+  }
+  return body;
 }
 
 export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec/verify-browser.mjs" } = {}) {
@@ -136,7 +146,18 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
   const hostPath = host ? "/s/" + encodeURIComponent(host) : "/sellers";
   const preflight = host ? "/v1/preflight?url=" + encodeURIComponent(host) : "/v1/preflight";
   // pageUrl is not pasted. Only an allowlisted id and host/mcp/day/s are.
-  const { cli, oneLiner } = receiptShellCommands(id, query != null ? query : pageUrl, host);
+  const redacted = redactedCopy(raw);
+  const q = readQuery(query != null ? query : pageUrl);
+  const shell = receiptShellCommands(id, query != null ? query : pageUrl, host);
+  const verifyUrl = storedRecordVerifyUrl({ id, host: pickHost(host, q.host), ts, day: q.day });
+  const statusText = redacted ? "redacted copy" : "checking signature…";
+  const cli = redacted ? "This copy withholds signed fields. It is not offline-verifiable." : shell.cli;
+  const oneLiner = redacted ? "Stored record: GET " + verifyUrl : shell.oneLiner;
+  const heading = redacted ? "Stored record" : "CLI";
+  const note = redacted
+    ? "This copy withholds signed fields. It is not offline-verifiable. The signature covers the stored record. Check that record with GET /v1/verify. spec/verify.mjs does not return VALID for this copy. A match on the stored record covers that record only. It is not a rating of the seller."
+    : "Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…";
+  const button = redacted ? "" : `<p><button type="button" id="verify-btn">Verify signature</button></p>\n  `;
   const embedded = JSON.stringify(raw).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
@@ -165,7 +186,7 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
 <body>
 <main>
   <p class="eyebrow">BotsRated receipt</p>
-  <h1 id="status">checking signature…</h1>
+  <h1 id="status">${esc(statusText)}</h1>
   <dl>
     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
@@ -173,13 +194,12 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
     <dt>host</dt><dd id="f-host">${host ? `<a href="${esc(hostPath)}">${esc(host)}</a>` : ""}</dd>
     <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>
   </dl>
-  <p><button type="button" id="verify-btn">Verify signature</button></p>
-  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
+  ${button}<p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
   <p class="desk"><a href="/desk">Map many hosts free in Desk →</a></p>
-  <h2>CLI</h2>
+  <h2>${esc(heading)}</h2>
   <pre id="cli">${esc(cli)}</pre>
   <pre id="cli-oneliner">${esc(oneLiner)}</pre>
-  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…</p>
+  <p class="note">${esc(note)}</p>
 </main>
 <script type="application/json" id="receipt-data">${embedded}</script>
 <script type="module" src="${esc(scriptSrc)}"></script>

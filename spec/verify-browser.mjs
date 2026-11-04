@@ -1,6 +1,7 @@
 // Browser entry for the receipt page. Same verifyReceipt as the CLI.
-// No WebCrypto Ed25519 means signature invalid. The page does not claim a pass.
-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+// A redacted copy is reported before crypto runs. No WebCrypto Ed25519 means signature invalid.
+// The page does not claim a pass.
+import { redactedCopy, verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
 import { signatureStatus } from "./receipt-page.mjs";
 
 export async function ed25519WebCryptoAvailable() {
@@ -24,11 +25,21 @@ function keyOrigin() {
 
 export async function runReceiptPage() {
   const el = document.getElementById("status");
+  let raw = null;
+  try { raw = JSON.parse(document.getElementById("receipt-data").textContent); }
+  catch { raw = null; }
+  if (raw && redactedCopy(raw)) {
+    el.textContent = signatureStatus({ status: "redacted copy" }, false);
+    return;
+  }
   if (!(await ed25519WebCryptoAvailable())) {
     el.textContent = signatureStatus(null, false);
     return;
   }
-  const raw = JSON.parse(document.getElementById("receipt-data").textContent);
+  if (!raw) {
+    el.textContent = signatureStatus(null, false);
+    return;
+  }
   const origin = keyOrigin();
   let keyset;
   try {

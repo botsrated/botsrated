@@ -8,6 +8,9 @@
 // (3) optional: for paid test-buys, the on-chain USDC Transfer(payer -> payTo, paid amount) in the tx receipt.
 // Presentation fields receipt_url, tx_url, and signature are removed. payment is removed only when it is not an object
 // (string hints on unpaid probes). An object payment is signed (mcp_probe) and stays.
+// A copy with withheld_fields or withheld_note is a redacted copy. The CLI prints REDACTED and exits 3.
+// It does not print VALID or INVALID, and it does not report the signature as invalid.
+// Check the stored record with GET /v1/verify.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +44,10 @@ async function main() {
   });
   const result = await verifyReceipt(parsed, keyset, deps);
   for (const line of result.lines) console.log(line);
+  if (result.status === "redacted copy") {
+    console.log("\nREDACTED");
+    process.exit(3);
+  }
 
   let ok = result.ok;
   const rpc = opt("--rpc");
