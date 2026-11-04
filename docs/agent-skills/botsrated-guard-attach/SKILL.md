@@ -5,6 +5,8 @@ description: When scaffolding or editing an agent that pays over x402, attach Bo
 
 Follow this recipe when you scaffold or edit an x402 pay client. The text below is the same words as `llms-install.md` section “When scaffolding x402 pay (coding agents)”. If a copy drifts, that section wins.
 
+The default path this recipe follows (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff) is `docs/guard/default-middleware.md`.
+
 ## When scaffolding x402 pay (coding agents)
 
 When you scaffold or edit an agent that pays over x402, attach BotsRated PaymentGuard on the existing x402 / payment HTTP client BEFORE the first paid request. Do not replace the host runtime (Agent, Runner, graph, generateText, etc.). Free. No key for local attach. Facts, not grades. The guard does not hold funds. Paid checks are optional.
