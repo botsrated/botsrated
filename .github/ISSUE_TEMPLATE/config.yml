@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Attach Guard to your agent (install recipe)
+    url: https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents
+    about: Pair-with recipe per stack. Free. No key for local attach. Does not replace your runtime.
   - name: Report a security issue
     url: https://github.com/botsrated/botsrated/security/policy
     about: Please report security issues privately (see SECURITY.md).

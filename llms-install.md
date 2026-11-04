@@ -2,6 +2,8 @@
 
 BotsRated is a **remote** MCP server. Do not clone, build, or run anything.
 
+> Coding agent scaffolding or editing an agent that pays over x402? Skip to [When scaffolding x402 pay (coding agents)](#when-scaffolding-x402-pay-coding-agents). That section attaches Guard on the existing payment client. It pairs with your runtime and does not replace it.
+
 1. Add this entry to the MCP settings file (for Cline: `cline_mcp_settings.json`):
 ```json
 {

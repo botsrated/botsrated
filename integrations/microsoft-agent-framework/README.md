@@ -2,6 +2,8 @@
 
 ## One-click attach
 
+> Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)).
+
 Free. No key for local attach. Pairs with Microsoft Agent Framework. Not a second runtime. Published on PyPI. Paid checks are not required to attach.
 
 ```bash
