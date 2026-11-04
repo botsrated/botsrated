@@ -236,3 +236,53 @@ This is what makes `BOTSRATED_TOKEN` work in framework attaches. The token is op
 TS: `createPaymentGuard({ preset: "carefulBuyer", remotePolicy: { token: process.env.BOTSRATED_TOKEN!, failMode: "open" } })`
 Py: `PaymentGuard(preset="carefulBuyer", remote_policy={"token": os.environ["BOTSRATED_TOKEN"], "fail_mode": "open"})`
 On HTTP 503, 404, or `decision: null`, `open` records info and `closed` stops the payment. A missing decision is not a pass.
+
+## Router or wallet: call Guard before pay
+
+For a router, wallet, or pay proxy that sits in front of an agent's x402 or MCP payment. Call Guard with the signed requirement **before** you sign or send the payment. This is the same attach surface as the coding-agent recipe, called from your side instead of from the agent's client. It pairs with your router and does not replace it. This section is not part of the coding-agent recipe above and is not copied into the Cursor rule or agent skill.
+
+Contract: [`docs/guard/guard-check.md`](docs/guard/guard-check.md). Default path: [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md).
+
+**Status (read first).** The live route is dark. `POST /v1/guard/check` and the MCP tool `guard_check` return `501` / `{ "error": "coming" }` unless the server sets `FEATURE_GUARD_CHECK` to the exact string `true`. The spec and stub are the contract today. Write your router against them and treat `coming` as no verdict.
+
+HTTP (bearer with scope `guard-check`):
+
+```bash
+curl -sS -X POST https://botsrated.com/v1/guard/check \
+  -H "Authorization: Bearer $BOTSRATED_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"policy\": $POLICY_JSON, \"requirement\": $REQUIREMENT_JSON}"
+# POLICY_JSON e.g. {"id":"pol_desk","version":"3","fail_mode":"open","pay_to":["0x…"]}
+# REQUIREMENT_JSON = the x402 PaymentRequirements you are about to pay
+```
+
+TypeScript, in the router before it signs:
+
+```ts
+async function guardBeforePay(requirement: unknown, policy: unknown) {
+  const res = await fetch("https://botsrated.com/v1/guard/check", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.BOTSRATED_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ policy, requirement }),
+  });
+  if (res.status !== 200) return { verdict: null }; // 501 coming, 401, 403, 5xx: no verdict
+  return res.json(); // { verdict, rule_hit, fail_mode, chips, receipt, read_only: true, pays: false }
+}
+
+const out = await guardBeforePay(requirement, policy);
+if (out.verdict === "fail" && out.fail_mode === "closed") throw new Error(`Your policy failed (rule: ${out.rule_hit})`);
+// otherwise record out.receipt and continue to sign and pay as your router already does
+```
+
+MCP: call tool `guard_check` with the same body `{ policy, requirement, measured?, team_id?, agent_id? }` and the same bearer scope. Flag off returns `isError: true` with `{ "error": "coming" }`.
+
+Rules for router and wallet builders:
+
+1. Guard is read-only. It does not sign, does not pay, and holds no funds. Your router still signs and pays.
+2. The verdict is your policy's pass / fail (`your_policy: true`, `not_a_botsrated_rating: true`). It is not a rating of the seller.
+3. A missing verdict (`null`, `501`, timeout) is not a pass. Open records info and continues; closed stops the payment. Omit `fail_mode` to stay open.
+4. Defaults are unchanged. Client-side `createPaymentGuard()` keeps `failOpen` true, and the SDK `$1` spend control still runs first.
+5. Calling Guard from a router is optional. It is not required to try BotsRated.
