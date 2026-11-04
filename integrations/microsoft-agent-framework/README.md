@@ -45,7 +45,7 @@ from agent_framework_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+Omit `preset` for advice only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -62,7 +62,7 @@ from agent_framework_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` and `strict` block an unobserved payTo only when you select them. Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+Omit `preset` for advice only (`warn`). `carefulBuyer` blocks an unobserved payTo only when you select it (same stops as `policies.strict`). Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## What it checks
 

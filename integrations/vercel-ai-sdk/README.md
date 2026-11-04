@@ -34,7 +34,7 @@ Live docs: [botsrated.com/docs/guard#vercel-ai-sdk](https://botsrated.com/docs/g
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
 const guard = attachPaymentGuard(x402Client);
 ```
-3. Omit `preset` for advice only (`carefulBuyer` / `strict` stop an unobserved payTo when you pass them). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset` for advice only. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -49,7 +49,7 @@ import { attachPaymentGuard } from "@botsrated/ai-sdk";
 const guard = attachPaymentGuard(x402Client);
 ```
 
-Omit `preset` for advice only. `carefulBuyer` and `strict` block an unobserved payTo only when selected. Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
+Omit `preset` for advice only. `carefulBuyer` blocks an unobserved payTo only when selected (same stops as `policies.strict`). Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
 
 ## Token
 

@@ -259,7 +259,7 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 
 1. Prefer the named pair-with package for the stack in Choose stack. Do not invent package names.
 2. Installing does not attach — always call `attach_payment_guard` / `attachPaymentGuard`.
-3. Omit preset and fail_mode unless the user asked for carefulBuyer, strict, or closed.
+3. Omit preset and fail_mode unless the user asked for carefulBuyer or closed. `carefulBuyer` has the same stops as `policies.strict`. Presets are `warn`, `carefulBuyer`, and `dry-run-only`.
 4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read that variable when `token` is omitted. `llama-index-tools-botsrated` 0.1.5 does not; pass `token=` on that package when you use Desk policy.
 5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
