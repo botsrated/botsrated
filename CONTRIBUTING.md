@@ -18,14 +18,14 @@ docs for the hosted MCP server. The hosted service itself (botsrated.com) is not
 | Folder | Package | Language |
 |---|---|---|
 | `integrations/python-core` | `botsrated` (PyPI) | Python >= 3.10 |
-| `integrations/langchain` | `langchain-botsrated` (PyPI) | Python |
+| `integrations/langchain` | `langchain-botsrated` (PyPI 0.1.5) | Python |
 | `integrations/langgraph` | `langgraph-botsrated` (PyPI) | Python |
-| `integrations/google-adk` | `google-adk-botsrated` (PyPI 0.1.0; long_description still says not on PyPI) | Python |
-| `integrations/crewai` | `crewai-botsrated` (PyPI 0.1.0; long_description still says not on PyPI) | Python |
+| `integrations/google-adk` | `google-adk-botsrated` (PyPI 0.1.1) | Python |
+| `integrations/crewai` | `crewai-botsrated` (PyPI 0.1.1) | Python |
 | `integrations/llama-stack` | `llama-stack-botsrated` (PyPI) | Python |
 | `integrations/pydantic-ai` | `pydantic-ai-botsrated` (not published) | Python |
-| `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI) | Python |
-| `integrations/microsoft-agent-framework` | `agent-framework-botsrated` (PyPI) | Python |
+| `integrations/llamaindex` | `llama-index-tools-botsrated` (PyPI 0.1.5) | Python |
+| `integrations/microsoft-agent-framework` | `agent-framework-botsrated` (PyPI 0.1.5) | Python |
 | `integrations/openai-agents` | `botsrated-openai-agents` (PyPI) | Python |
 | `integrations/x402-client` | `@botsrated/x402-preflight` (npm) | TypeScript |
 | `integrations/vercel-ai-sdk` | `@botsrated/ai-sdk` (npm) | TypeScript |

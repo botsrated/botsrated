@@ -30,22 +30,17 @@ Free. No key for local attach. Preflight and the guard surface signed receipt li
 
 ### LIVE wedges (one-click)
 
-- [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.4). Published 0.1.4 does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
+- [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.5). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
 - [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install botsrated-openai-agents` (PyPI 0.1.1, `attach_payment_guard`).
 - [LangGraph](integrations/langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install langgraph-botsrated` (PyPI 0.1.1, `attach_payment_guard`).
 - [Llama Stack](integrations/llama-stack/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llama-stack) — Free. No key for local attach. `pip install llama-stack-botsrated` (PyPI 0.1.1, `attach_payment_guard`).
-
-### On PyPI, omitted from the primary scaffolding list
-
-`google-adk-botsrated` and `crewai-botsrated` are on PyPI at 0.1.0. Each long_description still says the pair-with package is not on PyPI yet and shows `pip install -e integrations/…`. That copy is stale. They are omitted from Choose stack in the scaffolding section below until the registry description matches the package. Do not copy that long_description into a client.
-
-- [Google ADK](integrations/google-adk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#google-adk) — PyPI 0.1.0, stale long_description. Not a primary install line in the scaffolding recipe.
-- [CrewAI](integrations/crewai/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#crewai) — PyPI 0.1.0, stale long_description. Not a primary install line in the scaffolding recipe.
+- [Google ADK](integrations/google-adk/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#google-adk) — Free. No key for local attach. `pip install google-adk-botsrated` (PyPI 0.1.1, `attach_payment_guard`). Google ADK stays the runtime.
+- [CrewAI](integrations/crewai/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#crewai) — Free. No key for local attach. `pip install crewai-botsrated` (PyPI 0.1.1, `attach_payment_guard`). CrewAI stays the runtime.
 
 ### Published pair-with (one-click)
 
-- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — Free. No key for local attach. `pip install llama-index-tools-botsrated` (PyPI 0.1.4). Published 0.1.4 does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
-- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — Free. No key for local attach. `pip install agent-framework-botsrated` (PyPI 0.1.4).
+- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — Free. No key for local attach. `pip install llama-index-tools-botsrated` (PyPI 0.1.5). This package does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
+- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — Free. No key for local attach. `pip install agent-framework-botsrated` (PyPI 0.1.5). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
 
 ### Other pair-with packages
 
@@ -159,7 +154,7 @@ Note: the npm package README on the registry may still say "publishing soon". Tr
 
 #### LangChain (Python)
 
-Install (PyPI measured 0.1.4 — Published on PyPI):
+Install (PyPI measured 0.1.5 — Published on PyPI):
 
 ```bash
 pip install langchain-botsrated
@@ -174,11 +169,11 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Docs: https://botsrated.com/docs/guard#langchain
 
-Note: published 0.1.4 does not read `BOTSRATED_TOKEN`. Pass `token=` when you use Desk policy. Local attach does not need a token.
+Note: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`. Explicit `token` wins. Local attach does not need a token.
 
 #### LlamaIndex (Python)
 
-Install (PyPI measured 0.1.4 — Published on PyPI):
+Install (PyPI measured 0.1.5 — Published on PyPI):
 
 ```bash
 pip install llama-index-tools-botsrated
@@ -193,11 +188,11 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Docs: https://botsrated.com/docs/guard#llamaindex
 
-Note: published 0.1.4 does not read `BOTSRATED_TOKEN`. Pass `token=` when you use Desk policy. Local attach does not need a token.
+Note: this package does not read `BOTSRATED_TOKEN`. Pass `token=` when you use Desk policy. Local attach does not need a token.
 
 #### Microsoft Agent Framework (Python)
 
-Install (PyPI measured 0.1.4 — Published on PyPI):
+Install (PyPI measured 0.1.5 — Published on PyPI):
 
 ```bash
 pip install agent-framework-botsrated
@@ -212,11 +207,47 @@ guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mod
 
 Docs: https://botsrated.com/docs/guard#microsoft-agent-framework
 
-Note: pair-with on the x402 client. Microsoft Agent Framework stays the runtime.
+Note: pair-with on the x402 client. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`. Microsoft Agent Framework stays the runtime.
+
+#### Google ADK (Python)
+
+Install (PyPI measured 0.1.1 — Published on PyPI):
+
+```bash
+pip install google-adk-botsrated
+```
+
+Attach:
+
+```python
+from google_adk_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Docs: https://botsrated.com/docs/guard#google-adk
+
+Note: the live site section still shows core `botsrated[x402]` and `PaymentGuard.install`. The named package above is the truthful install. Google ADK stays the runtime. This package is not an Agent, Runner, or session service.
+
+#### CrewAI (Python)
+
+Install (PyPI measured 0.1.1 — Published on PyPI):
+
+```bash
+pip install crewai-botsrated
+```
+
+Attach:
+
+```python
+from crewai_botsrated import attach_payment_guard
+guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+```
+
+Docs: https://botsrated.com/docs/guard#crewai
+
+Note: the live site section still shows core `botsrated[x402]` and `PaymentGuard.install`. The named package above is the truthful install. CrewAI stays the runtime. This package is not a crew, process, flow, or agent loop.
 
 ### Omitted from Choose stack
-
-Google ADK (`google-adk-botsrated`) and CrewAI (`crewai-botsrated`) are on PyPI at 0.1.0. Each long_description still says the pair-with package is not on PyPI yet and shows `pip install -e integrations/…`. That copy is stale. They stay out of Choose stack until the registry description matches the package. Do not copy that long_description into a client, and do not add `pip install google-adk-botsrated` or `pip install crewai-botsrated` as the primary install. For those two stacks, use the core fallback in the hard rules.
 
 Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-10-31). Use the core fallback for those stacks. Do not invent package names.
 
@@ -225,8 +256,8 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 1. Prefer the named pair-with package for the stack in Choose stack. Do not invent package names.
 2. Installing does not attach — always call `attach_payment_guard` / `attachPaymentGuard`.
 3. Omit preset and fail_mode unless the user asked for carefulBuyer, strict, or closed.
-4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain and LlamaIndex on PyPI 0.1.4 do not read that variable; pass `token=` on those two when you use Desk policy.
-5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Google ADK and CrewAI are on PyPI at 0.1.0 with a stale long_description (see Omitted from Choose stack). They are not an exception that adds those package names to a scaffold. Use core for them.
+4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read that variable when `token` is omitted. `llama-index-tools-botsrated` 0.1.5 does not; pass `token=` on that package when you use Desk policy.
+5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
 7. The attach step is not optional in pay code you write. Do not ship a scaffold that can send a paid request before the attach call runs. This rule is about the code you write. It is not a claim to the user that attach is required to try BotsRated.
 

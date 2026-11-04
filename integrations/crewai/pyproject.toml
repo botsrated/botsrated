@@ -1,6 +1,6 @@
 [project]
 name = "crewai-botsrated"
-version = "0.1.0"
+version = "0.1.1"
 description = "Payment-client wrap that pairs with CrewAI. Registers BotsRated PaymentGuard on an x402 client and offers an optional before-pay tool hook. Not a crew runtime."
 readme = "README.md"
 license = "MIT"

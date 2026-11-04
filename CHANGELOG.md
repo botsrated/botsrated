@@ -5,6 +5,8 @@ All notable changes to the packages in this repository. Each package has its own
 
 ## Unreleased
 
+- Docs-truth 0.1.1: `google-adk-botsrated` and `crewai-botsrated` bump 0.1.0 → 0.1.1 so a republish refreshes the PyPI long_description. Install lines lead with `pip install google-adk-botsrated` / `pip install crewai-botsrated` and `attach_payment_guard`. Pair-with only; Google ADK and CrewAI stay the host runtime. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change. Publish is separate.
+- `langchain-botsrated`, `llama-index-tools-botsrated`, and `agent-framework-botsrated` bump 0.1.4 → 0.1.5. Dependency pin is `botsrated>=0.3.1,<0.4` (`llama-index-tools-botsrated` and `agent-framework-botsrated` were `>=0.3.0`; `langchain-botsrated` already pinned `>=0.3.1`). `langchain-botsrated` and `agent-framework-botsrated` read `BOTSRATED_TOKEN` when `token` is omitted (explicit `token` wins). `llama-index-tools-botsrated` does not read that variable; pass `token=`. No other guard behavior change. Publish is separate.
 - Guard package lane (no package version bump, no publish): `guardAttach({ haltOn })` or `strictModeHalt()` aborts on measured chips the customer lists (`payTo changed` and `probe failed` in the sample). Omit it and chip halt stays off. Policy verdicts and the policy-receipt body stay as they were. `failOpen` still defaults true. `verifyReceipt` is importable from `@botsrated/x402-preflight/verify-receipt` and calls `spec/verify-core.mjs` offline (`signature valid`, `signature invalid`, `key unknown`; this record only). Internal attach-retention shape is `docs/guard/attach-retention-internal.md` (same `callers_week` / `channel='guard'` count as “How we count outside attaches”; do not publish when the count is missing or not greater than 0). No site badge.
 - Docs: `llms-install.md` adds “How we count outside attaches” at the end (outside the coding-agent recipe, so the Cursor rule and agent skill are unchanged). Counts distinct `callers_week` keys with `channel='guard'`, excluding `internal`, retained week over week. npm and PyPI download counts are not a success metric. No public retained-attach figure yet. README, CONTRIBUTING, and `docs/guard/default-middleware.md` add one pointer each. No package, default, route, or counter change.
 - Docs: `llms-install.md` adds “Router or wallet: call Guard before pay” after “Optional” (outside the coding-agent recipe, so the Cursor rule and agent skill are unchanged). Copy-ready curl, TypeScript, and MCP `guard_check` snippets for a router or wallet to call Guard before it signs, pointing at `docs/guard/guard-check.md` and `docs/guard/default-middleware.md`. States the live route is dark unless `FEATURE_GUARD_CHECK` is the exact string `true`. README and CONTRIBUTING add one pointer each. No package, default, or route change. `failOpen` stays true.
@@ -214,8 +216,11 @@ Changed:
 
 ## langchain-botsrated (PyPI)
 
+### 0.1.5
+- README Status names 0.1.5 and `pip install langchain-botsrated` with `attach_payment_guard`. Requires `botsrated>=0.3.1,<0.4`. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN` (explicit `token` wins). That env read was already on main and was not in PyPI 0.1.4. No other guard behavior change from 0.1.4.
+
 ### 0.1.4
-- This release. README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
+- README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
@@ -234,8 +239,11 @@ Changed:
 
 ## llama-index-tools-botsrated (PyPI)
 
+### 0.1.5
+- README Status names 0.1.5 and `pip install llama-index-tools-botsrated` with `attach_payment_guard`. Requires `botsrated>=0.3.1,<0.4` (0.1.4 required `>=0.3.0`). This package does not read `BOTSRATED_TOKEN`; pass `token=`. No other guard behavior change from 0.1.4.
+
 ### 0.1.4
-- This release. README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
+- README Status names 0.1.4 and includes `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
@@ -256,8 +264,11 @@ Changed:
 
 ## agent-framework-botsrated (PyPI)
 
+### 0.1.5
+- README Status names 0.1.5 and includes the middleware, the check tool, and `attach_payment_guard`. Requires `botsrated>=0.3.1,<0.4` (0.1.4 required `>=0.3.0`). Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`. No other guard behavior change from 0.1.4.
+
 ### 0.1.4
-- This release. README Status names 0.1.4 and includes the middleware, the check tool, and `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
+- README Status names 0.1.4 and includes the middleware, the check tool, and `attach_payment_guard`. Requires `botsrated>=0.3.0,<0.4`. No guard behavior change from 0.1.3.
 
 ### 0.1.3
 - Published on PyPI on 2026-10-28. Requires `botsrated>=0.3.0,<0.4`. The earlier draft pin `botsrated>=0.1.6,<0.3` is not this release's pin.
@@ -298,6 +309,22 @@ Changed:
 
 ### 0.1.0
 - First published release. Payment-client wrap. Llama Stack stays the runtime, the distribution, and the inference server.
+
+## google-adk-botsrated (PyPI)
+
+### 0.1.1
+- README long_description refresh. Status names 0.1.1 and `pip install google-adk-botsrated` with `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change from 0.1.0. PyPI 0.1.0 still said the package was not on PyPI. Pair-with only; Google ADK stays the agent runtime.
+
+### 0.1.0
+- First published release. Payment-client wrap plus an optional before-tool callback. Not an agent runtime.
+
+## crewai-botsrated (PyPI)
+
+### 0.1.1
+- README long_description refresh. Status names 0.1.1 and `pip install crewai-botsrated` with `attach_payment_guard`. Depends on `botsrated>=0.3.1,<0.4`. No guard behavior change from 0.1.0. PyPI 0.1.0 still said the package was not on PyPI. Pair-with only; CrewAI stays the crew runtime.
+
+### 0.1.0
+- First published release. Payment-client wrap plus an optional before-pay tool hook. Not a crew runtime.
 
 ## @botsrated/x402-preflight (npm)
 
