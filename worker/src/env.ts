@@ -6,4 +6,15 @@
  */
 export interface Env {
   FEATURE_ORG_LEDGER?: string;
+  /**
+   * Exact string "true" enables the read-only guard-check stub.
+   * Anything else, including unset, stays dark (501). This flag does
+   * not open a D1 writer.
+   */
+  FEATURE_GUARD_CHECK?: string;
+  /**
+   * Key id only. The stub refuses prod and prober ids. It does not
+   * hold a private key, so a receipt from this stub stays unsigned.
+   */
+  GUARD_POLICY_SIGNING_KEY_ID?: string;
 }

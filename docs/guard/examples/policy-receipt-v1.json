@@ -1,0 +1,36 @@
+{
+  "spec": "botsrated-guard-policy-receipt/1",
+  "kind": "guard_policy_receipt",
+  "org_id": "org_aaaaaaaa",
+  "team_id": "team_bbbbbbbb",
+  "agent_id": "ag_cccccccc",
+  "policy_id": "pol_desk",
+  "policy_version": "3",
+  "rule_hit": "none",
+  "fail_mode": "open",
+  "verdict": "pass",
+  "your_policy": true,
+  "not_a_botsrated_rating": true,
+  "rails": [
+    "x402",
+    "mcp"
+  ],
+  "requirement": {
+    "amount": "1000",
+    "pay_to": "0x1111111111111111111111111111111111111111",
+    "network": "eip155:8453",
+    "resource_host": "seller.example"
+  },
+  "measured": {
+    "pay_to_unchanged": null,
+    "last_checked": null,
+    "valid_402": null,
+    "as_of": null,
+    "expires_at": null,
+    "evidence_url": null
+  },
+  "chips": [
+    "no data yet"
+  ],
+  "id": "e29dfb522130964b1a78"
+}
