@@ -10,7 +10,28 @@ BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent 
 
 It reports facts and signed receipts only.
 
-This repository documents the **remote** MCP server. There is nothing to install or run locally.
+This repository documents the **remote** MCP server (nothing to install or run for it) and the optional Guard packages below.
+
+## Guard: check a payment before your agent signs it
+
+Guard pairs with the x402 client your agent already pays with. It does not replace your agent runtime. Free. No key for local attach. It compares each payment request with BotsRated measurements and warns or blocks by your own rules. Facts and receipt links, not grades. Guard does not hold funds.
+
+- **Coding agents (Cursor, Claude Code, Cline, Codex):** follow [`llms-install.md` → When scaffolding x402 pay](llms-install.md#when-scaffolding-x402-pay-coding-agents). The same recipe ships as a Cursor rule ([`.cursor/rules/botsrated-guard-attach.mdc`](.cursor/rules/botsrated-guard-attach.mdc)) and an agent skill ([`docs/agent-skills/botsrated-guard-attach/SKILL.md`](docs/agent-skills/botsrated-guard-attach/SKILL.md)). If a copy drifts, `llms-install.md` wins.
+- **Per stack:** [integrations/README.md](integrations/README.md) · live docs https://botsrated.com/docs/guard
+
+| Stack | Install | Attach |
+|---|---|---|
+| LangChain | `pip install langchain-botsrated` | [README](integrations/langchain/README.md#one-click-attach) |
+| OpenAI Agents SDK | `pip install botsrated-openai-agents` | [README](integrations/openai-agents/README.md#one-click-attach) |
+| LangGraph | `pip install langgraph-botsrated` | [README](integrations/langgraph/README.md#one-click-attach) |
+| Llama Stack | `pip install llama-stack-botsrated` | [README](integrations/llama-stack/README.md#one-click-attach) |
+| LlamaIndex | `pip install llama-index-tools-botsrated` | [README](integrations/llamaindex/README.md#one-click-attach) |
+| Microsoft Agent Framework | `pip install agent-framework-botsrated` | [README](integrations/microsoft-agent-framework/README.md#one-click-attach) |
+| Vercel AI SDK | `npm install @botsrated/ai-sdk` | [README](integrations/vercel-ai-sdk/README.md#one-click-attach) |
+| Any Python x402 client | `pip install "botsrated[x402]"` | [README](integrations/python-core/README.md) |
+| Any TypeScript x402 / MCP client | `npm install @botsrated/x402-preflight` | [README](integrations/x402-client/README.md) |
+
+Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra) are in [integrations/README.md](integrations/README.md).
 
 | | |
 |---|---|
