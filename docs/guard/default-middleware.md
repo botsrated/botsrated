@@ -46,7 +46,7 @@ Framework stacks reach a customer policy through `remote_policy` / `remotePolicy
 
 ### 4. Desk / alerts handoff
 
-- **Policy in Desk (optional).** `BOTSRATED_TOKEN` is optional and only for Desk remote policy. Save a policy first ([Desk → Policy](https://botsrated.com/desk/policy) or `PUT /v1/policy`); with none saved every check answers `404 no_policy_saved` and your `fail_mode` applies. LangChain and LlamaIndex on PyPI 0.1.4 need `token=` passed explicitly.
+- **Policy in Desk (optional).** `BOTSRATED_TOKEN` is optional and only for Desk remote policy. Save a policy first ([Desk → Policy](https://botsrated.com/desk/policy) or `PUT /v1/policy`); with none saved every check answers `404 no_policy_saved` and your `fail_mode` applies. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read `BOTSRATED_TOKEN` when `token` is omitted. `llama-index-tools-botsrated` 0.1.5 does not; pass `token=` on that package.
 - **Alerts on seller facts.** Watch a seller with `POST https://botsrated.com/v1/alerts/subscribe` for changes to payTo, quoted price, valid 402, listing, or freshness. Plans: [README → Plans](../../README.md#plans-seller-alerts-and-data-plans).
 - **Router check (dark).** `POST /v1/guard/check` and the `guard_check` MCP tool return the same receipt fields, but stay off unless `FEATURE_GUARD_CHECK` is the exact string `true` ([`guard-check.md`](guard-check.md)).
 
