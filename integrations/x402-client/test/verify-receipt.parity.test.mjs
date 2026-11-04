@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -22,19 +25,33 @@ function load(rel) {
   return JSON.parse(fs.readFileSync(path.join(root, rel), "utf8"));
 }
 
-test("package export is verifyReceipt from spec/verify-core.mjs", () => {
+const BANNED = /\b(verified|trusted|scam|grade|ranking)\b|\bsafe\b/i;
+
+test("package export packs the offline verifier", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(here, "../package.json"), "utf8"));
   assert.equal(pkg.version, "0.3.1");
   assert.equal(pkg.exports["./verify-receipt"].import, "./verify-receipt.mjs");
   assert.equal(pkg.exports["./verify-receipt"].types, "./verify-receipt.d.ts");
+  for (const file of ["verify-receipt.mjs", "verify-receipt.d.ts", "vendor/verify-core.mjs", "vendor/verify-node.mjs"]) {
+    assert.equal(pkg.files.includes(file), true, file);
+  }
   assert.equal(RECEIPT_CHECK_CLAIM, "this record only");
   assert.deepEqual([...RECEIPT_CHECK_STATUSES], ["signature valid", "signature invalid", "key unknown"]);
   const source = fs.readFileSync(path.join(here, "../verify-receipt.mjs"), "utf8");
-  assert.match(source, /spec\/verify-core\.mjs/);
+  assert.match(source, /from "\.\/vendor\/verify-core\.mjs"/);
+  assert.match(source, /from "\.\/vendor\/verify-node\.mjs"/);
+  assert.equal(source.includes("../../spec/"), false);
   assert.equal(/\bfetch\s*\(/.test(source), false);
-  assert.equal(/\b(verified|trusted|scam|grade)\b|\bsafe\b/i.test(source), false);
+  assert.equal(BANNED.test(source), false);
   const types = fs.readFileSync(path.join(here, "../verify-receipt.d.ts"), "utf8");
-  assert.equal(/\b(verified|trusted|scam|grade)\b|\bsafe\b/i.test(types), false);
+  assert.equal(BANNED.test(types), false);
+  for (const name of ["verify-core.mjs", "verify-node.mjs"]) {
+    const packed = fs.readFileSync(path.join(here, "../vendor", name));
+    const spec = fs.readFileSync(path.join(root, "spec", name));
+    assert.equal(packed.equals(spec), true, `vendor/${name} must stay a byte copy of spec/${name}`);
+    assert.equal(createHash("sha256").update(packed).digest("hex"), createHash("sha256").update(spec).digest("hex"));
+    assert.equal(/\bfetch\s*\(/.test(packed.toString("utf8")), false);
+  }
 });
 
 for (const [file, id] of signed) {
@@ -98,6 +115,80 @@ test("the check does not call fetch", async () => {
     assert.equal(result.status, "signature valid");
   } finally {
     globalThis.fetch = previous;
+  }
+});
+
+test("a packed install resolves verifyReceipt with no monorepo path", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "x402-verify-pack-"));
+  try {
+    const out = spawnSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", tmp], {
+      cwd: path.join(here, ".."),
+      encoding: "utf8",
+    });
+    assert.equal(out.status, 0, out.stderr || out.stdout);
+    const meta = JSON.parse(out.stdout.slice(out.stdout.indexOf("[")))[0];
+    const paths = meta.files.map((file) => file.path);
+    for (const rel of [
+      "verify-receipt.mjs",
+      "verify-receipt.d.ts",
+      "vendor/verify-core.mjs",
+      "vendor/verify-node.mjs",
+    ]) {
+      assert.equal(paths.includes(rel), true, `${rel} in ${paths.join(", ")}`);
+    }
+    assert.equal(paths.some((rel) => rel.includes("../") || /(^|\/)spec\//.test(rel)), false);
+
+    const extract = path.join(tmp, "extract");
+    fs.mkdirSync(extract);
+    const unpacked = spawnSync("tar", ["-xzf", path.join(tmp, meta.filename), "-C", extract], { encoding: "utf8" });
+    assert.equal(unpacked.status, 0, unpacked.stderr || unpacked.stdout);
+
+    const packedCore = fs.readFileSync(path.join(extract, "package/vendor/verify-core.mjs"));
+    const packedNode = fs.readFileSync(path.join(extract, "package/vendor/verify-node.mjs"));
+    assert.deepEqual(packedCore, fs.readFileSync(path.join(root, "spec/verify-core.mjs")));
+    assert.deepEqual(packedNode, fs.readFileSync(path.join(root, "spec/verify-node.mjs")));
+    const packedEntry = fs.readFileSync(path.join(extract, "package/verify-receipt.mjs"), "utf8");
+    assert.equal(packedEntry.includes("../../spec/"), false);
+
+    const app = path.join(tmp, "app");
+    fs.mkdirSync(path.join(app, "node_modules", "@botsrated"), { recursive: true });
+    fs.symlinkSync(path.join(extract, "package"), path.join(app, "node_modules", "@botsrated", "x402-preflight"));
+    fs.writeFileSync(path.join(app, "package.json"), JSON.stringify({ private: true, type: "module" }));
+    fs.writeFileSync(path.join(app, "run.mjs"), [
+      'import { verifyReceipt, RECEIPT_CHECK_CLAIM } from "@botsrated/x402-preflight/verify-receipt";',
+      'import fs from "node:fs";',
+      "const raw = JSON.parse(fs.readFileSync(process.argv[2], \"utf8\"));",
+      "const keyset = JSON.parse(fs.readFileSync(process.argv[3], \"utf8\"));",
+      "const result = await verifyReceipt(raw, keyset);",
+      "process.stdout.write(JSON.stringify({",
+      '  url: import.meta.resolve("@botsrated/x402-preflight/verify-receipt"),',
+      "  status: result.status,",
+      "  valid: result.valid,",
+      "  id: result.id,",
+      "  claim: RECEIPT_CHECK_CLAIM,",
+      "}));",
+      "",
+    ].join("\n"));
+
+    const ran = spawnSync(process.execPath, [
+      path.join(app, "run.mjs"),
+      path.join(root, "spec/examples/unpaid-probe.signed.json"),
+      path.join(root, "spec/examples/keys.json"),
+    ], { cwd: app, encoding: "utf8" });
+    assert.equal(ran.status, 0, ran.stderr || ran.stdout);
+    const body = JSON.parse(ran.stdout);
+    assert.equal(body.status, "signature valid");
+    assert.equal(body.valid, true);
+    assert.equal(body.id, "ac16e0eeff1e0d9ffcfc");
+    assert.equal(body.claim, "this record only");
+    const resolved = fileURLToPath(body.url);
+    assert.equal(
+      fs.realpathSync(resolved),
+      fs.realpathSync(path.join(extract, "package/verify-receipt.mjs")),
+    );
+    assert.equal(resolved.includes(`${path.sep}spec${path.sep}verify-core.mjs`), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 

@@ -1,9 +1,12 @@
-// Offline check of one receipt. Same verifyReceipt as spec/verify-core.mjs.
+// Offline check of one receipt for wallets, routers, and MCP clients.
+// vendor/verify-core.mjs is a byte copy of spec/verify-core.mjs.
+// vendor/verify-node.mjs is a byte copy of spec/verify-node.mjs.
+// Parity tests keep those copies byte-identical with spec/.
 // Status is signature valid, signature invalid, or key unknown.
 // A match is this record only. It is not a rating of the seller.
 // No network. This file does not fetch, and it does not mount a hosted route.
-import { verifyReceipt as verifyReceiptCore } from "../../spec/verify-core.mjs";
-import { nodeDeps } from "../../spec/verify-node.mjs";
+import { verifyReceipt as verifyReceiptCore } from "./vendor/verify-core.mjs";
+import { nodeDeps } from "./vendor/verify-node.mjs";
 
 /** Claim ceiling for a match: this record only. */
 export const RECEIPT_CHECK_CLAIM = "this record only";

@@ -41,6 +41,8 @@
     "dist",
     "verify-receipt.mjs",
     "verify-receipt.d.ts",
+    "vendor/verify-core.mjs",
+    "vendor/verify-node.mjs",
     "README.md",
     "LICENSE"
   ],
