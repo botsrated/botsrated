@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Check one BotsRated receipt signature. A matching signature checks this record only. It is not a rating of the seller.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src https://botsrated.com; base-uri 'none'; form-action 'none'">
+<title>Courthouse</title>
+<style>
+  [hidden] { display: none !important; }
+  body { margin: 0; background: #fff; color: #1d1d1f; font: 15px/1.45 ui-sans-serif, system-ui, sans-serif; }
+  main { max-width: 40rem; margin: 0 auto; padding: 48px 20px 64px; }
+  .eyebrow { margin: 0; color: #6e6e73; font-size: 13px; }
+  h1 { margin: 8px 0 12px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  label { display: block; margin: 20px 0 8px; font-size: 13px; font-weight: 600; color: #6e6e73; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 9rem; margin: 0; padding: 12px; border: 1px solid #d2d2d7; border-radius: 8px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  button { font: inherit; color: #fff; background: #1d1d1f; border: 0; border-radius: 8px; padding: 8px 14px; margin-top: 12px; }
+  button:disabled { opacity: 0.6; }
+  dl { display: grid; grid-template-columns: 6.5rem 1fr; gap: 8px 16px; margin: 24px 0 0; }
+  dt { color: #6e6e73; }
+  dd { margin: 0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .note { color: #6e6e73; font-size: 13px; }
+  a { color: #06c; }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">BotsRated courthouse</p>
+  <h1 id="status">signature invalid</h1>
+  <p class="note">A matching signature checks this record only. It is not a rating of the seller.</p>
+  <label for="paste">Receipt link or JSON</label>
+  <textarea id="paste" spellcheck="false" autocomplete="off" placeholder="https://botsrated.com/receipt/… or receipt JSON"></textarea>
+  <p><button type="button" id="check-btn">Check signature</button></p>
+  <dl>
+    <dt>id</dt><dd class="mono" id="f-id"></dd>
+    <dt>kind</dt><dd id="f-kind"></dd>
+    <dt>ts</dt><dd id="f-ts"></dd>
+    <dt>host</dt><dd id="f-host"></dd>
+    <dt>key_id</dt><dd class="mono" id="f-key"></dd>
+  </dl>
+  <p class="note">A receipt link is fetched only when it is https://botsrated.com/receipt/ plus a 20-hex id. Query keys kept: host, mcp, day, s. Public keys: https://botsrated.com/.well-known/botsrated-key. The paste stays in this browser.</p>
+  <p id="soft-guard" hidden><a href="https://botsrated.com/docs/guard">Attach Guard</a> (warn only). This booth does not attach it.</p>
+</main>
+<script type="module" src="./verify-booth.mjs"></script>
+</body>
+</html>
