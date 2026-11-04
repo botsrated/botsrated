@@ -44,11 +44,13 @@ Ed25519 runs in the browser through `verifyReceipt`. The paste is not uploaded.
 
 ## Claim ceiling
 
-The page shows one status: `signature valid`, `signature invalid`, or `key unknown`.
+The page shows `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`.
 
 A matching signature checks this record only. It is not a rating of the seller.
 
-A browser without WebCrypto Ed25519 stays on `signature invalid`. A missing key set shows `key unknown`. Nothing on this page scores a seller, stores the paste, or mints a share link.
+A copy with `withheld_fields` or `withheld_note` is `redacted copy`. That copy is not offline-verifiable. The signature covers the stored record. Check that record with `GET /v1/verify?id=&host=&day=`. This result is not `signature invalid`.
+
+A browser without WebCrypto Ed25519 stays on `signature invalid`, unless the paste is a redacted copy. A missing key set shows `key unknown`. Nothing on this page scores a seller, stores the paste, or mints a share link.
 
 ## Soft Guard
 

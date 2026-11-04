@@ -13,7 +13,7 @@ import { RECEIPT_CHECK_CLAIM, RECEIPT_CHECK_STATUSES, verifyReceipt } from "../v
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../..");
 const keys = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/keys.json"), "utf8"));
-const STATUSES = new Set(["signature valid", "signature invalid", "key unknown"]);
+const STATUSES = new Set(["signature valid", "signature invalid", "key unknown", "redacted copy"]);
 
 const signed = [
   ["spec/examples/unpaid-probe.signed.json", "ac16e0eeff1e0d9ffcfc"],
@@ -36,7 +36,7 @@ test("package export packs the offline verifier", () => {
     assert.equal(pkg.files.includes(file), true, file);
   }
   assert.equal(RECEIPT_CHECK_CLAIM, "this record only");
-  assert.deepEqual([...RECEIPT_CHECK_STATUSES], ["signature valid", "signature invalid", "key unknown"]);
+  assert.deepEqual([...RECEIPT_CHECK_STATUSES], ["signature valid", "signature invalid", "key unknown", "redacted copy"]);
   const source = fs.readFileSync(path.join(here, "../verify-receipt.mjs"), "utf8");
   assert.match(source, /from "\.\/vendor\/verify-core\.mjs"/);
   assert.match(source, /from "\.\/vendor\/verify-node\.mjs"/);
@@ -91,6 +91,23 @@ test("string payment hint stays valid; an object payment is signature invalid", 
   assert.deepEqual(bad, badCore);
   assert.equal(bad.valid, false);
   assert.equal(bad.status, "signature invalid");
+});
+
+test("withheld receipt is redacted copy in the package and in spec", async () => {
+  const raw = load("spec/examples/unpaid-probe.withheld.json");
+  const viaPkg = await verifyReceipt(raw, keys);
+  const viaCore = await coreVerify(structuredClone(raw), keys, nodeDeps());
+  assert.deepEqual(viaPkg, viaCore);
+  assert.equal(viaPkg.valid, false);
+  assert.equal(viaPkg.status, "redacted copy");
+  assert.equal(viaPkg.offline_verifiable, false);
+  assert.deepEqual(viaPkg.errors, ["redacted_copy"]);
+  assert.equal(STATUSES.has(viaPkg.status), true);
+  assert.equal(viaPkg.lines.some((line) => line.startsWith("FAIL")), false);
+  const full = load("spec/examples/unpaid-probe.signed.json");
+  const still = await verifyReceipt(full, keys);
+  assert.equal(still.status, "signature valid");
+  assert.equal(still.valid, true);
 });
 
 test("unknown key_id is key unknown", async () => {

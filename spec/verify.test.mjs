@@ -180,6 +180,8 @@ test("missing WebCrypto is not a pass", async () => {
   assert.equal(signatureStatus(null, true), "signature invalid");
   assert.equal(signatureStatus({ status: "signature valid" }, true), "signature valid");
   assert.equal(signatureStatus({ status: "key unknown" }, true), "key unknown");
+  assert.equal(signatureStatus({ status: "redacted copy" }, false), "redacted copy");
+  assert.equal(boothStatus({ status: "redacted copy" }, false), "redacted copy");
   const cryptoOk = await ed25519WebCryptoAvailable();
   if (cryptoOk) assert.equal(signatureStatus({ status: "signature valid" }, cryptoOk), "signature valid");
 });
@@ -366,6 +368,123 @@ test("courthouse booth fetches only an allowlisted receipt link", async () => {
     deps: nodeDeps(),
   });
   assert.equal(keyDown.status, "key unknown");
+});
+
+test("withheld receipt is a redacted copy and the full example stays VALID", async () => {
+  const file = "spec/examples/unpaid-probe.withheld.json";
+  const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+  const result = await verifyReceipt(raw, keys, nodeDeps());
+  assert.equal(result.status, "redacted copy");
+  assert.equal(result.valid, false);
+  assert.equal(result.ok, false);
+  assert.equal(result.offline_verifiable, false);
+  assert.deepEqual(result.errors, ["redacted_copy"]);
+  assert.equal(result.id, "ac16e0eeff1e0d9ffcfc");
+  const text = result.lines.join("\n");
+  assert.equal(result.lines.some((line) => line.startsWith("FAIL")), false);
+  assert.equal(text.includes("signature invalid"), false);
+  assert.match(text, /not offline-verifiable/);
+  assert.match(text, /GET https:\/\/botsrated\.com\/v1\/verify\?id=ac16e0eeff1e0d9ffcfc&host=api\.exa\.ai&day=2026-10-23/);
+  const body = verifyResultJson(result);
+  assert.equal(body.valid, false);
+  assert.equal(body.status, "redacted copy");
+  assert.equal(body.offline_verifiable, false);
+  assert.deepEqual(body.errors, ["redacted_copy"]);
+  const ran = cli([file, "--keys", "spec/examples/keys.json"]);
+  assert.equal(ran.status, 3, ran.stderr || ran.stdout);
+  assert.match(ran.stdout, /\nREDACTED\n$/);
+  assert.doesNotMatch(ran.stdout, /INVALID/);
+  assert.doesNotMatch(ran.stdout, /FAIL/);
+  assert.doesNotMatch(ran.stdout, /signature invalid/);
+  const fullRan = cli(["spec/examples/unpaid-probe.signed.json", "--keys", "spec/examples/keys.json"]);
+  assert.equal(fullRan.status, 0, fullRan.stderr || fullRan.stdout);
+  assert.match(fullRan.stdout, /\nVALID\n$/);
+
+  const full = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  const marked = await verifyReceipt({ ...full, withheld_fields: ["listed_amount"], withheld_note: "withheld" }, keys, nodeDeps());
+  assert.equal(marked.status, "redacted copy");
+  assert.equal(marked.valid, false);
+  const wrappedOnly = { withheld_fields: ["listed_amount"], withheld_note: "withheld", receipt: full };
+  const outer = await verifyReceipt(wrappedOnly, keys, nodeDeps());
+  assert.equal(outer.status, "redacted copy");
+  const tampered = { ...full };
+  delete tampered.listed_amount;
+  delete tampered.listed_payTo;
+  const bad = await verifyReceipt(tampered, keys, nodeDeps());
+  assert.equal(bad.status, "signature invalid");
+  assert.equal(bad.errors.includes("redacted_copy"), false);
+
+  const pageUrl = "https://botsrated.com/receipt/ac16e0eeff1e0d9ffcfc?host=api.exa.ai&day=2026-10-23";
+  const html = renderReceiptPage(raw, { pageUrl });
+  assert.match(html, /id="status">redacted copy</);
+  assert.doesNotMatch(html, /node spec\/verify\.mjs/);
+  assert.doesNotMatch(html, /verify-core\.mjs/);
+  assert.doesNotMatch(html, /signature invalid/);
+  assert.doesNotMatch(html, /checking signature/);
+  assert.match(html, /not offline-verifiable/);
+  assert.match(html, /Stored record: GET https:\/\/botsrated\.com\/v1\/verify\?id=ac16e0eeff1e0d9ffcfc&amp;host=api\.exa\.ai&amp;day=2026-10-23/);
+  assert.match(html, /Map many hosts free in Desk/);
+  assert.doesNotMatch(html, /id="verify-btn"/);
+  for (const word of ["verified", "trusted", "scam", "grade"]) {
+    assert.equal(new RegExp(`\\b${word}\\b`, "i").test(html), false, word);
+  }
+  assert.equal(/\bsafe\b/i.test(html), false);
+  const evil = renderReceiptPage({
+    receipt: {
+      id: "ac16e0eeff1e0d9ffcfc",
+      host: "$(id)",
+      ts: "2026-10-23T00:00:00Z",
+      withheld_fields: ["listed_amount"],
+      withheld_note: "withheld",
+      sig: { key_id: "k" },
+    },
+  }, { pageUrl: "https://evil.example/receipt/ac16e0eeff1e0d9ffcfc?host=$(id)" });
+  const evilCli = preText(evil, "cli");
+  const evilOne = preText(evil, "cli-oneliner");
+  assert.doesNotMatch(evilCli, /\$\(id\)/);
+  assert.doesNotMatch(evilOne, /\$\(id\)/);
+  assert.doesNotMatch(evilCli + "\n" + evilOne, /node spec\/verify/);
+  assert.match(evil, /redacted copy/);
+  assert.equal(evilOne, "Stored record: GET https://botsrated.com/v1/verify?id=ac16e0eeff1e0d9ffcfc&day=2026-10-23");
+});
+
+test("courthouse withheld paste is a redacted copy", async () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.withheld.json"), "utf8"));
+  const url = "https://botsrated.com/receipt/ac16e0eeff1e0d9ffcfc?host=api.exa.ai&day=2026-10-23";
+  const noFetch = [];
+  const pasted = await checkBooth(JSON.stringify(raw), {
+    fetchImpl: async (target) => { noFetch.push(String(target)); throw new Error("no fetch"); },
+    cryptoOk: false,
+  });
+  assert.equal(pasted.status, "redacted copy");
+  assert.equal(pasted.fields.id, "ac16e0eeff1e0d9ffcfc");
+  assert.deepEqual(noFetch, []);
+  const calls = [];
+  const fetched = await checkBooth(url, {
+    fetchImpl: async (target) => {
+      calls.push(String(target));
+      if (target === KEYS_URL) return jsonResponse(keys);
+      if (target === url) return jsonResponse(raw);
+      throw new Error("unexpected " + target);
+    },
+    cryptoOk: true,
+    deps: nodeDeps(),
+  });
+  assert.equal(fetched.status, "redacted copy");
+  assert.deepEqual(calls, [KEYS_URL, url]);
+  const peeked = [];
+  const noCrypto = await checkBooth(url, {
+    fetchImpl: async (target) => {
+      peeked.push(String(target));
+      if (target === url) return jsonResponse(raw);
+      throw new Error("unexpected " + target);
+    },
+    cryptoOk: false,
+  });
+  assert.equal(noCrypto.status, "redacted copy");
+  assert.deepEqual(peeked, [url]);
+  assert.equal(softGuardOn("?soft=1"), true);
+  assert.equal(softGuardOn(""), false);
 });
 
 test("courthouse unsigned receipt asks for the snapshot and the page keeps Soft Guard off", async () => {

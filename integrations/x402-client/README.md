@@ -76,7 +76,7 @@ of the x402 client you pass in.
 You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
 one, a receipt link.
 
-Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). Wallets, routers, and MCP clients call the same check offline: `import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt"`. The package includes the verifier. Status is `signature valid`, `signature invalid`, or `key unknown`. A match is this record only. It is not a rating of the seller. The call does not fetch. The receipt page uses that same check. It is not on the live host until Pages returns it.
+Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). Wallets, routers, and MCP clients call the same check offline: `import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt"`. The package includes the verifier. Status is `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`. A copy with `withheld_fields` or `withheld_note` is `redacted copy`: not offline-verifiable. Check the stored record with `GET /v1/verify`. A match is this record only. It is not a rating of the seller. The call does not fetch. The receipt page uses that same check. It is not on the live host until Pages returns it.
 
 ```js
 import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt";
@@ -84,7 +84,7 @@ import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt";
 const result = await verifyReceipt(receipt, keyset);
 ```
 
-`result.status` is `signature valid`, `signature invalid`, or `key unknown`. Pass the receipt and keyset you already have.
+`result.status` is `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`. Pass the receipt and keyset you already have. `redacted copy` means this JSON withholds signed fields. It is not a failed signature.
 
 Pick a named preset. Preset keys are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is not a preset key; it is `policies.strict`. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.

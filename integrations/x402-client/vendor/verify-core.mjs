@@ -26,6 +26,49 @@ export function stripPresentation(receipt) {
   return r;
 }
 
+const ID_RE = /^[0-9a-f]{20}$/;
+const HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+const FIELD_RE = /^[A-Za-z0-9_.*]{1,80}$/;
+
+function withheldMark(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const listed = Array.isArray(obj.withheld_fields) ? obj.withheld_fields.filter((name) => typeof name === "string" && name.trim()) : [];
+  const fields = listed.filter((name) => FIELD_RE.test(name));
+  const note = typeof obj.withheld_note === "string" && obj.withheld_note.trim() ? obj.withheld_note.trim() : "";
+  if (!listed.length && !note) return null;
+  return { fields };
+}
+
+// withheld_fields / withheld_note mark a served copy that omits signed fields.
+// They are not presentation fields. Do not report that copy as signature invalid.
+export function redactedCopy(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const inner = unwrapReceipt(raw);
+  const mark = withheldMark(inner) || (inner !== raw ? withheldMark(raw) : null);
+  if (!mark) return null;
+  const r = inner && typeof inner === "object" && !Array.isArray(inner) ? inner : {};
+  return {
+    fields: mark.fields,
+    id: typeof r.id === "string" ? r.id : null,
+    host: typeof r.host === "string" ? r.host : null,
+    ts: typeof r.ts === "string" ? r.ts : null,
+    kind: typeof r.kind === "string" ? r.kind : null,
+    key_id: r.sig && typeof r.sig.key_id === "string" ? r.sig.key_id : null,
+  };
+}
+
+export function storedRecordVerifyUrl(info) {
+  const src = info && typeof info === "object" ? info : {};
+  const q = [];
+  if (typeof src.id === "string" && ID_RE.test(src.id)) q.push("id=" + src.id);
+  if (typeof src.host === "string" && HOST_RE.test(src.host)) q.push("host=" + src.host);
+  const fromTs = typeof src.ts === "string" ? src.ts.slice(0, 10) : "";
+  const day = typeof src.day === "string" && DAY_RE.test(src.day) ? src.day : (DAY_RE.test(fromTs) ? fromTs : "");
+  if (day) q.push("day=" + day);
+  return "https://botsrated.com/v1/verify" + (q.length ? "?" + q.join("&") : "");
+}
+
 function bytesOf(message, enc) {
   if (typeof message === "string") return enc.encode(message);
   return message;
@@ -70,6 +113,17 @@ export async function verifyReceipt(raw, keyset, deps) {
     }
   };
   const sha256 = (b) => deps.sha256(b);
+  const redacted = redactedCopy(raw);
+  if (redacted) {
+    const url = storedRecordVerifyUrl(redacted);
+    const listed = redacted.fields.length ? " (" + redacted.fields.join(", ") + ")" : "";
+    lines.push("INFO  redacted copy" + listed + ": withheld fields are not in this JSON. This copy is not offline-verifiable.");
+    lines.push("INFO  The signature covers the stored record. Check that record with GET " + url);
+    return {
+      ok: false, valid: false, offline_verifiable: false, status: "redacted copy", lines, errors: ["redacted_copy"],
+      id: redacted.id, key_id: redacted.key_id, kind: redacted.kind, ts: redacted.ts, host: redacted.host,
+    };
+  }
   const r = stripPresentation(unwrapReceipt(raw));
   const { id, sig, ...body } = r;
   const rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";

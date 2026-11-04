@@ -1,10 +1,10 @@
 // Browser entry for the courthouse booth. Imports ./verify-core.mjs (byte copy of ../verify-core.mjs).
-// Paste a receipt link or JSON. Status is signature valid, signature invalid, or key unknown.
+// Paste a receipt link or JSON. Status is signature valid, signature invalid, key unknown, or redacted copy.
 // A link is fetched only after it is rebuilt to https://botsrated.com/receipt/<20 hex> plus host, mcp, day, and s.
 // Keys come from https://botsrated.com/.well-known/botsrated-key.
 // A matching signature checks this record only. It is not a rating of the seller.
 // The Attach Guard link stays hidden unless the page search has soft=1.
-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+import { redactedCopy, verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
 
 export const KEYS_URL = "https://botsrated.com/.well-known/botsrated-key";
 export const DATASET_URL = "https://botsrated.com/dataset.json";
@@ -20,6 +20,7 @@ const BOOTH_URL = /^https:\/\/botsrated\.com\/receipt\/[0-9a-f]{20}(?:\?(?:host|
 const FETCH_INIT = { credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" };
 
 export function signatureStatus(result, cryptoOk) {
+  if (result && result.status === "redacted copy") return "redacted copy";
   if (!cryptoOk || !result) return "signature invalid";
   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
   return "signature invalid";
@@ -108,9 +109,16 @@ async function readOk(res) {
 export async function checkBooth(text, options = {}) {
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const cryptoOk = Object.prototype.hasOwnProperty.call(options, "cryptoOk") ? !!options.cryptoOk : await ed25519WebCryptoAvailable();
-  if (!cryptoOk) return { status: "signature invalid", fields: emptyFields() };
   const parsed = parseBoothInput(text);
   if (parsed.kind !== "json" && parsed.kind !== "url") return { status: "signature invalid", fields: emptyFields() };
+  if (parsed.kind === "json" && redactedCopy(parsed.value)) return { status: "redacted copy", fields: fieldsOf(parsed.value) };
+  if (!cryptoOk && parsed.kind === "url") {
+    try {
+      const peeked = await (await readOk(await fetchImpl(parsed.url, FETCH_INIT))).json();
+      if (redactedCopy(peeked)) return { status: "redacted copy", fields: fieldsOf(peeked) };
+    } catch { /* unread copy stays signature invalid below */ }
+  }
+  if (!cryptoOk) return { status: "signature invalid", fields: emptyFields() };
   let keyset;
   try {
     keyset = await (await readOk(await fetchImpl(KEYS_URL, FETCH_INIT))).json();
