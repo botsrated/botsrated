@@ -28,6 +28,18 @@ const attach = guardAttach({
 client.onBeforePaymentCreation(attach.onBeforePaymentCreation);
 ```
 
+Opt in to a chip halt with `haltOn` or `strictModeHalt()`. The sample stops the payment when the measurement shows `payTo changed` or `probe failed`. Omit it and chip halt stays off. The policy verdict is unchanged. This does not set `failOpen` to false. Wording is in `docs/guard/halt-policy.md`.
+
+```ts
+import { guardAttach, strictModeHalt } from "@botsrated/x402-preflight/guard-attach";
+
+const attach = guardAttach({
+  policy: { id: "pol_desk", version: "3", fail_mode: "open", pay_to: ["0x…"] },
+  measured: { as_of: "2026-11-04T12:00:00Z", probe_failed: true },
+  haltOn: strictModeHalt(),
+});
+```
+
 For MCP, pass `policies: [attach.mcpPolicy]` into `createx402MCPClient` and `onPaymentRequested: attach.onPaymentRequested`. Those run as the SDK defines them. A quote above the SDK `$1` default can throw before this verdict is recorded. The compat notes are in `docs/guard/guard-check.md`.
 
 The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment check.
@@ -61,7 +73,7 @@ of the x402 client you pass in.
 You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
 one, a receipt link.
 
-Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). The receipt page uses that same check. It is not on the live host until Pages returns it. A matching signature checks that record only. It is not a rating of the seller.
+Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). The same check is importable offline as `verifyReceipt` from `@botsrated/x402-preflight/verify-receipt` (status: `signature valid`, `signature invalid`, or `key unknown`). It loads `spec/verify-core.mjs` from this repository checkout. A match is this record only. It is not a rating of the seller. The receipt page uses that same check. It is not on the live host until Pages returns it.
 
 Pick a named preset. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.

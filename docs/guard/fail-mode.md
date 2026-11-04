@@ -23,3 +23,7 @@ Show `fail_mode` as a mode chip on the receipt. The words are:
 | Fail closed | Fail closed. If the check cannot run, the payment stops. |
 
 The chip names the mode. Status chips for the measurement stay the fixed set: `live`, `402 ok`, `payTo changed`, `probe failed`, `no data yet`.
+
+## Halt on a measured chip
+
+`fail_mode` is what happens when the check cannot run. A halt rule is separate. The customer may opt in to stop a payment when one of those chips is present. The halt does not set `failOpen` to false. The chip set stays the list above. See [`halt-policy.md`](halt-policy.md).

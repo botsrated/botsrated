@@ -1,0 +1,19 @@
+{
+  "spec": "botsrated-guard-attach-retention-internal/1",
+  "visibility": "internal",
+  "window": "wow",
+  "metric": "callers_week_retained",
+  "key": "callers_week",
+  "channel": "guard",
+  "excludes_internal": true,
+  "downloads_are_not_the_measure": true,
+  "qa_clean": false,
+  "count": null,
+  "publish": false,
+  "publish_gate": "count_gt_0_and_qa_clean",
+  "public_badge": false,
+  "owners": ["revenue", "caller_convert", "data_checker"],
+  "packed_by": "guard",
+  "as_of": null,
+  "note": "Shape example. No measured count. Do not publish."
+}
