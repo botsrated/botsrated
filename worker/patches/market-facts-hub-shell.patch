@@ -1,22 +1,26 @@
 # Soft OPEN #51 slice 2. Pages tip base 84f45f14. Want 433883f1 (Pages tip id, not a git SHA).
-# Soft CTA walls HOLD. Do not tip, deploy, or edit Soft CTA strings.
+# Walls HOLD. Do not tip, deploy, or edit wall strings.
+# Design AMEND v2 LOCK body md5 fe2d059d7ad866da2d82dcf836cb73d4 (supersedes 66f00532103d285c17afbd8118aad9e0).
+# decorateSiteHtml(html, { path }) is a no-op on exact `/` (no Evidence append, no docs-list append).
+# Every other path still appends Evidence `Market facts` after Recent checks. The /docs index line stays.
 # Apply on the private receipts-mvp tree:
 #   patch -p1 < worker/patches/market-facts-hub-shell.patch
 # Adds worker/src/market_facts.ts and worker/test/market_facts_unit.ts.
-# Then mount the two calls in the file header (router + shared HTML helper).
+# Then mount the two calls in the file header (router + shared HTML helper with pathname).
 # Peer rows are HOLD APPLY. MARKET_FACTS_PUBLISH_ROWS stays false until Legal slice-5 + MATCH.
 # prefer-us Watch link is omitted (gate OPEN). `/` page source is not in this diff.
 # /market.json is not added.
 
 --- a/worker/src/market_facts.ts
 +++ b/worker/src/market_facts.ts
-@@ -0,0 +1,622 @@
+@@ -0,0 +1,630 @@
 +// Soft OPEN #51 slice 2 — /market facts hub shell.
 +// Pages tip base 84f45f14. Want 433883f1 is a Pages tip id, not a git SHA.
-+// Soft CTA walls HOLD. This file does not edit the `/` page or the Desk module.
++// Walls HOLD. This file does not edit the `/` page or the Desk module.
 +// Do not tip or deploy from this pack.
 +//
-+// Design LOCK body md5 66f00532103d285c17afbd8118aad9e0.
++// Design AMEND v2 LOCK body md5 fe2d059d7ad866da2d82dcf836cb73d4 (supersedes 66f00532103d285c17afbd8118aad9e0).
++// Evidence Market facts link is non-`/` only. Exact `/` skips decorateSiteHtml appends. /docs list line stays on /docs.
 +// Legal cfd69bf1 GO-with-gates. Seed 2a09d33f. Claim language 32edd145.
 +// Peer rows are HOLD APPLY: structured below, not emitted until
 +// MARKET_FACTS_PUBLISH_ROWS is set true after Legal slice-5 and Security MATCH.
@@ -28,12 +32,13 @@
 +//   const market = marketFactsDispatch(url, request, c, { shell, html });
 +//   if (market) return market;
 +//
-+// And inside the shared HTML helper, before the response is built:
++// Inside the shared HTML helper, pass the request path. Exact `/` is
++// returned unchanged (no Evidence link, no docs-list line). Every other
++// path still gets those appends. Other links stay in place.
 +//
-+//   document = decorateSiteHtml(document);
++//   document = decorateSiteHtml(document, { path: url.pathname });
 +//
-+// decorateSiteHtml appends the Evidence link and the /docs list line.
-+// It does not reorder other links. prefer-us Watch link is omitted (gate OPEN).
++// prefer-us Watch link is omitted (gate OPEN).
 +
 +export const MARKET_PATH = "/market";
 +export const MARKET_CANONICAL = "https://botsrated.com/market";
@@ -425,8 +430,14 @@
 +const DOCS_NEEDLE = '<li><a href="/leaderboard">/leaderboard</a>: 300 x402 sellers, by recency of our checks.</li>';
 +const DOCS_LINK = '<li><a href="/market">Market facts — published claims across the x402 and MCP space, with dates and sources</a></li>';
 +
-+/** Evidence column + /docs reference list. Idempotent. Other links stay put. */
-+export function decorateSiteHtml(html: string): string {
++export interface DecorateSiteOpts {
++  /** Request pathname. Exact `/` skips both appends. */
++  path?: string;
++}
++
++/** Evidence column + /docs reference list. Idempotent. Other links stay put. Exact `/` is a no-op. */
++export function decorateSiteHtml(html: string, opts?: DecorateSiteOpts): string {
++  if (opts?.path === "/") return html;
 +  let out = html;
 +  if (out.includes(FOOTER_NEEDLE) && !out.includes(FOOTER_NEEDLE + FOOTER_LINK)) {
 +    out = out.replace(FOOTER_NEEDLE, FOOTER_NEEDLE + FOOTER_LINK);
@@ -602,7 +613,7 @@
 +    path: MARKET_PATH,
 +    body,
 +    script: false,
-+  })));
++  })), { path: MARKET_PATH });
 +  return deps.html(c, doc, 200);
 +}
 +
@@ -636,7 +647,7 @@
 
 --- a/worker/test/market_facts_unit.ts
 +++ b/worker/test/market_facts_unit.ts
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,193 @@
 +import assert from "node:assert/strict";
 +import { test } from "node:test";
 +import {
@@ -784,14 +795,25 @@
 +  assert.equal(html.includes("dropped"), false);
 +});
 +
-+test("footer and docs links append once", () => {
++test("exact path / leaves the Evidence footer and docs list unchanged", () => {
 +  const footer = '<li><a href="/leaderboard">Recent checks</a></li><li><a href="/v1/coverage">Coverage</a></li>';
 +  const docs = '<li><a href="/leaderboard">/leaderboard</a>: 300 x402 sellers, by recency of our checks.</li></ul>';
-+  const once = decorateSiteHtml(footer + docs);
++  const page = footer + docs;
++  const out = decorateSiteHtml(page, { path: "/" });
++  assert.equal(out, page);
++  assert.equal(out.includes("Market facts"), false);
++  assert.equal(out.includes('href="/market"'), false);
++});
++
++test("footer and docs links append once off /", () => {
++  const footer = '<li><a href="/leaderboard">Recent checks</a></li><li><a href="/v1/coverage">Coverage</a></li>';
++  const docs = '<li><a href="/leaderboard">/leaderboard</a>: 300 x402 sellers, by recency of our checks.</li></ul>';
++  const once = decorateSiteHtml(footer + docs, { path: "/docs" });
 +  assert.match(once, /Recent checks<\/a><\/li><li><a href="\/market">Market facts<\/a><\/li><li><a href="\/v1\/coverage">Coverage<\/a>/);
 +  assert.match(once, /recency of our checks\.<\/li><li><a href="\/market">Market facts — published claims across the x402 and MCP space, with dates and sources<\/a><\/li><\/ul>/);
-+  assert.equal(decorateSiteHtml(once), once);
-+  assert.equal(decorateSiteHtml("<p>untouched</p>"), "<p>untouched</p>");
++  assert.equal(decorateSiteHtml(once, { path: "/about" }), once);
++  assert.equal(decorateSiteHtml(once, { path: "/market" }), once);
++  assert.equal(decorateSiteHtml("<p>untouched</p>", { path: "/about" }), "<p>untouched</p>");
 +});
 +
 +test("measured chips only when a receipt is supplied", () => {
