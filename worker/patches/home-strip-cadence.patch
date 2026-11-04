@@ -1,0 +1,61 @@
+# Soft OPEN Prefer KEEP. Soft CTA tip tip 0274ba53. want 0a05224bbe7c6df7fc94f69af285d542.
+# Git base stays main 1f4791b5. Soft CTA walls HOLD. No tip.
+# Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree after the merged home last-check drop.
+# Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
+# Design LOCK body md5 c3be4f54136ae188590873a850070ac7.
+# Home #pulse: three equal columns. Cadence is a sibling after #pulse, not a grid cell.
+# Hidden #p-l / #p-d carrier stays. Optional MCP cadence clause is not included.
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -497,9 +497,11 @@
+ .bw-helm{margin:8px 0 16px}
+ .bw-helm img{width:160px;height:auto;display:block}
+ .hh-priv a{border-bottom:1px solid var(--bw-line);text-decoration:none}
+-.bw-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:48px 0 0;justify-content:stretch;text-align:left;color:var(--bw-muted);border-top:1px solid var(--bw-line);border-bottom:1px solid var(--bw-line)}
++.bw-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:48px 0 0;justify-content:stretch;align-items:stretch;text-align:left;color:var(--bw-muted);border-top:1px solid var(--bw-line);border-bottom:1px solid var(--bw-line)}
+ .bw-stats>span{padding:22px 24px}
+-.bw-stats>span+span{border-left:1px solid var(--bw-line)}
++.bw-stats>span[hidden],#pulse>span[hidden]{display:none!important}
++.bw-stats>span:not([hidden])+span:not([hidden]){border-left:1px solid var(--bw-line)}
++.bw-stats-cadence{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted);text-align:left}
+ .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+ .hh-sec .tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--bw-line);border-radius:12px;overflow:hidden}
+ .hh-sec .tool{border:0;border-right:1px solid var(--bw-line);border-bottom:1px solid var(--bw-line);border-radius:0;background:var(--bw-bg-2);min-height:170px;transform:none}
+@@ -535,9 +537,12 @@
+   .hh-grid{grid-template-columns:1fr}
+   .hh-mark img{width:min(220px,70vw);margin:0 auto}
+   .hh-cta{flex-direction:row;flex-wrap:wrap}
+-  .bw-stats{grid-template-columns:1fr 1fr}
++  .bw-stats{grid-template-columns:1fr}
++  .bw-stats>span:not([hidden])+span:not([hidden]){border-left:0;border-top:1px solid var(--bw-line)}
+   .bw-stats>span:nth-child(odd){border-left:0}
+-  .bw-stats>span:nth-child(n+3){border-top:1px solid var(--bw-line)}
++  .bw-stats>span:nth-child(n+3){border-top:0}
++  .bw-stats>span:nth-child(n+2):not([hidden]){border-top:1px solid var(--bw-line)}
++  .bw-stats-cadence{padding:0 4px}
+   .hh-sec .tools{grid-template-columns:1fr}
+   .hh-sec .tool,.hh-sec .tool:nth-child(3n){border-right:0}
+   .hh-sec .tool:nth-last-child(-n+3){border-bottom:1px solid var(--bw-line)}
+@@ -551,7 +556,7 @@
+   const days = Number(p?.home_checks_days || 0);
+   const daysLabel = days > 0 ? `${days} days` : "closed days";
+   const title = p?.definitions?.checks_run_home || p?.definitions?.checks_run_7d || "";
+-  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div>`;
++  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p>`;
+ }
+ 
+ // ---------- status labels (neutral, factual) ----------
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -9,6 +9,10 @@
+ 
+ const nav = navHtml("/");
+ t("B/W strip marker", nav.includes("bw-strip") && nav.includes("Desk Guard") && SITE_CSS.includes(".bw-strip") && SITE_CSS.includes("--bw-bg"));
++t("cadence sibling under pulse", liveStrip.endsWith('<p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p>') && liveStrip.includes('</div><p class="bw-stats-cadence">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence"));
++t("labels and hidden carrier stay", liveStrip.includes("sellers watched") && liveStrip.includes("MCP servers checked") && liveStrip.includes('checks in the last <span id="p-cd">') && liveStrip.includes('<span hidden><i id="p-l"></i><i id="p-d"></i></span>'));
++t("strip is three columns", SITE_CSS.includes(".bw-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));") && SITE_CSS.includes("align-items:stretch") && SITE_CSS.includes(".bw-stats>span[hidden],#pulse>span[hidden]{display:none!important}") && SITE_CSS.includes(".bw-stats>span:not([hidden])+span:not([hidden]){border-left:1px solid var(--bw-line)}") && !SITE_CSS.includes("repeat(4,minmax(0,1fr))") && !SITE_CSS.includes(".bw-stats{grid-template-columns:1fr 1fr}"));
++t("mobile stacks three rows", SITE_CSS.includes(".bw-stats{grid-template-columns:1fr}") && SITE_CSS.includes(".bw-stats>span:not([hidden])+span:not([hidden]){border-left:0;border-top:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-stats>span:nth-child(n+3){border-top:0}") && SITE_CSS.includes(".bw-stats>span:nth-child(n+2):not([hidden]){border-top:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-stats-cadence{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted);text-align:left}") && SITE_CSS.includes(".bw-stats-cadence{padding:0 4px}"));
+ t("no html /pulse route invented", !nav.includes('href="/pulse"'));
+ t("site.js v9 growing N", SITE_JS.includes("checks_run_home") && SITE_JS.includes("p-cd") && !SITE_JS.includes("ago(p.last_probe_at)") && !SITE_JS.includes("checks_run_7d") && !SITE_JS.includes('$("p-t")') && !SITE_JS.includes('getElementById("p-t")'));
+ t("degraded pulse does not fmt to 0", SITE_JS.includes("r.body.degraded") && SITE_JS.includes("n == null"));
