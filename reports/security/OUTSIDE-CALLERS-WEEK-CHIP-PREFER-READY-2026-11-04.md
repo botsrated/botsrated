@@ -1,8 +1,8 @@
-# Prefer READY rematch — outside Guard callers, chip + home tease
+# STOP — empty-form chip sits on a Soft CTA fingerprint line
 
-Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no merge. Site Cleaner does not tip. Do not partial-apply.
+Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. Site Cleaner does not tip. No deploy. No merge. Prefer READY is not filed.
 
-Held: previous Prefer READY body `d981f57ff35fb3039028bf4e20868d37`, patch `19c7a987d8c1eef13ff84c9548a1bef1`, head `4c97d3a33260fbcd2b750d4969fc6c0c84564f40`. Security MATCH NO OWN `209e54926274237cc2233601bb2511f9` (report `a7848978`). This file replaces that pack.
+Held and void: Prefer READY body `52ea2d7236830f3d21e75d817c996d56`, patch `c9a22ca108a965b66cae6b5a316fb61f`, head `73e626d5e1f654f38d0f6d4ff508bd79722a425e`. Desk call-site FAIL leave-off. Do not apply that patch.
 
 ## Pins
 
@@ -10,93 +10,47 @@ Held: previous Prefer READY body `d981f57ff35fb3039028bf4e20868d37`, patch `19c7
 |---|---|
 | Design LOCK body | `df2d95a37140e83b5920fb983999daf9` |
 | Design LOCK file | `c16bb49401b77425702d65a6f0bb701b` |
-| Legal OVERRIDE digest | `7911ec33` (tease ships under Anton OVERRIDE, not a Legal CLEAR) |
+| Legal OVERRIDE digest | `7911ec33` |
 | DC live | full `f84345f2` / leaf `b1782fb0` |
-| Published N | `2` |
-| ISO week | `2026-W45` |
-| as_of | `2026-11-05T00:14:00Z` |
 | Soft CTA tip | `5fe37df8` |
 | Soft CTA want | `96a0df8b` |
-| Soft CTA fp | `ebf26695dfaccfcea740027fc1d2b7b0` |
-| Git base | `1f4791b59f552bd9ab2d9d4a067518971af9ba61` |
-| Patch | `worker/patches/outside-callers-week-chip.patch` |
-| Patch md5 | `c9a22ca108a965b66cae6b5a316fb61f` |
+| Soft CTA fp before | `ebf26695dfaccfcea740027fc1d2b7b0` (Desk, 77 recipe lines, tip desk.ts `68ed2fff67f6d7641a8963af80966b2c`) |
+| Tip tools.ts | `db56c412b512e5d26277fc8e1dd3fd11` |
 
-N is outside Guard callers only: `callers_week`, `channel='guard'`, internal excluded. The published figure is not a buyer×seller count and not a per-host count. Our own tests stay out of N. The day window stays parked.
-
-## What ships (one patch, all hunks)
-
-Apply on a copy of the private receipts-mvp tree at tip `5fe37df8`. Paths: `worker/src/site.ts`, `worker/src/tools.ts`, `worker/src/desk.ts`, `worker/test/d1_failsoft_unit.ts`.
-
-Owner-set `OUTSIDE_GUARD_CALLERS_WEEK` in `site.ts`: metric `outside_guard_callers_week`, week `2026-W45`, `n: 2`, `qa_clean: true`, `as_of: 2026-11-05T00:14:00Z`.
-
-Gate, exact, on the shipped helper `outsideGuardCallersWeekN`: `qa_clean === true && Number.isInteger(n) && n > 0`. A failed gate returns an empty string, so the element is omitted. The unit test calls that helper. It does not keep a local copy of the gate.
-
-### `site.ts`
-
-Helpers, chip CSS, tease CSS, and the home tease only. The tease stays in `homePulseStrip` after `.bw-market-chip` and before `.bw-whats-new`. Home does not emit the chip. The synthetic payment-guard and Desk HTML lines from the held patch are gone.
-
-### `tools.ts`
-
-Imports `outsideCallersChipHtml` from `./site.ts`. Inside `hero1`, the chip is emitted only when `lead` is the payment-guard sentence, and it sits after `</p>` and before `<div class="t1-cta">`. Other tool heroes keep an empty string there.
-
-### `desk.ts`
-
-Imports the same helper. Two inserts only:
-
-- `${outsideCallersChipHtml()}` immediately before `${deskGuardHtml(source)}` (map result).
-- `${outsideCallersChipHtml()}` immediately before `${deskGuardHtml(null)}` (empty `/desk` form).
-
-`deskFreeHtml` is not edited. The Attach Guard free anchor stays the body of `deskGuardHtml`.
-
-Exact chip: `Guard checks this week: N outside callers · How we count` with the LOCK title. Exact tease: `See which sellers are being checked out the most → here` linking to `/desk`. CSS is the LOCK chip rules plus the LOCK tease rules, in `SITE_CSS`, which the live payment-guard and Desk documents already include.
-
-Out of this pack: `/s/:host`, badges, embeds, receipts, leaderboard, sort-by-N, and the day clause.
-
-## How to apply (does not deploy)
-
-On a copy of the private tree, from that tree's root:
+Recipe:
 
 ```
-patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/outside-callers-week-chip.patch
+grep -E 'DESK_FREE|da-free-card|POLLERS_NUDGE|da-pollers-nudge|poller_nudge|DESK_MAP_FREE|DESK_MAP_PRO|STICKY_FREE' worker/src/desk.ts | md5sum
 ```
 
-All hunks, or none. A rejected hunk means do not keep a partial tree. This does not retarget Pages.
+## Why this stops
 
-## Smoke
+Tip `5fe37df8` places the empty `/desk` call on one line with the Soft CTA tokens (`DESK_FREE_CARD_ID` and the rest) and ends `+ (inner ? "" : deskGuardHtml(null));`. That line matches `DESK_FREE`. The fingerprint hashes every full matching line.
 
-Security's NO already showed the `site.ts` CSS, helper, and home-tease hunks apply on the real tip tree (`--fuzz=0`, hunks at 583, 856, and 898). Those three hunks are unchanged in role. The synthetic `t1-hero` and expanded Desk HTML hunks are removed.
+Inserting the chip on that line changes the line. Splitting it also changes the line: the token-bearing line is no longer the original bytes, so the grep output changes. Either way the fingerprint cannot stay `ebf26695dfaccfcea740027fc1d2b7b0`.
 
-This VM does not have `/tmp/guard-cwh-349386f7/receipts-mvp` or tip `5fe37df8` checked out. The tools and Desk hunks were applied here only against the anchor lines named below, and a second apply was rejected. Security re-MATCH on a copy of tip `5fe37df8` is the real apply.
+`deskFreeHtml` (~L752) also calls `deskGuardHtml(null)` and must stay untouched, so the helper itself cannot prepend the chip for every null caller.
 
-| Anchor | Old line this patch expects |
+This VM does not have tip desk.ts, so there is no measured after-hash of the real 77-line set. A one-line stand-in that matches the same shape moves as soon as the call is edited:
+
+| Edit | Recipe md5 |
 |---|---|
-| `hero1` lead/cta junction | the whole line `<p class="t1-lead">${lead}</p><div class="t1-cta">` |
-| map result | the whole line `${deskGuardHtml(source)}` |
-| empty `/desk` form | the live form line through `</main>`, with the rendered guard paragraph replaced by `${deskGuardHtml(null)}` |
+| Untouched stand-in | `8ba3f9961859b87be6e757809dd5bd4d` |
+| Chip inserted in place | `88dd67255bf9987c29cd78f3fffab18d` |
+| Call split onto a second line | `e1ef82b18c3e617633c45784fad70a92` |
 
-The empty-form line still contains the href fragment `#da-free-card`. The chip expression is added beside the call. Constant definition lines for `STICKY_FREE`, `DESK_FREE`, `DESK_MAP_FREE`, `DESK_MAP_PRO`, `POLLERS_NUDGE`, `da-pollers-nudge`, and `poller_nudge` are not in the diff. If the fp hash includes every line that contains `da-free-card`, that one template line changes the fp. Re-measure `ebf26695dfaccfcea740027fc1d2b7b0` on the real tree.
+The stand-in is not the tip file. It only shows the recipe changes when that line changes. The tip before-hash remains `ebf26695dfaccfcea740027fc1d2b7b0`.
 
-| Surface | Published N=2 | Gate fail |
-|---|---|---|
-| `/tools/payment-guard` | `bw-checked-chip` ×1 after the lead, before `.t1-cta` | omitted |
-| `/desk` empty form and map result | `bw-checked-chip` ×1 immediately before `deskGuardHtml` | omitted |
-| `/` | tease ×1, chip ×0 | tease omitted |
-| `/s/*` | chip ×0, tease ×0 | ×0 |
-| Day clause | ×0 | ×0 |
+Map-result `…${deskMapNextHtml(r, esc)}${deskGuardHtml(source)}<p class="desk-again">…` and `hero1`'s one template line are separate anchors. They are not filed here, because the pack is all-or-none and the empty-form insert breaks the fingerprint.
 
-## Soft CTA wall check
+## Soft CTA
 
-HOLD. Tip `5fe37df8`, want `96a0df8b`, fp target `ebf26695dfaccfcea740027fc1d2b7b0`.
+Walls HOLD. Tip `5fe37df8`. Want `96a0df8b`. No new patch. `free_quota`, `?soft=`, `quota`, and `429` are not added. `deskFreeHtml` is not edited.
 
-Diff greps: `free_quota` 0, `?soft=` 0, `quota` 0, `429` 0, day clause 0. `Open Desk` 0. `Get change alerts` 0. Sticky alerts-50 is untouched.
-
-## For Security
-
-This file is the rematch Prefer READY. It does not record a MATCH. Re-MATCH against LOCK `df2d95a37140e83b5920fb983999daf9` on a copy of tip `5fe37df8`. Do not partial-apply.
+Lead can keep the empty-form chip off that recipe line, or accept a new fingerprint, before a Prefer READY is filed.
 
 ---
 
 ## md5
 
-`52ea2d7236830f3d21e75d817c996d56`
+`87731f99b2d35b16facb6e32f61e2f2d`
