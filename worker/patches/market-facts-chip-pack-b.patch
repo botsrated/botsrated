@@ -1,0 +1,37 @@
+# Soft OPEN Prefer KEEP Pack B. Soft CTA tip tip 6c642666. want 6334d19c.
+# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61. Soft CTA walls HOLD. fp ebf26695. No tip.
+# Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree at tip 6c642666 (Pack A strip already live). This file is the chip only.
+# Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
+# Design LOCK body md5 372c2635c2e3131da42f62439f95a8db.
+# Home / only: next sibling after the cadence line, inside the same stats wrap, before the wrap closes.
+# Cadence string stays. Skip-decorate on / stays. Rows flag stays false.
+# Apply from the private tree root:
+#   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/market-facts-chip-pack-b.patch
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -506,3 +506,7 @@
+ .bw-stats-cadence{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted);text-align:left}
++.bw-market-chip{margin:8px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}
++.bw-market-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}
++.bw-market-chip a:hover{border-bottom-color:var(--bw-fg)}
++@media (max-width:767px){.bw-market-chip{padding:0 4px}}
+ .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+ .hh-sec .tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--bw-line);border-radius:12px;overflow:hidden}
+@@ -558,7 +562,7 @@
+   const days = Number(p?.home_checks_days || 0);
+   const daysLabel = days > 0 ? `${days} days` : "closed days";
+   const title = p?.definitions?.checks_run_home || p?.definitions?.checks_run_7d || "";
+-  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p>`;
++  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>`;
+ }
+ 
+ // ---------- status labels (neutral, factual) ----------
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -16,3 +16,4 @@
+-t("cadence sibling under pulse", liveStrip.endsWith('<p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p>') && liveStrip.includes('</div><p class="bw-stats-cadence">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence"));
++t("cadence sibling under pulse", liveStrip.includes('</div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence") && liveStrip.endsWith('<p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>'));
++t("market facts chip under cadence", (liveStrip.split('href="/market"').length === 2) && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-market-chip") && (liveStrip.split("Fresh unpaid checks about every 2 minutes.").length === 2) && SITE_CSS.includes(".bw-market-chip{margin:8px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-market-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-market-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{padding:0 4px}}"));
+ t("labels and hidden carrier stay", liveStrip.includes("sellers watched") && liveStrip.includes("MCP servers checked") && liveStrip.includes('checks in the last <span id="p-cd">') && liveStrip.includes('<span hidden><i id="p-l"></i><i id="p-d"></i></span>'));
+ t("strip is three columns", SITE_CSS.includes(".bw-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));") && SITE_CSS.includes("align-items:stretch") && SITE_CSS.includes(".bw-stats>span[hidden],#pulse>span[hidden]{display:none!important}") && SITE_CSS.includes(".bw-stats>span:not([hidden])+span:not([hidden]){border-left:1px solid var(--bw-line)}") && !SITE_CSS.includes("repeat(4,minmax(0,1fr))") && !SITE_CSS.includes(".bw-stats{grid-template-columns:1fr 1fr}"));
