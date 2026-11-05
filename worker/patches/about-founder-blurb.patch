@@ -1,0 +1,16 @@
+# Prefer KEEP. About founder blurb only. Absolute No-Grade. Digests to LA.
+# Soft CTA tip tip 81afc6ed. want c61383be. Soft CTA walls HOLD. fp ebf26695.
+# SC no tip. Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree, path worker/src/index.ts.
+# Live CSS: page() in index.ts renders legacy /about (.pg). shell() stays in site.ts.
+# Replaces only the who-runs paragraph. P1, P2, and the What we never do list stay.
+# The .pg closer stays on the last line. No new classes, no CTA, no site URL on the contact line.
+# Design LOCK body md5 4f2479b151b908cde01b9b3bcb8253ac.
+# Apply: patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/about-founder-blurb.patch
+--- a/worker/src/index.ts
++++ b/worker/src/index.ts
+@@ -1 +1,3 @@
+-<p>Run by Anton Clark, Founder. Reachable at <a href="mailto:botsrated@gmail.com">botsrated@gmail.com</a> · <a href="https://botsrated.com">https://botsrated.com</a></p></div>
++<h2>Founder</h2>
++<p>Anton Clark, M.S. Information Systems &amp; Technology, University of Missouri–St. Louis. Reachable at <a href="mailto:botsrated@gmail.com">botsrated@gmail.com</a>.</p>
++<p>I was intrigued watching AI agents leave the lab and start acting in the open internet — paying, calling tools, trusting strangers at machine speed. That growth felt historic, and a little unguarded. I built BotsRated so those agents (and the people behind them) could see measured facts and signed receipts before they spend — not grades, not vibes, just a record you can check. If bots are going to move through the world for us, the least we owe them is clarity about what they trusted.</p></div>
