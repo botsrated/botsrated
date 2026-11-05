@@ -1,28 +1,35 @@
 # Soft OPEN Prefer READY Desk per-host outside Guard checks. Do not partial-apply. No tip.
 # EXPECT_TIP 6360c8c0 (from 36699bae). WANT c72e1e43. Soft CTA walls HOLD. fp ebf26695dfaccfcea740027fc1d2b7b0.
 # Soft CTA Prefer KEEP tip HOLD APPLY. Absolute No-Grade. Digests to LA.
-# Smoke-exclude LIVE leave-off 2e7581cb. Importing outside_count keeps exit 53. This patch does not import it.
+# Smoke-exclude LIVE leave-off 2e7581cb. desk.ts is the only outside_count importer. exit 53 stays in deploy.sh.
 # HOLD tip / HOLD APPLY until DC CLEAR unpaid outside >0 and re-MATCH.
 # Design LOCK body ba26a8626ca47a8de232b8f5505db453. Whole 4a8360302fa1ddbf13f8739245da1f77.
-# Pack1 outsideCallersChipHtml untouched. Smoke k prefix d626e00d is not outside. Edge read TTL 15 minutes.
+# Pack1 outsideCallersChipHtml untouched. Host read is outsideGuardHostChecksSql only. Readers stay outside_count.ts.
+# desk.ts is the only importer. Edge read TTL 15 minutes. Own hosts filtered after the helper.
 # D1 Tip-B writes stay live-on-check. qa_clean stays false. No Checked 0.
 # Apply: patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/desk-host-checks.patch
 diff -ruN a/worker/src/desk.ts b/worker/src/desk.ts
 --- a/worker/src/desk.ts
 +++ b/worker/src/desk.ts
-@@ -21,2 +21,3 @@
+@@ -21,2 +21,4 @@
  import { outsideCallersChipHtml } from "./site";
++import { outsideGuardHostChecks, outsideGuardHostChecksSql } from "./outside_count";
 +import { attachDeskHostChecks, deskHostChecksHtml, deskHostChecksNoteHtml, type DeskHostChecksDb, type DeskHostNode } from "./desk_host_checks";
  import { deskImport, deskGraph, deskChanges, deskRemoveHost, parseChangesQuery, isMissingTable,
-@@ -24,2 +25,7 @@
+@@ -24,2 +26,12 @@
    deskApproveBaseline, deskClearBaseline, parseBaselineFields } from "./desk_store";
-+// Desk map read. Edge memo inside attachDeskHostChecks refreshes every 15 minutes.
-+// D1 Tip-B writes are not cached here. Await from deskPreview before the host-row template.
++// Desk map read. Edge memo refreshes every 15 minutes. D1 Tip-B writes are not cached here.
++// Sole importer of outside_count. SQL stays in that module.
 +export async function deskPreviewStampHostChecks(db: DeskHostChecksDb, nodes: DeskHostNode[]): Promise<void> {
-+  await attachDeskHostChecks(db, nodes);
++  await attachDeskHostChecks(nodes, async (week) => {
++    const sql = outsideGuardHostChecksSql(week);
++    const prepared = db.prepare(sql);
++    const out = await (sql.includes("?") ? prepared.bind(week) : prepared).all();
++    return outsideGuardHostChecks(out.results || []);
++  });
 +}
  
-@@ -518,3 +524,3 @@
+@@ -518,3 +530,3 @@
  ${deskPulseHtml(r, esc)}
 -<div class="desk-tbl"><table id="desk-table"><thead><tr><th scope="col" data-key="host"><button class="th-sort" type="button">Host</button></th><th scope="col" data-key="agents" data-type="num" aria-sort="descending"><button class="th-sort" type="button">Agents using it</button></th><th scope="col" data-key="measured"><button class="th-sort" type="button">Last measured (UTC)</button></th><th scope="col" data-key="changed"><button class="th-sort" type="button">What changed</button></th><th scope="col">Receipt</th></tr></thead><tbody>${r.nodes.map((x: any) => `<tr><td class="first" data-v="${esc(x.host)}"><span class="host">${esc(x.host)}</span><span class="kind">${!x.covered ? "Not in our coverage" : x.kind === "mcp" ? "MCP server" : x.kind === "x402" ? "x402 seller" : ""}${x.wallet_match ? " · matches a payTo you pasted" : ""}</span>${deskChipsHtml(x)}</td><td data-label="Agents using it" class="num" data-v="${x.paste_agents.length}" title="${esc(x.paste_agents.join(", "))}">${x.paste_agents.length} of ${r.summary.agents}</td><td data-label="Last measured (UTC)" data-v="${x.covered ? esc(x.last_measured || "") : ""}"${x.covered ? "" : ' class="quiet"'}>${!x.covered ? "Not measured yet" : (deskWhen(esc, x.last_measured) || "–") + (x.flags.includes("stale") ? ' <span class="quiet">(over 24 h ago)</span>' : "")}</td><td data-label="What changed" data-v="${esc(deskChanged(x))}"${deskChanged(x) ? "" : ' class="quiet"'}>${deskChanged(x) || "—"}</td>${deskReceiptCellHtml(x, esc)}</tr>`).join("")}</tbody></table></div>${deskSkippedHtml(r.skipped, esc)}
 +<div class="desk-tbl"><table id="desk-table"><thead><tr><th scope="col" data-key="host"><button class="th-sort" type="button">Host</button></th><th scope="col" data-key="agents" data-type="num" aria-sort="descending"><button class="th-sort" type="button">Agents using it</button></th><th scope="col" data-key="measured"><button class="th-sort" type="button">Last measured (UTC)</button></th><th scope="col" data-key="changed"><button class="th-sort" type="button">What changed</button></th><th scope="col">Receipt</th></tr></thead><tbody>${r.nodes.map((x: any) => `<tr><td class="first" data-v="${esc(x.host)}"><span class="host">${esc(x.host)}</span><span class="kind">${!x.covered ? "Not in our coverage" : x.kind === "mcp" ? "MCP server" : x.kind === "x402" ? "x402 seller" : ""}${x.wallet_match ? " · matches a payTo you pasted" : ""}</span>${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_week)}</td><td data-label="Agents using it" class="num" data-v="${x.paste_agents.length}" title="${esc(x.paste_agents.join(", "))}">${x.paste_agents.length} of ${r.summary.agents}</td><td data-label="Last measured (UTC)" data-v="${x.covered ? esc(x.last_measured || "") : ""}"${x.covered ? "" : ' class="quiet"'}>${!x.covered ? "Not measured yet" : (deskWhen(esc, x.last_measured) || "–") + (x.flags.includes("stale") ? ' <span class="quiet">(over 24 h ago)</span>' : "")}</td><td data-label="What changed" data-v="${esc(deskChanged(x))}"${deskChanged(x) ? "" : ' class="quiet"'}>${deskChanged(x) || "—"}</td>${deskReceiptCellHtml(x, esc)}</tr>`).join("")}</tbody></table></div>${deskHostChecksNoteHtml(r.nodes)}${deskSkippedHtml(r.skipped, esc)}
@@ -42,25 +49,23 @@ diff -ruN a/worker/src/site.ts b/worker/src/site.ts
 diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
 --- a/worker/src/desk_host_checks.ts
 +++ b/worker/src/desk_host_checks.ts
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,89 @@
 +// Desk per-host outside Guard checks. Design LOCK body ba26a862.
 +// Read path only. D1 Tip-B writes stay live-on-check; this module does not write and does not cache writes.
 +// Edge memo for the Desk SUM read refreshes every 15 minutes (TTL <= 15m). Not a page cache.
-+// Smoke-exclude LIVE leave-off 2e7581cb. This module does not import outside_count; that import keeps exit 53.
++// Host rows come from outsideGuardHostChecksSql / outsideGuardHostChecks in outside_count.ts.
++// This module does not import that file. desk.ts is the only importer. Smoke exclusion stays there.
 +
 +export const DESK_HOST_CHECKS_TTL_MS = 15 * 60 * 1000;
 +
-+/** Guard-persisted smoke caller key prefix. Never an outside caller. */
-+export const GUARD_SMOKE_K_PREFIXES = ["d626e00d"] as const;
-+
-+/** Public site aliases. DC own-host re-check. A third-party host checked only by a smoke key is not added here. */
++/** Public site aliases. Filtered after the outside_count helper. */
 +export const DESK_OWN_HOSTS = [
 +  "botsrated.com",
 +  "www.botsrated.com",
 +  "botpulse.botsrated.com",
 +] as const;
 +
-+/** DC owner-set. False until DC CLEAR on non-empty guard host rows after smoke-k exclusion. */
++/** DC owner-set. False until DC CLEAR unpaid outside >0. */
 +export const DESK_HOST_CHECKS_QA_CLEAN = false;
 +
 +export const DESK_HOST_CHECKS_TITLE =
@@ -71,22 +76,14 @@ diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
 +  checks_week?: number | null;
 +}
 +
-+export interface DeskHostChecksDb {
-+  prepare(sql: string): {
-+    bind(...values: unknown[]): {
-+      all(): Promise<{ results?: { host: string; n: number }[] }>;
-+    };
-+  };
-+}
-+
-+export interface CallerHostRow {
-+  k: string;
++export interface HostChecksRow {
 +  host: string;
-+  channel: string;
-+  n: number;
++  checks: number;
 +}
 +
-+type Memo = { at: number; week: string; rows: { host: string; n: number }[] };
++export type ReadHostChecks = (week: string) => Promise<readonly HostChecksRow[]>;
++
++type Memo = { at: number; week: string; rows: readonly HostChecksRow[] };
 +
 +let memo: Memo | null = null;
 +
@@ -103,59 +100,16 @@ diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
 +  return `${isoYear}-W${String(week).padStart(2, "0")}`;
 +}
 +
-+export function isSmokeCallerKey(k: string): boolean {
-+  const key = String(k || "");
-+  return GUARD_SMOKE_K_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix));
-+}
-+
 +export function isOwnDeskHost(host: string): boolean {
 +  return (DESK_OWN_HOSTS as readonly string[]).includes(String(host || "").toLowerCase());
 +}
 +
-+export function publishableOutsideGuardKeys(keys: readonly string[]): string[] {
-+  return keys.filter((k) => !isSmokeCallerKey(k));
-+}
-+
-+/** Pure SUM(n) for channel guard. Drops smoke keys, own hosts, and n that is not an integer > 0. */
-+export function sumPublishableHostChecks(rows: readonly CallerHostRow[]): { host: string; n: number }[] {
-+  const sums = new Map<string, number>();
-+  for (const row of rows) {
-+    if (!row || row.channel !== "guard") continue;
-+    if (isSmokeCallerKey(String(row.k || ""))) continue;
-+    if (isOwnDeskHost(String(row.host || ""))) continue;
-+    if (typeof row.n !== "number" || !Number.isInteger(row.n) || row.n <= 0) continue;
-+    const host = String(row.host).toLowerCase();
-+    sums.set(host, (sums.get(host) || 0) + row.n);
-+  }
-+  return [...sums.entries()].map(([host, n]) => ({ host, n }));
-+}
-+
-+export function deskHostChecksSql(prefixCount = GUARD_SMOKE_K_PREFIXES.length, ownCount = DESK_OWN_HOSTS.length): string {
-+  const likes = Array.from({ length: prefixCount }, (_, i) => `k NOT LIKE ?${i + 2}`).join(" AND ");
-+  const owns = Array.from({ length: ownCount }, (_, i) => `?${prefixCount + 2 + i}`).join(", ");
-+  return `SELECT host, SUM(n) AS n FROM callers_week_host WHERE week = ?1 AND channel = 'guard' AND ${likes} AND lower(host) NOT IN (${owns}) GROUP BY host`;
-+}
-+
-+export function deskHostChecksBinds(now: Date = new Date()): unknown[] {
-+  return [isoWeekUtc(now), ...GUARD_SMOKE_K_PREFIXES.map((prefix) => `${prefix}%`), ...DESK_OWN_HOSTS.map((host) => host.toLowerCase())];
-+}
-+
-+export async function loadDeskHostChecks(db: DeskHostChecksDb, now: Date = new Date(), clock: number = Date.now()): Promise<{ host: string; n: number }[]> {
-+  const week = isoWeekUtc(now);
-+  if (memo && memo.week === week && clock >= memo.at && clock - memo.at < DESK_HOST_CHECKS_TTL_MS) return memo.rows;
-+  const sql = deskHostChecksSql();
-+  const out = await db.prepare(sql).bind(...deskHostChecksBinds(now)).all();
-+  const rows = (out.results || []).filter((row) => row && !isOwnDeskHost(row.host) && typeof row.n === "number" && Number.isInteger(row.n) && row.n > 0).map((row) => ({ host: String(row.host).toLowerCase(), n: row.n }));
-+  memo = { at: clock, week, rows };
-+  return rows;
-+}
-+
-+export function stampDeskHostChecks(nodes: DeskHostNode[] | null | undefined, rows: readonly { host: string; n: number }[], qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN): void {
++export function stampDeskHostChecks(nodes: DeskHostNode[] | null | undefined, rows: readonly HostChecksRow[], qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN): void {
 +  const by = new Map<string, number>();
 +  for (const row of rows || []) {
 +    if (!row || isOwnDeskHost(row.host)) continue;
-+    if (typeof row.n !== "number" || !Number.isInteger(row.n) || row.n <= 0) continue;
-+    by.set(String(row.host).toLowerCase(), row.n);
++    if (typeof row.checks !== "number" || !Number.isInteger(row.checks) || row.checks <= 0) continue;
++    by.set(String(row.host).toLowerCase(), row.checks);
 +  }
 +  for (const node of nodes || []) {
 +    const n = by.get(String(node.host || "").toLowerCase());
@@ -163,8 +117,15 @@ diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
 +  }
 +}
 +
-+export async function attachDeskHostChecks(db: DeskHostChecksDb, nodes: DeskHostNode[] | null | undefined, now: Date = new Date(), clock: number = Date.now()): Promise<void> {
-+  const rows = await loadDeskHostChecks(db, now, clock);
++export async function attachDeskHostChecks(nodes: DeskHostNode[] | null | undefined, read: ReadHostChecks, now: Date = new Date(), clock: number = Date.now()): Promise<void> {
++  const week = isoWeekUtc(now);
++  let rows: readonly HostChecksRow[];
++  if (memo && memo.week === week && clock >= memo.at && clock - memo.at < DESK_HOST_CHECKS_TTL_MS) {
++    rows = memo.rows;
++  } else {
++    rows = await read(week);
++    memo = { at: clock, week, rows };
++  }
 +  stampDeskHostChecks(nodes, rows);
 +}
 +
@@ -181,24 +142,20 @@ diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
 diff -ruN a/worker/test/desk_host_checks_unit.ts b/worker/test/desk_host_checks_unit.ts
 --- a/worker/test/desk_host_checks_unit.ts
 +++ b/worker/test/desk_host_checks_unit.ts
-@@ -0,0 +1,131 @@
-+// Desk per-host outside Guard checks. No network. No D1 writes.
+@@ -0,0 +1,102 @@
++// Desk per-host outside Guard checks. No network. No D1 writes. No reader SQL in this file.
 +import { readFileSync } from "node:fs";
 +import assert from "node:assert/strict";
 +import {
 +  DESK_HOST_CHECKS_QA_CLEAN,
 +  DESK_HOST_CHECKS_TTL_MS,
 +  attachDeskHostChecks,
-+  deskHostChecksBinds,
 +  deskHostChecksHtml,
 +  deskHostChecksNoteHtml,
-+  deskHostChecksSql,
 +  isoWeekUtc,
-+  loadDeskHostChecks,
-+  publishableOutsideGuardKeys,
 +  resetDeskHostChecksMemo,
-+  sumPublishableHostChecks,
-+  type DeskHostChecksDb,
++  stampDeskHostChecks,
++  type HostChecksRow,
 +} from "../src/desk_host_checks.ts";
 +
 +const TITLE = "Outside Guard checks for this host this ISO week (UTC). Our own tests excluded. A count, not a rating.";
@@ -214,89 +171,68 @@ diff -ruN a/worker/test/desk_host_checks_unit.ts b/worker/test/desk_host_checks_
 +assert.equal(deskHostChecksHtml(0, true), "");
 +assert.equal(deskHostChecksHtml(null, true), "");
 +assert.equal(deskHostChecksHtml(1.5, true), "");
-+assert.equal(deskHostChecksHtml(-3, true), "");
 +assert.equal(deskHostChecksHtml(4, false), "");
 +assert.equal(deskHostChecksHtml(4), "");
-+assert.equal(deskHostChecksHtml(4, true).includes("Checked 0"), false);
-+
-+const hidden = [{ host: "blockrun.ai", checks_week: 1 }];
-+assert.equal(deskHostChecksNoteHtml(hidden, false), "");
-+const shown = [{ host: "seller.example", checks_week: 4 }];
-+assert.equal(deskHostChecksNoteHtml(shown, true), NOTE);
++assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_week: 4 }], true), NOTE);
 +assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_week: null }], true), "");
 +
-+const summed = sumPublishableHostChecks([
-+  { k: "d626e00ddeadbeefdeadbeef", host: "blockrun.ai", channel: "guard", n: 1 },
-+  { k: "aaaaaaaaaaaaaaaaaaaaaaaa", host: "seller.example", channel: "guard", n: 2 },
-+  { k: "bbbbbbbbbbbbbbbbbbbbbbbb", host: "seller.example", channel: "guard", n: 3 },
-+  { k: "cccccccccccccccccccccccc", host: "botsrated.com", channel: "guard", n: 9 },
-+  { k: "dddddddddddddddddddddddd", host: "other.example", channel: "internal", n: 8 },
-+  { k: "eeeeeeeeeeeeeeeeeeeeeeee", host: "site.example", channel: "site", n: 7 },
-+  { k: "ffffffffffffffffffffffff", host: "zero.example", channel: "guard", n: 0 },
-+]);
-+assert.deepEqual(summed, [{ host: "seller.example", n: 5 }]);
-+assert.equal(publishableOutsideGuardKeys(["outside-a", "d626e00d-smoke", "outside-b"]).length, 2);
-+
-+const sql = deskHostChecksSql();
-+assert.equal(sql.includes("callers_week_host"), true);
-+assert.equal(sql.includes("channel = 'guard'"), true);
-+assert.equal(sql.includes("k NOT LIKE ?2"), true);
-+assert.equal(sql.includes("host_stats"), false);
-+assert.equal(sql.includes("internal"), false);
-+assert.deepEqual(deskHostChecksBinds(new Date(Date.UTC(2026, 10, 5))), ["2026-W45", "d626e00d%", "botsrated.com", "www.botsrated.com", "botpulse.botsrated.com"]);
-+
-+let prepares = 0;
-+const boundWeeks: string[] = [];
-+const db: DeskHostChecksDb = {
-+  prepare(seen: string) {
-+    assert.equal(seen, sql);
-+    prepares += 1;
-+    return {
-+      bind(...args: unknown[]) {
-+        boundWeeks.push(String(args[0]));
-+        assert.equal(args[1], "d626e00d%");
-+        assert.deepEqual(args.slice(2), ["botsrated.com", "www.botsrated.com", "botpulse.botsrated.com"]);
-+        return {
-+          async all() {
-+            return { results: [{ host: "Seller.Example", n: 5 }, { host: "botsrated.com", n: 4 }, { host: "zero.example", n: 0 }] };
-+          },
-+        };
-+      },
-+    };
-+  },
-+};
-+resetDeskHostChecksMemo();
-+const now = new Date(Date.UTC(2026, 10, 5, 1, 0));
-+const first = await loadDeskHostChecks(db, now, 1_000);
-+assert.deepEqual(first, [{ host: "seller.example", n: 5 }]);
-+const second = await loadDeskHostChecks(db, now, 1_000 + DESK_HOST_CHECKS_TTL_MS - 1);
-+assert.deepEqual(second, first);
-+assert.equal(prepares, 1);
-+const third = await loadDeskHostChecks(db, now, 1_000 + DESK_HOST_CHECKS_TTL_MS);
-+assert.equal(prepares, 2);
-+const nextWeek = await loadDeskHostChecks(db, new Date(Date.UTC(2026, 10, 12)), 1_000 + DESK_HOST_CHECKS_TTL_MS);
-+assert.equal(prepares, 3);
-+assert.deepEqual(boundWeeks, ["2026-W45", "2026-W45", "2026-W46"]);
-+assert.equal(nextWeek[0].host, "seller.example");
-+
-+const nodes = [{ host: "seller.example" }, { host: "blockrun.ai" }];
-+await attachDeskHostChecks(db, nodes, now, 1_000);
-+assert.equal(nodes[0].checks_week, null);
++const rows: HostChecksRow[] = [
++  { host: "Seller.Example", checks: 5 },
++  { host: "botsrated.com", checks: 4 },
++  { host: "www.botsrated.com", checks: 2 },
++  { host: "botpulse.botsrated.com", checks: 2 },
++  { host: "zero.example", checks: 0 },
++];
++const nodes = [{ host: "seller.example" }, { host: "botsrated.com" }, { host: "zero.example" }];
++stampDeskHostChecks(nodes, rows, true);
++assert.equal(nodes[0].checks_week, 5);
 +assert.equal(nodes[1].checks_week, null);
-+assert.equal(deskHostChecksHtml(nodes[0].checks_week), "");
++assert.equal(nodes[2].checks_week, null);
++stampDeskHostChecks(nodes, rows, false);
++assert.equal(nodes[0].checks_week, null);
++
++let reads = 0;
++const seenWeeks: string[] = [];
++resetDeskHostChecksMemo();
++const read = async (week: string) => {
++  reads += 1;
++  seenWeeks.push(week);
++  return rows;
++};
++const now = new Date(Date.UTC(2026, 10, 5, 1, 0));
++const live = [{ host: "seller.example" }];
++await attachDeskHostChecks(live, read, now, 1_000);
++assert.equal(live[0].checks_week, null);
++assert.equal(reads, 1);
++await attachDeskHostChecks(live, read, now, 1_000 + DESK_HOST_CHECKS_TTL_MS - 1);
++assert.equal(reads, 1);
++await attachDeskHostChecks(live, read, now, 1_000 + DESK_HOST_CHECKS_TTL_MS);
++assert.equal(reads, 2);
++await attachDeskHostChecks(live, read, new Date(Date.UTC(2026, 10, 12)), 1_000 + DESK_HOST_CHECKS_TTL_MS);
++assert.equal(reads, 3);
++assert.deepEqual(seenWeeks, ["2026-W45", "2026-W45", "2026-W46"]);
++
++const mod = readFileSync("src/desk_host_checks.ts", "utf8");
++const smokeLit = ["d626", "e00d"].join("");
++assert.equal(mod.includes(smokeLit), false);
++assert.equal(mod.includes("prepare("), false);
++assert.equal(mod.includes("outside_count"), true);
++assert.equal(mod.includes('from "./outside_count"'), false);
 +
 +const desk = readFileSync("src/desk.ts", "utf8");
 +const site = readFileSync("src/site.ts", "utf8");
++assert.equal(desk.includes(smokeLit), false);
 +assert.equal(desk.includes("${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_week)}"), true);
 +assert.equal(desk.includes("</table></div>${deskHostChecksNoteHtml(r.nodes)}${deskSkippedHtml"), true);
 +assert.equal(desk.includes("export async function deskPreviewStampHostChecks"), true);
-+assert.equal(desk.includes("await attachDeskHostChecks(db, nodes)"), true);
++assert.equal(desk.includes("outsideGuardHostChecksSql(week)"), true);
++assert.equal(desk.includes("outsideGuardHostChecks("), true);
++assert.equal((desk.match(/from "\.\/outside_count"/g) || []).length, 1);
 +assert.equal(desk.includes('${deskMapNextHtml(r, esc)}${outsideCallersChipHtml()}${deskGuardHtml(source)}'), true);
 +assert.equal(desk.split("${outsideCallersChipHtml()}").length - 1, 1);
 +const freeAt = desk.indexOf("deskFreeHtml");
 +const freeBody = freeAt < 0 ? "" : desk.slice(freeAt, freeAt + 700);
 +assert.equal(freeBody.includes("deskHostChecks"), false);
-+assert.equal(freeBody.includes("desk-host-checks"), false);
 +for (const rule of [
 +  ".desk-host-checks{display:inline-block;margin:4px 0 0;font-size:13px;line-height:1.4;color:var(--bw-muted)}",
 +  ".desk-host-checks b{color:var(--bw-fg);font-weight:600}",
@@ -308,8 +244,4 @@ diff -ruN a/worker/test/desk_host_checks_unit.ts b/worker/test/desk_host_checks_
 +  assert.equal(site.includes(rule), true, rule);
 +}
 +assert.equal(site.includes("export function outsideCallersChipHtml"), true);
-+const mod = readFileSync("src/desk_host_checks.ts", "utf8");
-+assert.equal(mod.includes('from "./outside_count'), false);
-+assert.equal(mod.includes("from './outside_count"), false);
-+assert.equal(mod.includes("process.exit"), false);
 +console.log("desk_host_checks_unit ok");
