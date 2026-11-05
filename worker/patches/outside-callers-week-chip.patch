@@ -1,0 +1,145 @@
+# Soft OPEN Prefer READY Pack 1 Lead BINDING B. Do not partial-apply. No tip.
+# Soft CTA tip tip 5fe37df8. want 96a0df8b. Soft CTA walls HOLD. fp ebf26695dfaccfcea740027fc1d2b7b0.
+# Soft CTA Prefer KEEP tip HOLD APPLY. Absolute No-Grade.
+# Design LOCK body aa481854dd2916d21061943630adecf4. File eae645282e05dedc73f1310926d40e4b.
+# Empty /desk chip OUT. deskFreeHtml untouched. Map-result chip only. hero1 chip only for the payment-guard lead.
+# DC f84345f2 / b1782fb0. Legal OVERRIDE 7911ec33.
+# Apply: patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/outside-callers-week-chip.patch
+diff -ruN a/worker/src/desk.ts b/worker/src/desk.ts
+--- a/worker/src/desk.ts
++++ b/worker/src/desk.ts
+@@ -19,6 +19,7 @@
+ import { PRESETS, PACK_LABEL, PACK_ORDER, DEFAULT_PACK, guardPolicyEnabled, POLICY_MAX_BYTES, POLICY_MAX_RULES, POLICY_MAX_LIST, CONDITIONS } from "./policy";   // Guard owns the ONE policy store; Desk only renders an editor for /v1/policy
+ import { assembleDeskPulse, deskEvidenceHref, deskOutsidePaidCount, deskStatusChips, DESK_PULSE_SUB, DESK_PULSE_TITLE, type DeskChip, type DeskPulse } from "./desk_pulse";
++import { outsideCallersChipHtml } from "./site";
+ import { deskImport, deskGraph, deskChanges, deskRemoveHost, parseChangesQuery, isMissingTable,
+   getDeskAlertRoute, setDeskAlertRoute, clearDeskAlertRoute, listDeskRollups, deskDeliverPending, resolveDeskTarget, deskSendEmailConfirm, deskEmailLinkRow, deskEmailConfirm, deskEmailStop, DESK_ALERT_ROLLUPS_MAX,
+   deskApproveBaseline, deskClearBaseline, parseBaselineFields } from "./desk_store";
+ 
+@@ -517,7 +518,7 @@
+ ${deskPulseHtml(r, esc)}
+ <div class="desk-tbl"><table id="desk-table"><thead><tr><th scope="col" data-key="host"><button class="th-sort" type="button">Host</button></th><th scope="col" data-key="agents" data-type="num" aria-sort="descending"><button class="th-sort" type="button">Agents using it</button></th><th scope="col" data-key="measured"><button class="th-sort" type="button">Last measured (UTC)</button></th><th scope="col" data-key="changed"><button class="th-sort" type="button">What changed</button></th><th scope="col">Receipt</th></tr></thead><tbody>${r.nodes.map((x: any) => `<tr><td class="first" data-v="${esc(x.host)}"><span class="host">${esc(x.host)}</span><span class="kind">${!x.covered ? "Not in our coverage" : x.kind === "mcp" ? "MCP server" : x.kind === "x402" ? "x402 seller" : ""}${x.wallet_match ? " · matches a payTo you pasted" : ""}</span>${deskChipsHtml(x)}</td><td data-label="Agents using it" class="num" data-v="${x.paste_agents.length}" title="${esc(x.paste_agents.join(", "))}">${x.paste_agents.length} of ${r.summary.agents}</td><td data-label="Last measured (UTC)" data-v="${x.covered ? esc(x.last_measured || "") : ""}"${x.covered ? "" : ' class="quiet"'}>${!x.covered ? "Not measured yet" : (deskWhen(esc, x.last_measured) || "–") + (x.flags.includes("stale") ? ' <span class="quiet">(over 24 h ago)</span>' : "")}</td><td data-label="What changed" data-v="${esc(deskChanged(x))}"${deskChanged(x) ? "" : ' class="quiet"'}>${deskChanged(x) || "—"}</td>${deskReceiptCellHtml(x, esc)}</tr>`).join("")}</tbody></table></div>${deskSkippedHtml(r.skipped, esc)}
+ <p class="desk-notes">${esc(r.facts_only)} ${deskOtherChanges(r) ? `"What changed" lists only the changes measured on each host.` : `"What changed" is MCP tool changes in the last 7 days, not payTo or price.`} "Agents using it" counts configs in this paste. ${esc(r.history)}${r.caps.hosts_over_cap ? ` ${r.caps.hosts_over_cap} hosts over the ${DW_MAX_HOSTS} cap were not checked.` : ""}${r.caps.agents_over_cap ? ` ${r.caps.agents_over_cap} agents over the ${DESK_MAX_AGENTS} cap were ignored.` : ""}${r.caps.wallets_over_cap ? ` ${r.caps.wallets_over_cap} payTo ${r.caps.wallets_over_cap === 1 ? "address" : "addresses"} over the ${DW_MAX_WALLETS} cap ${r.caps.wallets_over_cap === 1 ? "was" : "were"} ignored.` : ""}</p>
+-${deskProofStripHtml(r, esc)}${r.nodes.some((x: any) => x.paste_agents?.length) && !deskSaveHref(r) ? `<p class="desk-again small">This map is too big to save in one step. Map fewer agents at a time, then save each map to your watchlist.</p>` : ""}${deskMapNextHtml(r, esc)}${deskGuardHtml(source)}<p class="desk-again"><a class="link-arrow" href="/desk">Map another fleet</a></p>${DESK_SCRIPT_TAG}`;
++${deskProofStripHtml(r, esc)}${r.nodes.some((x: any) => x.paste_agents?.length) && !deskSaveHref(r) ? `<p class="desk-again small">This map is too big to save in one step. Map fewer agents at a time, then save each map to your watchlist.</p>` : ""}${deskMapNextHtml(r, esc)}${outsideCallersChipHtml()}${deskGuardHtml(source)}<p class="desk-again"><a class="link-arrow" href="/desk">Map another fleet</a></p>${DESK_SCRIPT_TAG}`;
+ 
+ // ---------- Policy editor (DESK-POLICY-EDITOR-SLICE-2026-10-27) ----------
+ // Desk owns the UI, Guard owns the store. The page is an editor for Guard's existing routes only: GET/PUT/DELETE /v1/policy,
+diff -ruN a/worker/src/site.ts b/worker/src/site.ts
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -581,6 +581,16 @@
+ .bw-market-chip{margin:10px 0 0}
+ .hh-hero+.wrap+.hh-sec{padding-top:64px}
+ @media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}
++.bw-checked-chip{margin:12px 0 0;font-size:13px;line-height:1.4;color:var(--bw-muted)}
++.bw-checked-chip b{color:var(--bw-fg);font-weight:600}
++.bw-checked-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}
++.bw-checked-chip a:hover{border-bottom-color:var(--bw-fg)}
++.bw-checked-chip[data-n="0"],.bw-checked-chip:not([data-n]){display:none}
++.bw-checked-tease{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}
++.bw-checked-tease a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}
++.bw-checked-tease a:hover{border-bottom-color:var(--bw-fg)}
++.bw-checked-tease[data-n="0"],.bw-checked-tease:not([data-n]){display:none}
++@media (max-width:767px){.bw-checked-tease{padding:0 4px;margin-top:8px}}
+ .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+ .hh-sec .tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--bw-line);border-radius:12px;overflow:hidden}
+ .hh-sec .tool{border:0;border-right:1px solid var(--bw-line);border-bottom:1px solid var(--bw-line);border-radius:0;background:var(--bw-bg-2);min-height:170px;transform:none}
+@@ -843,13 +853,49 @@
+   } catch { noteQuery("rates", Date.now() - t0, false); const v = ratesDegradedStub(); ratesMemo = { at: Date.now(), v }; return v; }
+ }
+ // Growing-N strip. ids p-x / p-m / p-c / p-cd stay stable for /assets/site.js. No #p-t last-check cell. B/W class bw-stats stays.
++// Owner-set published figure. Distinct outside Guard callers this ISO week (UTC).
++// metric outside_guard_callers_week. Week 2026-W45. as_of 2026-11-05T00:14:00Z.
++// callers_week, channel guard, internal excluded. Not a per-seller or per-host count.
++// qa_clean is the Data Checker flag. Render the chip and the home tease only when the gate passes.
++export const OUTSIDE_GUARD_CALLERS_WEEK: {
++  metric: "outside_guard_callers_week";
++  week: string;
++  n: number;
++  qa_clean: boolean;
++  as_of: string;
++} = {
++  metric: "outside_guard_callers_week",
++  week: "2026-W45",
++  n: 2,
++  qa_clean: true,
++  as_of: "2026-11-05T00:14:00Z",
++};
++
++export function outsideGuardCallersWeekN(row: { n: number | null; qa_clean: boolean } = OUTSIDE_GUARD_CALLERS_WEEK): number | null {
++  const n = row.n;
++  if (row.qa_clean === true && Number.isInteger(n) && n > 0) return n;
++  return null;
++}
++
++export function outsideCallersChipHtml(): string {
++  const n = outsideGuardCallersWeekN();
++  if (n == null) return "";
++  return `<p class="bw-checked-chip" data-n="${n}" title="Distinct outside networks that ran a free Guard check this ISO week (UTC). Our own tests excluded. A count, not a rating.">Guard checks this week: <b>${n}</b> outside callers · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a></p>`;
++}
++
++export function outsideCallersTeaseHtml(): string {
++  const n = outsideGuardCallersWeekN();
++  if (n == null) return "";
++  return `<p class="bw-checked-tease" data-n="${n}"><a href="/desk">See which sellers are being checked out the most → here</a></p>`;
++}
++
+ export function homePulseStrip(p: any) {
+   const homeN = p?.checks_run_home ?? p?.checks_run_7d;
+   const days = Number(p?.home_checks_days || 0);
+   const daysLabel = days > 0 ? `${days} days` : "closed days";
+   const title = p?.definitions?.checks_run_home || p?.definitions?.checks_run_7d || "";
+   return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>
+-<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">
++${outsideCallersTeaseHtml()}<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">
+   <p id="bw-whats-new-h" class="bw-whats-new-kicker">What's new</p>
+   <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>
+   <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>
+diff -ruN a/worker/src/tools.ts b/worker/src/tools.ts
+--- a/worker/src/tools.ts
++++ b/worker/src/tools.ts
+@@ -5,6 +5,7 @@
+ import { PLANS, CUSTOM } from "./subs";
+ import { STICKY_FREE } from "./lib";
+ import { DESK_MAP_FREE_CTA_ANY } from "./desk";   // FF-BI4 2026-10-30: reuse Design LOCK D3 free CTA (no forked free CTA)
++import { outsideCallersChipHtml } from "./site";
+ export const TOOLS_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-nqfzBkBgUttYV+pOA/E8hWZsB1mfYYourFzPU1aNyNg='; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+ 
+ const esc = (s: any) => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as any)[ch]);
+@@ -71,7 +72,7 @@
+ // tools-v1 (SYSTEM-V1 B9, 2026-10-27): pill row · H1 · one-sentence lead · ONE primary (.btn) · optional text link. Code, JSON and USDC live in "For developers".
+ const pills1 = (xs: string[], first: "live" | "coming" = "live") => `<div class="t1-pills">${xs.map((x, i) => `<span class="pill${i === 0 ? ` ${first}` : ""}">${esc(x)}</span>`).join("")}</div>`;
+ const hero1 = (p: string, h1: string, lead: string, cta: [string, string] | null, link?: [string, string], note = "") =>
+-  `<section class="t1-hero">${p}<h1>${esc(h1)}</h1><p class="t1-lead">${lead}</p><div class="t1-cta">${cta ? `<a class="btn" href="${esc(cta[0])}">${esc(cta[1])}</a>` : ""}${link ? `<a class="t1-link" href="${esc(link[0])}">${esc(link[1])}</a>` : ""}</div>${note}</section>`;
++  `<section class="t1-hero">${p}<h1>${esc(h1)}</h1><p class="t1-lead">${lead}</p>${lead==="Guard compares each payment request with what we measured for that seller, then warns or blocks by your rules."?outsideCallersChipHtml():""}<div class="t1-cta">${cta ? `<a class="btn" href="${esc(cta[0])}">${esc(cta[1])}</a>` : ""}${link ? `<a class="t1-link" href="${esc(link[0])}">${esc(link[1])}</a>` : ""}</div>${note}</section>`;
+ const sec1 = (id: string, h2: string, body: string) => `<section class="t1-sec"${id ? ` id="${id}"` : ""}>${h2 ? `<h2>${esc(h2)}</h2>` : ""}${body}</section>`;
+ const chips1 = (xs: string[]) => `<ul class="t1-chips">${xs.slice(0, 4).map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+ const price1 = (b: string, rest: string) => `<section class="t1-sec" id="price"><div class="t1-price"><b>${b}</b><span>${rest}</span><a class="t1-link" href="/pricing">All prices</a></div></section>`;
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -1,7 +1,7 @@
+ // Nov 4 2026 D1 harden. No network, no prod deletes.
+ // npx esbuild test/d1_failsoft_unit.ts --bundle --platform=node --format=esm --outfile=/tmp/d1fail.mjs && node /tmp/d1fail.mjs
+ import { readFileSync } from "node:fs";
+-import { clearFailSoftMemos, homePulseStrip, navHtml, pulse, pulseDegraded, rates, ratesDegradedStub, RATES_STALE_NOTE, SITE_CSS } from "../src/site";
++import { clearFailSoftMemos, homePulseStrip, navHtml, outsideCallersChipHtml, outsideCallersTeaseHtml, outsideGuardCallersWeekN, pulse, pulseDegraded, rates, ratesDegradedStub, RATES_STALE_NOTE, SITE_CSS } from "../src/site";
+ import { SITE_JS } from "../src/sitejs";
+ import { D1_GUARD, noteQuery, probeCutDay, probeDeleteOneSql, probeSelectSql, resetD1Guard, shouldSkipLiveRead } from "../src/d1guard";
+ import { PRE, PRE_MAX_AGE_MS } from "../src/pre";
+@@ -53,10 +53,14 @@
+ const nav = navHtml("/");
+ t("B/W strip marker", nav.includes("bw-strip") && nav.includes("Desk Guard") && SITE_CSS.includes(".bw-strip") && SITE_CSS.includes("--bw-bg"));
+ t("Desk Guard strip is live", nav.includes('<div class="bw-strip"><b>Desk Guard</b> live · <a href="/desk">try free</a></div>') && !nav.includes("Coming soon") && SITE_CSS.includes(".bw-strip a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}") && SITE_CSS.includes(".bw-strip a:hover{border-bottom-color:var(--bw-muted)}"));
+-t("cadence sibling under pulse", liveStrip.includes('</div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence") && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>\n<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.endsWith('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>'));
++t("cadence sibling under pulse", liveStrip.includes('</div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence") && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>\n<p class="bw-checked-tease" data-n="2"><a href="/desk">See which sellers are being checked out the most → here</a></p><aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.endsWith('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>'));
+ t("market facts chip under cadence", (liveStrip.split('href="/market"').length === 3) && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-market-chip") && (liveStrip.split("Fresh unpaid checks about every 2 minutes.").length === 2) && SITE_CSS.includes(".bw-market-chip{margin:8px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-market-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-market-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{padding:0 4px}}"));
+ t("board nav order", navHtml("/").includes('<nav class="nav" aria-label="Main"><a href="/desk">Desk</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools/payment-guard">Guard</a><span class="nav-dot" aria-hidden="true">·</span><a href="/market">Board</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools">Tools</a><span class="nav-dot" aria-hidden="true">·</span><a href="/pricing">Pricing</a><span class="nav-dot" aria-hidden="true">·</span><a href="/docs">Docs</a></nav>') && (navHtml("/").match(/href="\/market"/g) || []).length + (liveStrip.match(/href="\/market"/g) || []).length === 3 && navHtml("/market").includes('href="/market" aria-current="page">Board</a>') && navHtml("/desk").includes('href="/desk" aria-current="page">Desk</a>') && !navHtml("/desk").includes('aria-current="page">Board') && navHtml("/tools/payment-guard").includes('href="/tools/payment-guard" aria-current="page">Guard</a>') && !navHtml("/tools/payment-guard").includes('aria-current="page">Tools') && navHtml("/tools/checks").includes('href="/tools" aria-current="page">Tools</a>') && navHtml("/").split('class="nav-dot"').length === 6);
+ t("whats new card", liveStrip.includes('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.split('class="bw-whats-new"').length === 2 && liveStrip.includes("What's new") && liveStrip.includes('href="/courthouse">Courthouse</a>') && SITE_CSS.includes(".bw-whats-new{margin:24px 0 0;padding:16px 24px;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-bg-2);color:var(--bw-muted);font-size:13px;line-height:1.45}") && SITE_CSS.includes(".bw-whats-new-kicker{margin:0 0 6px;color:var(--bw-fg);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}") && SITE_CSS.includes(".bw-whats-new-one{margin:0;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-whats-new-one a,.bw-whats-new-else a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-whats-new-one a:hover,.bw-whats-new-else a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes(".bw-whats-new-else{margin:10px 0 0;color:var(--bw-muted)}") && SITE_CSS.includes("@media (max-width:767px){.bw-whats-new{padding:14px 16px;margin-top:20px}}") && SITE_CSS.includes(".bw-market-chip{margin:10px 0 0}") && SITE_CSS.includes(".hh-hero+.wrap+.hh-sec{padding-top:64px}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}"));
++t("outside week gate uses the shipped helper", outsideGuardCallersWeekN() === 2 && outsideGuardCallersWeekN({ n: 0, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: null, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: 1.5, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: 2, qa_clean: false }) === null && outsideCallersChipHtml().includes("Guard checks this week:") && outsideCallersChipHtml().includes(">2<") && outsideCallersTeaseHtml().includes("See which sellers are being checked out the most"));
++t("outside callers css", SITE_CSS.includes(".bw-checked-chip{margin:12px 0 0;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-checked-chip b{color:var(--bw-fg);font-weight:600}") && SITE_CSS.includes(".bw-checked-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-checked-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes('.bw-checked-chip[data-n="0"],.bw-checked-chip:not([data-n]){display:none}') && SITE_CSS.includes(".bw-checked-tease{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-checked-tease a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-checked-tease a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes('.bw-checked-tease[data-n="0"],.bw-checked-tease:not([data-n]){display:none}') && SITE_CSS.includes("@media (max-width:767px){.bw-checked-tease{padding:0 4px;margin-top:8px}}"));
++t("home tease between market chip and whats new", liveStrip.includes('sources</p>\n<p class="bw-checked-tease" data-n="2"><a href="/desk">See which sellers are being checked out the most → here</a></p><aside class="bw-whats-new"') && liveStrip.split("bw-checked-tease").length === 2 && !liveStrip.includes("bw-checked-chip"));
++t("chip call sites option B", (() => { const site = readFileSync("src/site.ts", "utf8"); const tools = readFileSync("src/tools.ts", "utf8"); const desk = readFileSync("src/desk.ts", "utf8"); const chip = (s: string) => s.split("${outsideCallersChipHtml()}").length - 1; const freeAt = desk.indexOf("deskFreeHtml"); const freeBody = freeAt < 0 ? "" : desk.slice(freeAt, freeAt + 700); return site.split("${outsideCallersTeaseHtml()}").length - 1 === 1 && chip(site) === 0 && tools.split("outsideCallersChipHtml()").length-1===1 && tools.includes('?outsideCallersChipHtml():""}<div class="t1-cta">') && chip(desk) === 1 && desk.includes("${deskMapNextHtml(r, esc)}${outsideCallersChipHtml()}${deskGuardHtml(source)}") && !desk.includes("outsideCallersChipHtml()}${deskGuardHtml(null)") && !desk.includes("outsideCallersChipHtml() + deskGuardHtml(null)") && !freeBody.includes("outsideCallersChipHtml") && site.includes("qa_clean === true && Number.isInteger(n) && n > 0"); })());
+ t("labels and hidden carrier stay", liveStrip.includes("sellers watched") && liveStrip.includes("MCP servers checked") && liveStrip.includes('checks in the last <span id="p-cd">') && liveStrip.includes('<span hidden><i id="p-l"></i><i id="p-d"></i></span>'));
+ t("strip is three columns", SITE_CSS.includes(".bw-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));") && SITE_CSS.includes("align-items:stretch") && SITE_CSS.includes(".bw-stats>span[hidden],#pulse>span[hidden]{display:none!important}") && SITE_CSS.includes(".bw-stats>span:not([hidden])+span:not([hidden]){border-left:1px solid var(--bw-line)}") && !SITE_CSS.includes("repeat(4,minmax(0,1fr))") && !SITE_CSS.includes(".bw-stats{grid-template-columns:1fr 1fr}"));
+ t("mobile stacks three rows", SITE_CSS.includes(".bw-stats{grid-template-columns:1fr}") && SITE_CSS.includes(".bw-stats>span:not([hidden])+span:not([hidden]){border-left:0;border-top:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-stats>span:nth-child(n+3){border-top:0}") && SITE_CSS.includes(".bw-stats>span:nth-child(n+2):not([hidden]){border-top:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-stats-cadence{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted);text-align:left}") && SITE_CSS.includes(".bw-stats-cadence{padding:0 4px}"));
