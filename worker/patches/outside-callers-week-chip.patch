@@ -4,10 +4,11 @@
 # Apply on the private receipts-mvp tree at tip 349386f7.
 # Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
 # Design LOCK body md5 df2d95a37140e83b5920fb983999daf9. Whole file md5 c16bb49401b77425702d65a6f0bb701b.
-# Week-only outside callers chip on /tools/payment-guard and Desk, plus the home tease.
-# Anton OVERRIDE against Legal HOLD 67598831 for the home tease. The day window stays parked.
+# Week chip on /tools/payment-guard and Desk, plus the home tease.
+# Home tease ships under Anton OVERRIDE. Legal OVERRIDE digest 7911ec33. Tease is not a Legal CLEAR.
+# N is outside Guard callers only: callers_week, channel guard, internal excluded. No per-seller or per-host count.
 # Gate: qa_clean === true && Number.isInteger(n) && n > 0. Omit the chip and the tease otherwise.
-# Owner-set published figure: outside_guard_callers_week, 2026-W45, n 2, as_of 2026-11-05T00:14:00Z.
+# Owner-set published figure: outside_guard_callers_week, 2026-W45, n 2, as_of 2026-11-05T00:14:00Z. The day window stays parked.
 # Apply from the private tree root:
 #   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/outside-callers-week-chip.patch
 --- a/worker/src/site.ts
@@ -25,9 +26,10 @@
 +.bw-checked-tease[data-n="0"],.bw-checked-tease:not([data-n]){display:none}
 +@media (max-width:767px){.bw-checked-tease{padding:0 4px;margin-top:8px}}
  .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
-@@ -400,1 +400,36 @@
+@@ -400,1 +400,37 @@
 +// Owner-set published figure. Distinct outside Guard callers this ISO week (UTC).
 +// metric outside_guard_callers_week. Week 2026-W45. as_of 2026-11-05T00:14:00Z.
++// callers_week, channel guard, internal excluded. Not a per-seller or per-host count.
 +// qa_clean is the Data Checker flag. Render the chip and the home tease only when the gate passes.
 +export const OUTSIDE_GUARD_CALLERS_WEEK: {
 +  metric: "outside_guard_callers_week";

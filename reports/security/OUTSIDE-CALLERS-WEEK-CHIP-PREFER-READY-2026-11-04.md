@@ -8,7 +8,7 @@ Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no me
 |---|---|
 | Design LOCK body | `df2d95a37140e83b5920fb983999daf9` |
 | Design LOCK file | `c16bb49401b77425702d65a6f0bb701b` |
-| Legal tease HOLD, Anton OVERRIDE | `67598831` |
+| Legal OVERRIDE digest | `7911ec33` (tease ships under Anton OVERRIDE, not a Legal CLEAR) |
 | DC qa_clean | full pack `b3bd4914` / leaf `42993bb4` |
 | Published N | `2` |
 | ISO week | `2026-W45` |
@@ -18,9 +18,11 @@ Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no me
 | Soft CTA fp | `ebf26695` |
 | Git base | `1f4791b59f552bd9ab2d9d4a067518971af9ba61` |
 | Patch | `worker/patches/outside-callers-week-chip.patch` |
-| Patch md5 | `11d8eb39179fbb48f1615cbbcbb00fbc` |
+| Patch md5 | `19c7a987d8c1eef13ff84c9548a1bef1` |
 
-Prefer READY is against Design LOCK body `df2d95a37140e83b5920fb983999daf9` only. Anton OVERRIDE binds the home tease against Legal HOLD `67598831`. The week fact chip stays the CLEAR-with-notes core of that same Legal note. The day window stays parked.
+Prefer READY is against Design LOCK body `df2d95a37140e83b5920fb983999daf9` only. The home tease ships under Anton OVERRIDE. Legal OVERRIDE digest `7911ec33` records that ship. The tease is not a Legal CLEAR. The week fact chip stays the CLEAR-with-notes fact. The day window stays parked.
+
+N is outside Guard callers only: `callers_week`, `channel='guard'`, internal excluded. The published figure is not a buyer×seller count and not a per-host count. Our own tests stay out of N.
 
 ## What ships
 
@@ -34,7 +36,7 @@ Owner-set published figure in `OUTSIDE_GUARD_CALLERS_WEEK`:
 - `qa_clean: true`
 - `as_of: 2026-11-05T00:14:00Z`
 
-This is the distinct outside-caller count for the ISO week (`callers_week`, `channel='guard'`, internal excluded). It is a different figure from week-over-week retained attaches. The renderer does not query D1 and does not fill N from anywhere else.
+This is the distinct outside-caller count for the ISO week (`callers_week`, `channel='guard'`, internal excluded). It is a different figure from week-over-week retained attaches. The renderer does not query D1, does not fill N from anywhere else, and does not invent a seller or host count. The home tease links to `/desk` and carries no seller number.
 
 Gate, exact: `qa_clean === true && Number.isInteger(n) && n > 0`. When the gate fails, both helpers return an empty string, so the chip element and the tease element are omitted. CSS `display:none` for `data-n="0"` and a missing `data-n` is the backstop.
 
@@ -109,4 +111,4 @@ This file is Prefer READY. It does not record a MATCH. Security MATCH is the nex
 
 ## md5
 
-`b54e85ce480d0dc662f41899329a06de`
+`d981f57ff35fb3039028bf4e20868d37`
