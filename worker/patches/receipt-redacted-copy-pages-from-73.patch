@@ -1,0 +1,408 @@
+# Soft OPEN Prefer KEEP. Pages pack rebuilt from #73 squash 1f4791b59f552bd9ab2d9d4a067518971af9ba61
+# (parent e257d1972dfaff0fee239a968463357eb79c99f4). Keep #73. Do not revive receipt-withheld-offline-note.patch.
+# Soft CTA tip tip 84f45f14 want 433883f1 LOCK. Soft CTA walls HOLD.
+# Do not tip. Do not deploy. Do not merge. SC no tip. Absolute No-Grade. Home untouched.
+# Apply on the private receipts-mvp tree from that tree's repo root (pre-#73 bytes, same as public e257d1972dfaff0fee239a968463357eb79c99f4):
+#   patch -p1 < worker/patches/receipt-redacted-copy-pages-from-73.patch
+# Pages files only. spec/verify.mjs is already on public main (prints REDACTED, exits 3) and is not in this pack.
+# The withheld page hides the node verify.mjs / curl one-liner and the Verify button.
+# It shows heading Stored record and https://botsrated.com/v1/verify with allowlisted id, host, and day.
+# Status is redacted copy. No signature-hint marker. No mcp or s query on that stored-record URL.
+# Byte copies of spec/verify-core.mjs: spec/courthouse/verify-core.mjs and integrations/x402-client/vendor/verify-core.mjs.
+# spec/courthouse/verify-booth.mjs reports the same status. Home, desk source, and wall copy are not in this patch.
+# Target file bytes on main 1f4791b59f552bd9ab2d9d4a067518971af9ba61 (md5 sha256):
+#   integrations/x402-client/vendor/verify-core.mjs 1052899c2393ec1819814e769115bb9e bc9006f9cc630390f31f153c15ef0ee704fab004da661873e86e8af4dfa39168
+#   spec/courthouse/verify-booth.mjs 350b2e93289b5b578a1d3bec0fbeac3e 14ba759399ff0ad0cfe9f25fb4268e4d57b23497a9decc62febea0f6d8598ab5
+#   spec/courthouse/verify-core.mjs 1052899c2393ec1819814e769115bb9e bc9006f9cc630390f31f153c15ef0ee704fab004da661873e86e8af4dfa39168
+#   spec/receipt-page.mjs 3e0f2fa61c2bdcf45605c044923d714a 3bb35a91564ab1319b881730d9a07d08dbcfc21b90ed3178f22e386b115858de
+#   spec/verify-browser.mjs 41167eefe56342bf7f73521ee5563bdb f5811d0ccb7d109619bc5ace2c97cee06874e0f7337ee47434caf1c42e798011
+#   spec/verify-core.mjs 1052899c2393ec1819814e769115bb9e bc9006f9cc630390f31f153c15ef0ee704fab004da661873e86e8af4dfa39168
+
+diff --git a/integrations/x402-client/vendor/verify-core.mjs b/integrations/x402-client/vendor/verify-core.mjs
+index 8d780f7..74f7925 100644
+--- a/integrations/x402-client/vendor/verify-core.mjs
++++ b/integrations/x402-client/vendor/verify-core.mjs
+@@ -26,6 +26,49 @@ export function stripPresentation(receipt) {
+   return r;
+ }
+ 
++const ID_RE = /^[0-9a-f]{20}$/;
++const HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
++const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
++const FIELD_RE = /^[A-Za-z0-9_.*]{1,80}$/;
++
++function withheldMark(obj) {
++  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
++  const listed = Array.isArray(obj.withheld_fields) ? obj.withheld_fields.filter((name) => typeof name === "string" && name.trim()) : [];
++  const fields = listed.filter((name) => FIELD_RE.test(name));
++  const note = typeof obj.withheld_note === "string" && obj.withheld_note.trim() ? obj.withheld_note.trim() : "";
++  if (!listed.length && !note) return null;
++  return { fields };
++}
++
++// withheld_fields / withheld_note mark a served copy that omits signed fields.
++// They are not presentation fields. Do not report that copy as signature invalid.
++export function redactedCopy(raw) {
++  if (!raw || typeof raw !== "object") return null;
++  const inner = unwrapReceipt(raw);
++  const mark = withheldMark(inner) || (inner !== raw ? withheldMark(raw) : null);
++  if (!mark) return null;
++  const r = inner && typeof inner === "object" && !Array.isArray(inner) ? inner : {};
++  return {
++    fields: mark.fields,
++    id: typeof r.id === "string" ? r.id : null,
++    host: typeof r.host === "string" ? r.host : null,
++    ts: typeof r.ts === "string" ? r.ts : null,
++    kind: typeof r.kind === "string" ? r.kind : null,
++    key_id: r.sig && typeof r.sig.key_id === "string" ? r.sig.key_id : null,
++  };
++}
++
++export function storedRecordVerifyUrl(info) {
++  const src = info && typeof info === "object" ? info : {};
++  const q = [];
++  if (typeof src.id === "string" && ID_RE.test(src.id)) q.push("id=" + src.id);
++  if (typeof src.host === "string" && HOST_RE.test(src.host)) q.push("host=" + src.host);
++  const fromTs = typeof src.ts === "string" ? src.ts.slice(0, 10) : "";
++  const day = typeof src.day === "string" && DAY_RE.test(src.day) ? src.day : (DAY_RE.test(fromTs) ? fromTs : "");
++  if (day) q.push("day=" + day);
++  return "https://botsrated.com/v1/verify" + (q.length ? "?" + q.join("&") : "");
++}
++
+ function bytesOf(message, enc) {
+   if (typeof message === "string") return enc.encode(message);
+   return message;
+@@ -70,6 +113,17 @@ export async function verifyReceipt(raw, keyset, deps) {
+     }
+   };
+   const sha256 = (b) => deps.sha256(b);
++  const redacted = redactedCopy(raw);
++  if (redacted) {
++    const url = storedRecordVerifyUrl(redacted);
++    const listed = redacted.fields.length ? " (" + redacted.fields.join(", ") + ")" : "";
++    lines.push("INFO  redacted copy" + listed + ": withheld fields are not in this JSON. This copy is not offline-verifiable.");
++    lines.push("INFO  The signature covers the stored record. Check that record with GET " + url);
++    return {
++      ok: false, valid: false, offline_verifiable: false, status: "redacted copy", lines, errors: ["redacted_copy"],
++      id: redacted.id, key_id: redacted.key_id, kind: redacted.kind, ts: redacted.ts, host: redacted.host,
++    };
++  }
+   const r = stripPresentation(unwrapReceipt(raw));
+   const { id, sig, ...body } = r;
+   const rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
+diff --git a/spec/courthouse/verify-booth.mjs b/spec/courthouse/verify-booth.mjs
+index dfe24db..7d0d5bc 100644
+--- a/spec/courthouse/verify-booth.mjs
++++ b/spec/courthouse/verify-booth.mjs
+@@ -1,10 +1,10 @@
+ // Browser entry for the courthouse booth. Imports ./verify-core.mjs (byte copy of ../verify-core.mjs).
+-// Paste a receipt link or JSON. Status is signature valid, signature invalid, or key unknown.
++// Paste a receipt link or JSON. Status is signature valid, signature invalid, key unknown, or redacted copy.
+ // A link is fetched only after it is rebuilt to https://botsrated.com/receipt/<20 hex> plus host, mcp, day, and s.
+ // Keys come from https://botsrated.com/.well-known/botsrated-key.
+ // A matching signature checks this record only. It is not a rating of the seller.
+ // The Attach Guard link stays hidden unless the page search has soft=1.
+-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
++import { redactedCopy, verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+ 
+ export const KEYS_URL = "https://botsrated.com/.well-known/botsrated-key";
+ export const DATASET_URL = "https://botsrated.com/dataset.json";
+@@ -20,6 +20,7 @@ const BOOTH_URL = /^https:\/\/botsrated\.com\/receipt\/[0-9a-f]{20}(?:\?(?:host|
+ const FETCH_INIT = { credentials: "omit", redirect: "error", referrerPolicy: "no-referrer" };
+ 
+ export function signatureStatus(result, cryptoOk) {
++  if (result && result.status === "redacted copy") return "redacted copy";
+   if (!cryptoOk || !result) return "signature invalid";
+   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
+   return "signature invalid";
+@@ -108,9 +109,16 @@ async function readOk(res) {
+ export async function checkBooth(text, options = {}) {
+   const fetchImpl = options.fetchImpl || globalThis.fetch;
+   const cryptoOk = Object.prototype.hasOwnProperty.call(options, "cryptoOk") ? !!options.cryptoOk : await ed25519WebCryptoAvailable();
+-  if (!cryptoOk) return { status: "signature invalid", fields: emptyFields() };
+   const parsed = parseBoothInput(text);
+   if (parsed.kind !== "json" && parsed.kind !== "url") return { status: "signature invalid", fields: emptyFields() };
++  if (parsed.kind === "json" && redactedCopy(parsed.value)) return { status: "redacted copy", fields: fieldsOf(parsed.value) };
++  if (!cryptoOk && parsed.kind === "url") {
++    try {
++      const peeked = await (await readOk(await fetchImpl(parsed.url, FETCH_INIT))).json();
++      if (redactedCopy(peeked)) return { status: "redacted copy", fields: fieldsOf(peeked) };
++    } catch { /* unread copy stays signature invalid below */ }
++  }
++  if (!cryptoOk) return { status: "signature invalid", fields: emptyFields() };
+   let keyset;
+   try {
+     keyset = await (await readOk(await fetchImpl(KEYS_URL, FETCH_INIT))).json();
+diff --git a/spec/courthouse/verify-core.mjs b/spec/courthouse/verify-core.mjs
+index 8d780f7..74f7925 100644
+--- a/spec/courthouse/verify-core.mjs
++++ b/spec/courthouse/verify-core.mjs
+@@ -26,6 +26,49 @@ export function stripPresentation(receipt) {
+   return r;
+ }
+ 
++const ID_RE = /^[0-9a-f]{20}$/;
++const HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
++const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
++const FIELD_RE = /^[A-Za-z0-9_.*]{1,80}$/;
++
++function withheldMark(obj) {
++  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
++  const listed = Array.isArray(obj.withheld_fields) ? obj.withheld_fields.filter((name) => typeof name === "string" && name.trim()) : [];
++  const fields = listed.filter((name) => FIELD_RE.test(name));
++  const note = typeof obj.withheld_note === "string" && obj.withheld_note.trim() ? obj.withheld_note.trim() : "";
++  if (!listed.length && !note) return null;
++  return { fields };
++}
++
++// withheld_fields / withheld_note mark a served copy that omits signed fields.
++// They are not presentation fields. Do not report that copy as signature invalid.
++export function redactedCopy(raw) {
++  if (!raw || typeof raw !== "object") return null;
++  const inner = unwrapReceipt(raw);
++  const mark = withheldMark(inner) || (inner !== raw ? withheldMark(raw) : null);
++  if (!mark) return null;
++  const r = inner && typeof inner === "object" && !Array.isArray(inner) ? inner : {};
++  return {
++    fields: mark.fields,
++    id: typeof r.id === "string" ? r.id : null,
++    host: typeof r.host === "string" ? r.host : null,
++    ts: typeof r.ts === "string" ? r.ts : null,
++    kind: typeof r.kind === "string" ? r.kind : null,
++    key_id: r.sig && typeof r.sig.key_id === "string" ? r.sig.key_id : null,
++  };
++}
++
++export function storedRecordVerifyUrl(info) {
++  const src = info && typeof info === "object" ? info : {};
++  const q = [];
++  if (typeof src.id === "string" && ID_RE.test(src.id)) q.push("id=" + src.id);
++  if (typeof src.host === "string" && HOST_RE.test(src.host)) q.push("host=" + src.host);
++  const fromTs = typeof src.ts === "string" ? src.ts.slice(0, 10) : "";
++  const day = typeof src.day === "string" && DAY_RE.test(src.day) ? src.day : (DAY_RE.test(fromTs) ? fromTs : "");
++  if (day) q.push("day=" + day);
++  return "https://botsrated.com/v1/verify" + (q.length ? "?" + q.join("&") : "");
++}
++
+ function bytesOf(message, enc) {
+   if (typeof message === "string") return enc.encode(message);
+   return message;
+@@ -70,6 +113,17 @@ export async function verifyReceipt(raw, keyset, deps) {
+     }
+   };
+   const sha256 = (b) => deps.sha256(b);
++  const redacted = redactedCopy(raw);
++  if (redacted) {
++    const url = storedRecordVerifyUrl(redacted);
++    const listed = redacted.fields.length ? " (" + redacted.fields.join(", ") + ")" : "";
++    lines.push("INFO  redacted copy" + listed + ": withheld fields are not in this JSON. This copy is not offline-verifiable.");
++    lines.push("INFO  The signature covers the stored record. Check that record with GET " + url);
++    return {
++      ok: false, valid: false, offline_verifiable: false, status: "redacted copy", lines, errors: ["redacted_copy"],
++      id: redacted.id, key_id: redacted.key_id, kind: redacted.kind, ts: redacted.ts, host: redacted.host,
++    };
++  }
+   const r = stripPresentation(unwrapReceipt(raw));
+   const { id, sig, ...body } = r;
+   const rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
+diff --git a/spec/receipt-page.mjs b/spec/receipt-page.mjs
+index 6b68a89..dfec8d4 100644
+--- a/spec/receipt-page.mjs
++++ b/spec/receipt-page.mjs
+@@ -4,7 +4,10 @@
+ // Content-Security-Policy to RECEIPT_PAGE_CSP on the response (the meta tag repeats it).
+ // Serve verify-browser.mjs and verify-core.mjs at /spec/.
+ // The pasted CLI URL comes from receiptCliUrl (checked id + allowlisted host, mcp, day, s), not from request.url.
+-// GET /v1/verify is not mounted. verifyResultJson is the same verifyReceipt result for that later free route.
++// GET /v1/verify checks the stored record on the live host. This file does not mount that route.
++// verifyResultJson mirrors verifyReceipt. A redacted copy (withheld_fields or withheld_note)
++// is status "redacted copy": not offline-verifiable, and not "signature invalid".
++import { redactedCopy, storedRecordVerifyUrl } from "./verify-core.mjs";
+ 
+ export const RECEIPT_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' https://botsrated.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+ 
+@@ -110,20 +113,27 @@ export function receiptShellCommands(id, query, receiptHost) {
+   return { cli, oneLiner };
+ }
+ 
+-// Missing WebCrypto is not a pass. Only the three check results are shown, and only when crypto ran.
++// Missing WebCrypto is not a pass. A redacted copy is reported even when crypto did not run.
+ export function signatureStatus(result, cryptoOk) {
++  if (result && result.status === "redacted copy") return "redacted copy";
+   if (!cryptoOk || !result) return "signature invalid";
+   if (result.status === "signature valid" || result.status === "signature invalid" || result.status === "key unknown") return result.status;
+   return "signature invalid";
+ }
+ 
+ export function verifyResultJson(result) {
+-  return {
++  const body = {
+     valid: !!result.valid,
+     id: result.id ?? null,
+     key_id: result.key_id ?? null,
+     errors: Array.isArray(result.errors) ? result.errors : [],
+   };
++  if (result && result.status === "redacted copy") {
++    body.valid = false;
++    body.status = "redacted copy";
++    body.offline_verifiable = false;
++  }
++  return body;
+ }
+ 
+ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec/verify-browser.mjs" } = {}) {
+@@ -136,7 +146,18 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
+   const hostPath = host ? "/s/" + encodeURIComponent(host) : "/sellers";
+   const preflight = host ? "/v1/preflight?url=" + encodeURIComponent(host) : "/v1/preflight";
+   // pageUrl is not pasted. Only an allowlisted id and host/mcp/day/s are.
+-  const { cli, oneLiner } = receiptShellCommands(id, query != null ? query : pageUrl, host);
++  const redacted = redactedCopy(raw);
++  const q = readQuery(query != null ? query : pageUrl);
++  const shell = receiptShellCommands(id, query != null ? query : pageUrl, host);
++  const verifyUrl = storedRecordVerifyUrl({ id, host: pickHost(host, q.host), ts, day: q.day });
++  const statusText = redacted ? "redacted copy" : "checking signature…";
++  const cli = redacted ? "This copy withholds signed fields. It is not offline-verifiable." : shell.cli;
++  const oneLiner = redacted ? "Stored record: GET " + verifyUrl : shell.oneLiner;
++  const heading = redacted ? "Stored record" : "CLI";
++  const note = redacted
++    ? "This copy withholds signed fields. It is not offline-verifiable. The signature covers the stored record. Check that record with GET /v1/verify. spec/verify.mjs does not return VALID for this copy. A match on the stored record covers that record only. It is not a rating of the seller."
++    : "Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…";
++  const button = redacted ? "" : `<p><button type="button" id="verify-btn">Verify signature</button></p>\n  `;
+   const embedded = JSON.stringify(raw).replace(/</g, "\\u003c");
+   return `<!doctype html>
+ <html lang="en">
+@@ -165,7 +186,7 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
+ <body>
+ <main>
+   <p class="eyebrow">BotsRated receipt</p>
+-  <h1 id="status">checking signature…</h1>
++  <h1 id="status">${esc(statusText)}</h1>
+   <dl>
+     <dt>id</dt><dd class="mono" id="f-id">${esc(id)}</dd>
+     <dt>kind</dt><dd id="f-kind">${esc(kind)}</dd>
+@@ -173,13 +194,12 @@ export function renderReceiptPage(raw, { pageUrl = "", query, scriptSrc = "/spec
+     <dt>host</dt><dd id="f-host">${host ? `<a href="${esc(hostPath)}">${esc(host)}</a>` : ""}</dd>
+     <dt>key_id</dt><dd class="mono" id="f-key">${esc(keyId)}</dd>
+   </dl>
+-  <p><button type="button" id="verify-btn">Verify signature</button></p>
+-  <p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
++  ${button}<p class="links"><a href="${esc(preflight)}">Free preflight</a> · <a href="${esc(hostPath)}">Host page</a></p>
+   <p class="desk"><a href="/desk">Map many hosts free in Desk →</a></p>
+-  <h2>CLI</h2>
++  <h2>${esc(heading)}</h2>
+   <pre id="cli">${esc(cli)}</pre>
+   <pre id="cli-oneliner">${esc(oneLiner)}</pre>
+-  <p class="note">Checks /.well-known/botsrated-key with the same rules as spec/verify.mjs. A match covers this record only — not a seller rating. If this browser can’t run the check, status stays checking signature…</p>
++  <p class="note">${esc(note)}</p>
+ </main>
+ <script type="application/json" id="receipt-data">${embedded}</script>
+ <script type="module" src="${esc(scriptSrc)}"></script>
+diff --git a/spec/verify-browser.mjs b/spec/verify-browser.mjs
+index 6fd2eb3..cc05475 100644
+--- a/spec/verify-browser.mjs
++++ b/spec/verify-browser.mjs
+@@ -1,6 +1,7 @@
+ // Browser entry for the receipt page. Same verifyReceipt as the CLI.
+-// No WebCrypto Ed25519 means signature invalid. The page does not claim a pass.
+-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
++// A redacted copy is reported before crypto runs. No WebCrypto Ed25519 means signature invalid.
++// The page does not claim a pass.
++import { redactedCopy, verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+ import { signatureStatus } from "./receipt-page.mjs";
+ 
+ export async function ed25519WebCryptoAvailable() {
+@@ -24,11 +25,21 @@ function keyOrigin() {
+ 
+ export async function runReceiptPage() {
+   const el = document.getElementById("status");
++  let raw = null;
++  try { raw = JSON.parse(document.getElementById("receipt-data").textContent); }
++  catch { raw = null; }
++  if (raw && redactedCopy(raw)) {
++    el.textContent = signatureStatus({ status: "redacted copy" }, false);
++    return;
++  }
+   if (!(await ed25519WebCryptoAvailable())) {
+     el.textContent = signatureStatus(null, false);
+     return;
+   }
+-  const raw = JSON.parse(document.getElementById("receipt-data").textContent);
++  if (!raw) {
++    el.textContent = signatureStatus(null, false);
++    return;
++  }
+   const origin = keyOrigin();
+   let keyset;
+   try {
+diff --git a/spec/verify-core.mjs b/spec/verify-core.mjs
+index 8d780f7..74f7925 100644
+--- a/spec/verify-core.mjs
++++ b/spec/verify-core.mjs
+@@ -26,6 +26,49 @@ export function stripPresentation(receipt) {
+   return r;
+ }
+ 
++const ID_RE = /^[0-9a-f]{20}$/;
++const HOST_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
++const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
++const FIELD_RE = /^[A-Za-z0-9_.*]{1,80}$/;
++
++function withheldMark(obj) {
++  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
++  const listed = Array.isArray(obj.withheld_fields) ? obj.withheld_fields.filter((name) => typeof name === "string" && name.trim()) : [];
++  const fields = listed.filter((name) => FIELD_RE.test(name));
++  const note = typeof obj.withheld_note === "string" && obj.withheld_note.trim() ? obj.withheld_note.trim() : "";
++  if (!listed.length && !note) return null;
++  return { fields };
++}
++
++// withheld_fields / withheld_note mark a served copy that omits signed fields.
++// They are not presentation fields. Do not report that copy as signature invalid.
++export function redactedCopy(raw) {
++  if (!raw || typeof raw !== "object") return null;
++  const inner = unwrapReceipt(raw);
++  const mark = withheldMark(inner) || (inner !== raw ? withheldMark(raw) : null);
++  if (!mark) return null;
++  const r = inner && typeof inner === "object" && !Array.isArray(inner) ? inner : {};
++  return {
++    fields: mark.fields,
++    id: typeof r.id === "string" ? r.id : null,
++    host: typeof r.host === "string" ? r.host : null,
++    ts: typeof r.ts === "string" ? r.ts : null,
++    kind: typeof r.kind === "string" ? r.kind : null,
++    key_id: r.sig && typeof r.sig.key_id === "string" ? r.sig.key_id : null,
++  };
++}
++
++export function storedRecordVerifyUrl(info) {
++  const src = info && typeof info === "object" ? info : {};
++  const q = [];
++  if (typeof src.id === "string" && ID_RE.test(src.id)) q.push("id=" + src.id);
++  if (typeof src.host === "string" && HOST_RE.test(src.host)) q.push("host=" + src.host);
++  const fromTs = typeof src.ts === "string" ? src.ts.slice(0, 10) : "";
++  const day = typeof src.day === "string" && DAY_RE.test(src.day) ? src.day : (DAY_RE.test(fromTs) ? fromTs : "");
++  if (day) q.push("day=" + day);
++  return "https://botsrated.com/v1/verify" + (q.length ? "?" + q.join("&") : "");
++}
++
+ function bytesOf(message, enc) {
+   if (typeof message === "string") return enc.encode(message);
+   return message;
+@@ -70,6 +113,17 @@ export async function verifyReceipt(raw, keyset, deps) {
+     }
+   };
+   const sha256 = (b) => deps.sha256(b);
++  const redacted = redactedCopy(raw);
++  if (redacted) {
++    const url = storedRecordVerifyUrl(redacted);
++    const listed = redacted.fields.length ? " (" + redacted.fields.join(", ") + ")" : "";
++    lines.push("INFO  redacted copy" + listed + ": withheld fields are not in this JSON. This copy is not offline-verifiable.");
++    lines.push("INFO  The signature covers the stored record. Check that record with GET " + url);
++    return {
++      ok: false, valid: false, offline_verifiable: false, status: "redacted copy", lines, errors: ["redacted_copy"],
++      id: redacted.id, key_id: redacted.key_id, kind: redacted.kind, ts: redacted.ts, host: redacted.host,
++    };
++  }
+   const r = stripPresentation(unwrapReceipt(raw));
+   const { id, sig, ...body } = r;
+   const rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
