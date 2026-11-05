@@ -1,6 +1,8 @@
-# Prefer READY — outside Guard callers, week chip + home tease
+# Prefer READY rematch — outside Guard callers, chip + home tease
 
-Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no merge from this pack. Site Cleaner does not tip.
+Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no merge. Site Cleaner does not tip. Do not partial-apply.
+
+Held: previous Prefer READY body `d981f57ff35fb3039028bf4e20868d37`, patch `19c7a987d8c1eef13ff84c9548a1bef1`, head `4c97d3a33260fbcd2b750d4969fc6c0c84564f40`. Security MATCH NO OWN `209e54926274237cc2233601bb2511f9` (report `a7848978`). This file replaces that pack.
 
 ## Pins
 
@@ -9,106 +11,92 @@ Digests → LA. Absolute No-Grade. Soft CTA walls HOLD. No tip, no deploy, no me
 | Design LOCK body | `df2d95a37140e83b5920fb983999daf9` |
 | Design LOCK file | `c16bb49401b77425702d65a6f0bb701b` |
 | Legal OVERRIDE digest | `7911ec33` (tease ships under Anton OVERRIDE, not a Legal CLEAR) |
-| DC qa_clean | full pack `b3bd4914` / leaf `42993bb4` |
+| DC live | full `f84345f2` / leaf `b1782fb0` |
 | Published N | `2` |
 | ISO week | `2026-W45` |
 | as_of | `2026-11-05T00:14:00Z` |
-| Soft CTA tip | `349386f7` |
-| Soft CTA want | `2a22280c` |
-| Soft CTA fp | `ebf26695` |
+| Soft CTA tip | `5fe37df8` |
+| Soft CTA want | `96a0df8b` |
+| Soft CTA fp | `ebf26695dfaccfcea740027fc1d2b7b0` |
 | Git base | `1f4791b59f552bd9ab2d9d4a067518971af9ba61` |
 | Patch | `worker/patches/outside-callers-week-chip.patch` |
-| Patch md5 | `19c7a987d8c1eef13ff84c9548a1bef1` |
+| Patch md5 | `c9a22ca108a965b66cae6b5a316fb61f` |
 
-Prefer READY is against Design LOCK body `df2d95a37140e83b5920fb983999daf9` only. The home tease ships under Anton OVERRIDE. Legal OVERRIDE digest `7911ec33` records that ship. The tease is not a Legal CLEAR. The week fact chip stays the CLEAR-with-notes fact. The day window stays parked.
+N is outside Guard callers only: `callers_week`, `channel='guard'`, internal excluded. The published figure is not a buyer×seller count and not a per-host count. Our own tests stay out of N. The day window stays parked.
 
-N is outside Guard callers only: `callers_week`, `channel='guard'`, internal excluded. The published figure is not a buyer×seller count and not a per-host count. Our own tests stay out of N.
+## What ships (one patch, all hunks)
 
-## What ships
+Apply on a copy of the private receipts-mvp tree at tip `5fe37df8`. Paths: `worker/src/site.ts`, `worker/src/tools.ts`, `worker/src/desk.ts`, `worker/test/d1_failsoft_unit.ts`.
 
-Pack 1 only. Apply on the private receipts-mvp tree at tip `349386f7`. Paths: `worker/src/site.ts`, `worker/test/d1_failsoft_unit.ts`.
+Owner-set `OUTSIDE_GUARD_CALLERS_WEEK` in `site.ts`: metric `outside_guard_callers_week`, week `2026-W45`, `n: 2`, `qa_clean: true`, `as_of: 2026-11-05T00:14:00Z`.
 
-Owner-set published figure in `OUTSIDE_GUARD_CALLERS_WEEK`:
+Gate, exact, on the shipped helper `outsideGuardCallersWeekN`: `qa_clean === true && Number.isInteger(n) && n > 0`. A failed gate returns an empty string, so the element is omitted. The unit test calls that helper. It does not keep a local copy of the gate.
 
-- metric `outside_guard_callers_week`
-- week `2026-W45`
-- `n: 2`
-- `qa_clean: true`
-- `as_of: 2026-11-05T00:14:00Z`
+### `site.ts`
 
-This is the distinct outside-caller count for the ISO week (`callers_week`, `channel='guard'`, internal excluded). It is a different figure from week-over-week retained attaches. The renderer does not query D1, does not fill N from anywhere else, and does not invent a seller or host count. The home tease links to `/desk` and carries no seller number.
+Helpers, chip CSS, tease CSS, and the home tease only. The tease stays in `homePulseStrip` after `.bw-market-chip` and before `.bw-whats-new`. Home does not emit the chip. The synthetic payment-guard and Desk HTML lines from the held patch are gone.
 
-Gate, exact: `qa_clean === true && Number.isInteger(n) && n > 0`. When the gate fails, both helpers return an empty string, so the chip element and the tease element are omitted. CSS `display:none` for `data-n="0"` and a missing `data-n` is the backstop.
+### `tools.ts`
 
-### `/tools/payment-guard`
+Imports `outsideCallersChipHtml` from `./site.ts`. Inside `hero1`, the chip is emitted only when `lead` is the payment-guard sentence, and it sits after `</p>` and before `<div class="t1-cta">`. Other tool heroes keep an empty string there.
 
-One chip after the hero `.t1-lead`, before `.t1-cta`. It sits outside `#sticky-free`, outside attach CTAs, and outside `t1-chips`.
+### `desk.ts`
 
-### `/desk`
+Imports the same helper. Two inserts only:
 
-The same chip immediately above `<p class="desk-again" id="desk-guard">`. The Attach Guard free anchor is unchanged.
+- `${outsideCallersChipHtml()}` immediately before `${deskGuardHtml(source)}` (map result).
+- `${outsideCallersChipHtml()}` immediately before `${deskGuardHtml(null)}` (empty `/desk` form).
 
-### Home `/`
+`deskFreeHtml` is not edited. The Attach Guard free anchor stays the body of `deskGuardHtml`.
 
-One tease inside `homePulseStrip`, after `.bw-market-chip` and before `.bw-whats-new`. The home strip does not emit `bw-checked-chip`. The visible sentence has no numeral. `data-n` is the LOCK attribute on the element.
+Exact chip: `Guard checks this week: N outside callers · How we count` with the LOCK title. Exact tease: `See which sellers are being checked out the most → here` linking to `/desk`. CSS is the LOCK chip rules plus the LOCK tease rules, in `SITE_CSS`, which the live payment-guard and Desk documents already include.
 
-Exact chip:
-
-```html
-<p class="bw-checked-chip" data-n="N" title="Distinct outside networks that ran a free Guard check this ISO week (UTC). Our own tests excluded. A count, not a rating.">Guard checks this week: <b>N</b> outside callers · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a></p>
-```
-
-Exact tease:
-
-```html
-<p class="bw-checked-tease" data-n="N"><a href="/desk">See which sellers are being checked out the most → here</a></p>
-```
-
-`N` in those templates is the published integer when the gate passes. CSS is the LOCK chip rules plus the LOCK tease rules, inserted after the live mobile market-chip rule and before `.bw-stats b`.
-
-Out of this pack: `/s/:host`, seller badges, embeds, receipts, leaderboard, sort-by-N, and the day clause.
+Out of this pack: `/s/:host`, badges, embeds, receipts, leaderboard, sort-by-N, and the day clause.
 
 ## How to apply (does not deploy)
 
-On the private receipts-mvp tree, from that tree's root:
+On a copy of the private tree, from that tree's root:
 
 ```
 patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/outside-callers-week-chip.patch
 ```
 
-A clean apply leaves no `.orig` or `.rej`. This does not retarget Pages.
+All hunks, or none. A rejected hunk means do not keep a partial tree. This does not retarget Pages.
 
-## Smoke (published N = 2)
+## Smoke
 
-Checked by applying the patch with `--fuzz=0` on a synthetic tree whose anchors match tip `349386f7` (payment-guard hero line, Desk line through `</main>`, `homePulseStrip` return, and the live CSS neighbors). A second apply is rejected. The HTML builders were executed for the gate. This pack does not tip, so live botsrated.com is unchanged.
+Security's NO already showed the `site.ts` CSS, helper, and home-tease hunks apply on the real tip tree (`--fuzz=0`, hunks at 583, 856, and 898). Those three hunks are unchanged in role. The synthetic `t1-hero` and expanded Desk HTML hunks are removed.
 
-| Surface | N>0 (published 2) | Gate fail |
+This VM does not have `/tmp/guard-cwh-349386f7/receipts-mvp` or tip `5fe37df8` checked out. The tools and Desk hunks were applied here only against the anchor lines named below, and a second apply was rejected. Security re-MATCH on a copy of tip `5fe37df8` is the real apply.
+
+| Anchor | Old line this patch expects |
+|---|---|
+| `hero1` lead/cta junction | the whole line `<p class="t1-lead">${lead}</p><div class="t1-cta">` |
+| map result | the whole line `${deskGuardHtml(source)}` |
+| empty `/desk` form | the live form line through `</main>`, with the rendered guard paragraph replaced by `${deskGuardHtml(null)}` |
+
+The empty-form line still contains the href fragment `#da-free-card`. The chip expression is added beside the call. Constant definition lines for `STICKY_FREE`, `DESK_FREE`, `DESK_MAP_FREE`, `DESK_MAP_PRO`, `POLLERS_NUDGE`, `da-pollers-nudge`, and `poller_nudge` are not in the diff. If the fp hash includes every line that contains `da-free-card`, that one template line changes the fp. Re-measure `ebf26695dfaccfcea740027fc1d2b7b0` on the real tree.
+
+| Surface | Published N=2 | Gate fail |
 |---|---|---|
-| `/tools/payment-guard` | `bw-checked-chip` ×1, week copy only | element omitted |
-| `/desk` | `bw-checked-chip` ×1, above `#desk-guard` | element omitted |
-| `/` | `bw-checked-tease` ×1, exact Anton sentence; `bw-checked-chip` ×0 | tease omitted |
-| `/s/*` | chip ×0, tease ×0 (no call site) | ×0 |
+| `/tools/payment-guard` | `bw-checked-chip` ×1 after the lead, before `.t1-cta` | omitted |
+| `/desk` empty form and map result | `bw-checked-chip` ×1 immediately before `deskGuardHtml` | omitted |
+| `/` | tease ×1, chip ×0 | tease omitted |
+| `/s/*` | chip ×0, tease ×0 | ×0 |
 | Day clause | ×0 | ×0 |
-| Soft CTA | pins unchanged | pins unchanged |
-
-Call sites in `site.ts`: `${outsideCallersChipHtml()}` ×2 (payment-guard hero, Desk), `${outsideCallersTeaseHtml()}` ×1 (`homePulseStrip` only).
-
-Gate checks: N=2 with `qa_clean` renders both strings; N=0, null, a non-integer, and `qa_clean: false` each return an empty string.
-
-Chip title keeps the LOCK negation "A count, not a rating." The word "most" appears only in the LOCK tease sentence (function, home return test, cadence test).
 
 ## Soft CTA wall check
 
-HOLD. fp `ebf26695`. Tip `349386f7`, want `2a22280c`.
+HOLD. Tip `5fe37df8`, want `96a0df8b`, fp target `ebf26695dfaccfcea740027fc1d2b7b0`.
 
-Diff greps: `free_quota` 0, `?soft=` 0, `quota` 0, `429` 0, day clause 0. `Attach Guard free` is 3 on removed lines and 3 on added lines (the payment-guard hero line and the Desk line already contain that anchor; the chip is inserted beside it). `Open Desk` 0. `Get change alerts` 0. Sticky alerts-50 is untouched. `desk.ts` is not in the diff.
+Diff greps: `free_quota` 0, `?soft=` 0, `quota` 0, `429` 0, day clause 0. `Open Desk` 0. `Get change alerts` 0. Sticky alerts-50 is untouched.
 
 ## For Security
 
-This file is Prefer READY. It does not record a MATCH. Security MATCH is the next read of this body against LOCK `df2d95a37140e83b5920fb983999daf9`.
+This file is the rematch Prefer READY. It does not record a MATCH. Re-MATCH against LOCK `df2d95a37140e83b5920fb983999daf9` on a copy of tip `5fe37df8`. Do not partial-apply.
 
 ---
 
 ## md5
 
-`d981f57ff35fb3039028bf4e20868d37`
+`52ea2d7236830f3d21e75d817c996d56`
