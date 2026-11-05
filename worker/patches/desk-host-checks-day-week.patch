@@ -1,0 +1,332 @@
+# Soft OPEN Prefer READY Desk per-host day + week outside Guard checks. Do not partial-apply. No tip. No merge. No deploy.
+# Tip anchor b7005222 want 2f698f049fd88b8d32787d124a18a14c. Soft CTA walls HOLD. fp ebf26695dfaccfcea740027fc1d2b7b0.
+# Soft CTA Prefer KEEP tip HOLD APPLY. Absolute No-Grade. Digests to LA.
+# Design LOCK body b26d31c60d92c4f5029fce61f5eb557f whole 004adcb8b9798f24d4ff6e0755f10f30.
+# Legal CLEAR-with-notes d97469ab32a9e82b16f0dce932b906f2. Supersedes Prefer HOLD ccd4b826 / body 9de2fc10.
+# outside_count.ts 2523b0ea UNTOUCHED. pricing.ts UNTOUCHED. Pack1 outsideCallersChipHtml UNTOUCHED.
+# Day read is outsideGuardHostChecksDaySql(day) only. Week read is outsideGuardHostChecksSql(week) only.
+# desk.ts stays the only outside_count importer. N6: D1 read errors catch → return []. qa_clean stays false.
+# Apply on the tip tree: patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/desk-host-checks-day-week.patch
+diff -ruN a/worker/src/desk_host_checks.ts b/worker/src/desk_host_checks.ts
+--- a/worker/src/desk_host_checks.ts	2026-11-05 14:31:32.560059468 +0000
++++ b/worker/src/desk_host_checks.ts	2026-11-05 14:27:29.591490021 +0000
+@@ -1,4 +1,4 @@
+-// Desk per-host outside Guard checks. Design LOCK body ba26a862.
+-// Read path only. D1 Tip-B writes stay live-on-check; this module does not write and does not cache writes.
+-// Edge memo for the Desk SUM read refreshes every 15 minutes (TTL <= 15m). Not a page cache.
+-// Host rows come from outsideGuardHostChecksSql / outsideGuardHostChecks in outside_count.ts.
++// Desk per-host outside Guard checks. Design LOCK body b26d31c6 (day + ISO week).
++// Read path only. D1 writes stay live-on-check; this module does not write and does not cache writes.
++// Edge memo for the Desk SUM read refreshes every 15 minutes (TTL <= 15m) and keys on (day, week).
++// Host rows come from outsideGuardHostChecksDaySql / outsideGuardHostChecksSql in outside_count.ts.
+@@ -20 +20 @@
+-  "Outside Guard checks for this host this ISO week (UTC). Our own tests excluded. A count, not a rating.";
++  "Outside Guard checks for this host today and this ISO week (UTC). Our own tests excluded. A count, not a rating.";
+@@ -23,0 +24 @@
++  checks_day?: number | null;
+@@ -31,0 +33,5 @@
++export interface HostChecksWindows {
++  day: readonly HostChecksRow[];
++  week: readonly HostChecksRow[];
++}
++
+@@ -40 +46 @@
+-export type ReadHostChecks = (week: string) => Promise<readonly HostChecksRow[]>;
++export type ReadHostChecks = (day: string, week: string) => Promise<HostChecksWindows>;
+@@ -42 +48 @@
+-type Memo = { at: number; week: string; rows: readonly HostChecksRow[] };
++type Memo = { at: number; day: string; week: string; rows: HostChecksWindows };
+@@ -49,0 +56,5 @@
++/** UTC calendar day `YYYY-MM-DD`. callers_day_host day key. */
++export function utcDay(now: Date = new Date()): string {
++  return now.toISOString().slice(0, 10);
++}
++
+@@ -63 +74 @@
+-export function stampDeskHostChecks(nodes: DeskHostNode[] | null | undefined, rows: readonly HostChecksRow[], qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN): void {
++function indexHostChecks(rows: readonly HostChecksRow[] | null | undefined): Map<string, number> {
+@@ -69,0 +81,16 @@
++  return by;
++}
++
++function gatedCount(n: unknown, qaClean: boolean): number | null {
++  if (qaClean !== true || typeof n !== "number" || !Number.isInteger(n) || n <= 0) return null;
++  return n;
++}
++
++export function stampDeskHostChecks(
++  nodes: DeskHostNode[] | null | undefined,
++  dayRows: readonly HostChecksRow[] | null | undefined,
++  weekRows: readonly HostChecksRow[] | null | undefined,
++  qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN,
++): void {
++  const dayBy = indexHostChecks(dayRows);
++  const weekBy = indexHostChecks(weekRows);
+@@ -71,2 +98,3 @@
+-    const n = by.get(String(node.host || "").toLowerCase());
+-    node.checks_week = qaClean === true && typeof n === "number" && Number.isInteger(n) && n > 0 ? n : null;
++    const host = String(node.host || "").toLowerCase();
++    node.checks_day = gatedCount(dayBy.get(host), qaClean);
++    node.checks_week = gatedCount(weekBy.get(host), qaClean);
+@@ -76,0 +105 @@
++  const day = utcDay(now);
+@@ -78,2 +107,2 @@
+-  let rows: readonly HostChecksRow[];
+-  if (memo && memo.week === week && clock >= memo.at && clock - memo.at < DESK_HOST_CHECKS_TTL_MS) {
++  let rows: HostChecksWindows;
++  if (memo && memo.day === day && memo.week === week && clock >= memo.at && clock - memo.at < DESK_HOST_CHECKS_TTL_MS) {
+@@ -82,2 +111,2 @@
+-    rows = await read(week);
+-    memo = { at: clock, week, rows };
++    rows = await read(day, week);
++    memo = { at: clock, day, week, rows };
+@@ -85 +114 @@
+-  stampDeskHostChecks(nodes, rows);
++  stampDeskHostChecks(nodes, rows.day, rows.week);
+@@ -88,3 +117,14 @@
+-export function deskHostChecksHtml(n: unknown, qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN): string {
+-  if (qaClean !== true || typeof n !== "number" || !Number.isInteger(n) || n <= 0) return "";
+-  return `<span class="desk-host-checks" data-n="${n}" title="${DESK_HOST_CHECKS_TITLE}">Checked <b>${n}</b> times this week</span>`;
++export function deskHostChecksHtml(day: unknown, week: unknown, qaClean: boolean = DESK_HOST_CHECKS_QA_CLEAN): string {
++  const nDay = gatedCount(day, qaClean);
++  const nWeek = gatedCount(week, qaClean);
++  const title = DESK_HOST_CHECKS_TITLE;
++  if (nDay != null && nWeek != null) {
++    return `<span class="desk-host-checks" data-n-day="${nDay}" data-n-week="${nWeek}" title="${title}">Checked <b>${nDay}</b> times today · <b>${nWeek}</b> times this week</span>`;
++  }
++  if (nDay != null) {
++    return `<span class="desk-host-checks" data-n-day="${nDay}" title="${title}">Checked <b>${nDay}</b> times today</span>`;
++  }
++  if (nWeek != null) {
++    return `<span class="desk-host-checks" data-n-week="${nWeek}" title="${title}">Checked <b>${nWeek}</b> times this week</span>`;
++  }
++  return "";
+@@ -94 +134 @@
+-  const show = (nodes || []).some((node) => deskHostChecksHtml(node.checks_week, qaClean) !== "");
++  const show = (nodes || []).some((node) => deskHostChecksHtml(node.checks_day, node.checks_week, qaClean) !== "");
+@@ -96 +136 @@
+-  return `<p class="desk-host-checks-note">Outside Guard checks this week · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a> · A count, not a rating</p>`;
++  return `<p class="desk-host-checks-note">Outside Guard checks · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a> · A count, not a rating</p>`;
+diff -ruN a/worker/src/desk.ts b/worker/src/desk.ts
+--- a/worker/src/desk.ts	2026-11-05 14:31:32.560059468 +0000
++++ b/worker/src/desk.ts	2026-11-05 14:31:32.560059468 +0000
+@@ -4 +4 @@
+-import { outsideGuardHostChecks, outsideGuardHostChecksSql } from "./outside_count";
++import { outsideGuardHostChecks, outsideGuardHostChecksDay, outsideGuardHostChecksDaySql, outsideGuardHostChecksSql } from "./outside_count";
+@@ -9 +9 @@
+-// Desk map read. Edge memo refreshes every 15 minutes. D1 Tip-B writes are not cached here.
++// Desk map read. Edge memo refreshes every 15 minutes and keys on UTC day + ISO week. D1 writes are not cached here.
+@@ -12,12 +12,16 @@
+-  await attachDeskHostChecks(nodes, async (week) => {
+-    // Tip outside_count 02f39860: Sql → {sql,binds}; HostChecks → Map(rows,week). SQL path already smoke-excludes.
+-    // N6: D1 miss/timeout → omit fact (fail-closed for N, fail-soft for Desk map preview).
+-    try {
+-      const { sql, binds } = outsideGuardHostChecksSql(week);
+-      const out = await db.prepare(sql).bind(...binds).all();
+-      const rows: { host: string; checks: number }[] = [];
+-      for (const r of (out.results || []) as Array<{ host?: string; checks?: number }>) {
+-        const host = String(r?.host || "");
+-        const checks = Number(r?.checks);
+-        if (!host || !Number.isInteger(checks) || checks <= 0) continue;
+-        rows.push({ host, checks });
++  await attachDeskHostChecks(nodes, async (day, week) => {
++    // outside_count Sql → {sql,binds}. Day helper + week helper. Smoke exclusion stays in outside_count.
++    // N6: D1 miss/timeout → return [] for that window (omit it; fail-soft Desk map preview).
++    const readOne = async (sql: string, binds: unknown[]) => {
++      try {
++        const out = await db.prepare(sql).bind(...binds).all();
++        const rows: { host: string; checks: number }[] = [];
++        for (const r of (out.results || []) as Array<{ host?: string; checks?: number }>) {
++          const host = String(r?.host || "");
++          const checks = Number(r?.checks);
++          if (!host || !Number.isInteger(checks) || checks <= 0) continue;
++          rows.push({ host, checks });
++        }
++        return rows;
++      } catch {
++        return [];
+@@ -25,6 +29,9 @@
+-      // Fixture / raw-Cwh form kept for tip API parity: outsideGuardHostChecks(rawCwhRows, week) → Map.
+-      void outsideGuardHostChecks;
+-      return rows;
+-    } catch {
+-      return [];
+-    }
++    };
++    const { sql, binds } = outsideGuardHostChecksSql(week);
++    const { sql: daySql, binds: dayBinds } = outsideGuardHostChecksDaySql(day);
++    const dayRows = await readOne(daySql, dayBinds);
++    const weekRows = await readOne(sql, binds);
++    // Fixture / raw form kept for tip API parity: outsideGuardHostChecks(rawCwhRows, week) and outsideGuardHostChecksDay(rawRows, day) → Map.
++    void outsideGuardHostChecks;
++    void outsideGuardHostChecksDay;
++    return { day: dayRows, week: weekRows };
+@@ -51 +58 @@
+-<div class="desk-tbl"><table id="desk-table"><thead><tr><th scope="col" data-key="host"><button class="th-sort" type="button">Host</button></th><th scope="col" data-key="agents" data-type="num" aria-sort="descending"><button class="th-sort" type="button">Agents using it</button></th><th scope="col" data-key="measured"><button class="th-sort" type="button">Last measured (UTC)</button></th><th scope="col" data-key="changed"><button class="th-sort" type="button">What changed</button></th><th scope="col">Receipt</th></tr></thead><tbody>${r.nodes.map((x: any) => `<tr><td class="first" data-v="${esc(x.host)}"><span class="host">${esc(x.host)}</span><span class="kind">${!x.covered ? "Not in our coverage" : x.kind === "mcp" ? "MCP server" : x.kind === "x402" ? "x402 seller" : ""}${x.wallet_match ? " · matches a payTo you pasted" : ""}</span>${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_week)}</td><td data-label="Agents using it" class="num" data-v="${x.paste_agents.length}" title="${esc(x.paste_agents.join(", "))}">${x.paste_agents.length} of ${r.summary.agents}</td><td data-label="Last measured (UTC)" data-v="${x.covered ? esc(x.last_measured || "") : ""}"${x.covered ? "" : ' class="quiet"'}>${!x.covered ? "Not measured yet" : (deskWhen(esc, x.last_measured) || "–") + (x.flags.includes("stale") ? ' <span class="quiet">(over 24 h ago)</span>' : "")}</td><td data-label="What changed" data-v="${esc(deskChanged(x))}"${deskChanged(x) ? "" : ' class="quiet"'}>${deskChanged(x) || "—"}</td>${deskReceiptCellHtml(x, esc)}</tr>`).join("")}</tbody></table></div>${deskHostChecksNoteHtml(r.nodes)}${deskSkippedHtml(r.skipped, esc)}
++<div class="desk-tbl"><table id="desk-table"><thead><tr><th scope="col" data-key="host"><button class="th-sort" type="button">Host</button></th><th scope="col" data-key="agents" data-type="num" aria-sort="descending"><button class="th-sort" type="button">Agents using it</button></th><th scope="col" data-key="measured"><button class="th-sort" type="button">Last measured (UTC)</button></th><th scope="col" data-key="changed"><button class="th-sort" type="button">What changed</button></th><th scope="col">Receipt</th></tr></thead><tbody>${r.nodes.map((x: any) => `<tr><td class="first" data-v="${esc(x.host)}"><span class="host">${esc(x.host)}</span><span class="kind">${!x.covered ? "Not in our coverage" : x.kind === "mcp" ? "MCP server" : x.kind === "x402" ? "x402 seller" : ""}${x.wallet_match ? " · matches a payTo you pasted" : ""}</span>${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_day, x.checks_week)}</td><td data-label="Agents using it" class="num" data-v="${x.paste_agents.length}" title="${esc(x.paste_agents.join(", "))}">${x.paste_agents.length} of ${r.summary.agents}</td><td data-label="Last measured (UTC)" data-v="${x.covered ? esc(x.last_measured || "") : ""}"${x.covered ? "" : ' class="quiet"'}>${!x.covered ? "Not measured yet" : (deskWhen(esc, x.last_measured) || "–") + (x.flags.includes("stale") ? ' <span class="quiet">(over 24 h ago)</span>' : "")}</td><td data-label="What changed" data-v="${esc(deskChanged(x))}"${deskChanged(x) ? "" : ' class="quiet"'}>${deskChanged(x) || "—"}</td>${deskReceiptCellHtml(x, esc)}</tr>`).join("")}</tbody></table></div>${deskHostChecksNoteHtml(r.nodes)}${deskSkippedHtml(r.skipped, esc)}
+diff -ruN a/worker/src/site.ts b/worker/src/site.ts
+--- a/worker/src/site.ts	2026-11-05 14:31:32.560059468 +0000
++++ b/worker/src/site.ts	2026-11-05 14:31:32.560059468 +0000
+@@ -16 +16 @@
+-.desk-host-checks[data-n="0"],.desk-host-checks:not([data-n]){display:none}
++.desk-host-checks:not([data-n-day]):not([data-n-week]){display:none}
+diff -ruN a/worker/test/desk_host_checks_unit.ts b/worker/test/desk_host_checks_unit.ts
+--- a/worker/test/desk_host_checks_unit.ts	2026-11-05 14:31:32.560059468 +0000
++++ b/worker/test/desk_host_checks_unit.ts	2026-11-05 14:30:07.424752992 +0000
+@@ -1 +1 @@
+-// Desk per-host outside Guard checks. No network. No D1 writes. No reader SQL in this file.
++// Desk per-host outside Guard checks, day + week. No network. No D1 writes. No reader SQL in this file.
+@@ -5,0 +6 @@
++  DESK_HOST_CHECKS_TITLE,
+@@ -12,0 +14 @@
++  utcDay,
+@@ -16,3 +18,5 @@
+-const TITLE = "Outside Guard checks for this host this ISO week (UTC). Our own tests excluded. A count, not a rating.";
+-const FACT = (n: number) => `<span class="desk-host-checks" data-n="${n}" title="${TITLE}">Checked <b>${n}</b> times this week</span>`;
+-const NOTE = `<p class="desk-host-checks-note">Outside Guard checks this week · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a> · A count, not a rating</p>`;
++const TITLE = "Outside Guard checks for this host today and this ISO week (UTC). Our own tests excluded. A count, not a rating.";
++const BOTH = (n: number, m: number) => `<span class="desk-host-checks" data-n-day="${n}" data-n-week="${m}" title="${TITLE}">Checked <b>${n}</b> times today · <b>${m}</b> times this week</span>`;
++const DAY = (n: number) => `<span class="desk-host-checks" data-n-day="${n}" title="${TITLE}">Checked <b>${n}</b> times today</span>`;
++const WEEK = (m: number) => `<span class="desk-host-checks" data-n-week="${m}" title="${TITLE}">Checked <b>${m}</b> times this week</span>`;
++const NOTE = `<p class="desk-host-checks-note">Outside Guard checks · <a href="/llms-install.md#how-we-count-outside-attaches">How we count</a> · A count, not a rating</p>`;
+@@ -22,0 +27 @@
++assert.equal(DESK_HOST_CHECKS_TITLE, TITLE);
+@@ -24,13 +29,32 @@
+-
+-assert.equal(deskHostChecksHtml(4, true), FACT(4));
+-assert.equal(deskHostChecksHtml(0, true), "");
+-assert.equal(deskHostChecksHtml(null, true), "");
+-assert.equal(deskHostChecksHtml(1.5, true), "");
+-assert.equal(deskHostChecksHtml(4, false), "");
+-assert.equal(deskHostChecksHtml(4), "");
+-assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_week: 4 }], true), NOTE);
+-assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_week: null }], true), "");
+-
+-const rows: HostChecksRow[] = [
+-  { host: "Seller.Example", checks: 5 },
+-  { host: "botsrated.com", checks: 4 },
++assert.equal(isoWeekUtc(new Date(Date.UTC(2026, 10, 6, 1, 0))), "2026-W45");
++assert.equal(utcDay(new Date(Date.UTC(2026, 10, 5, 4, 30))), "2026-11-05");
++assert.equal(utcDay(new Date(Date.UTC(2026, 10, 5, 23, 30))), "2026-11-05");
++assert.equal(utcDay(new Date(Date.UTC(2026, 10, 6, 0, 30))), "2026-11-06");
++
++assert.equal(deskHostChecksHtml(4, 9, true), BOTH(4, 9));
++assert.equal(deskHostChecksHtml(4, null, true), DAY(4));
++assert.equal(deskHostChecksHtml(4, 0, true), DAY(4));
++assert.equal(deskHostChecksHtml(null, 9, true), WEEK(9));
++assert.equal(deskHostChecksHtml(0, 9, true), WEEK(9));
++assert.equal(deskHostChecksHtml(undefined, 9, true), WEEK(9));
++assert.equal(deskHostChecksHtml(0, 0, true), "");
++assert.equal(deskHostChecksHtml(null, null, true), "");
++assert.equal(deskHostChecksHtml(1.5, 2, true), WEEK(2));
++assert.equal(deskHostChecksHtml(2, 1.5, true), DAY(2));
++assert.equal(deskHostChecksHtml(-1, -3, true), "");
++assert.equal(deskHostChecksHtml(4, 9, false), "");
++assert.equal(deskHostChecksHtml(4, 9), "");
++for (const html of [BOTH(4, 9), DAY(4), WEEK(9), ""]) {
++  assert.equal(html.includes("Checked <b>0</b>"), false);
++  assert.equal(html.includes("Checked 0"), false);
++}
++assert.equal(BOTH(4, 9).includes('data-n="'), false);
++assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_day: 4, checks_week: 9 }], true), NOTE);
++assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_day: 4, checks_week: null }], true), NOTE);
++assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_day: null, checks_week: 9 }], true), NOTE);
++assert.equal(deskHostChecksNoteHtml([{ host: "seller.example", checks_day: null, checks_week: null }], true), "");
++assert.equal(deskHostChecksNoteHtml([{ host: "a", checks_day: 1, checks_week: 2 }, { host: "b", checks_day: 3, checks_week: 4 }], true), NOTE);
++
++const dayRows: HostChecksRow[] = [
++  { host: "Seller.Example", checks: 3 },
++  { host: "botsrated.com", checks: 9 },
+@@ -39,0 +64 @@
++  { host: "frac.example", checks: 1.5 },
+@@ -41,3 +66,17 @@
+-const nodes = [{ host: "seller.example" }, { host: "botsrated.com" }, { host: "zero.example" }];
+-stampDeskHostChecks(nodes, rows, true);
+-assert.equal(nodes[0].checks_week, 5);
++const weekRows: HostChecksRow[] = [
++  { host: "seller.example", checks: 8 },
++  { host: "botsrated.com", checks: 4 },
++  { host: "www.botsrated.com", checks: 2 },
++  { host: "day-only.example", checks: 0 },
++];
++const nodes = [
++  { host: "seller.example" },
++  { host: "botsrated.com" },
++  { host: "zero.example" },
++  { host: "frac.example" },
++  { host: "week-only.example" },
++];
++stampDeskHostChecks(nodes, dayRows, [{ host: "week-only.example", checks: 6 }], true);
++assert.equal(nodes[0].checks_day, 3);
++assert.equal(nodes[0].checks_week, null);
++assert.equal(nodes[1].checks_day, null);
+@@ -44,0 +84,9 @@
++assert.equal(nodes[2].checks_day, null);
++assert.equal(nodes[4].checks_day, null);
++assert.equal(nodes[4].checks_week, 6);
++stampDeskHostChecks(nodes, dayRows, weekRows, true);
++assert.equal(nodes[0].checks_day, 3);
++assert.equal(nodes[0].checks_week, 8);
++assert.equal(nodes[1].checks_day, null);
++assert.equal(nodes[1].checks_week, null);
++assert.equal(nodes[2].checks_day, null);
+@@ -46 +94,3 @@
+-stampDeskHostChecks(nodes, rows, false);
++assert.equal(nodes[3].checks_day, null);
++stampDeskHostChecks(nodes, dayRows, weekRows, false);
++assert.equal(nodes[0].checks_day, null);
+@@ -50 +100 @@
+-const seenWeeks: string[] = [];
++const seen: { day: string; week: string }[] = [];
+@@ -52 +102 @@
+-const read = async (week: string) => {
++const read = async (day: string, week: string) => {
+@@ -54,2 +104,2 @@
+-  seenWeeks.push(week);
+-  return rows;
++  seen.push({ day, week });
++  return { day: dayRows, week: weekRows };
+@@ -57,0 +108,2 @@
++const nextDay = new Date(Date.UTC(2026, 10, 6, 1, 0));
++const nextWeek = new Date(Date.UTC(2026, 10, 12, 1, 0));
+@@ -59,0 +112 @@
++assert.equal(live[0].checks_day, null);
+@@ -64 +117,3 @@
+-await attachDeskHostChecks(live, read, now, 1_000 + DESK_HOST_CHECKS_TTL_MS);
++await attachDeskHostChecks(live, read, nextDay, 1_000 + DESK_HOST_CHECKS_TTL_MS - 1);
++assert.equal(reads, 2);
++await attachDeskHostChecks(live, read, nextDay, 1_000 + DESK_HOST_CHECKS_TTL_MS - 1);
+@@ -66 +121 @@
+-await attachDeskHostChecks(live, read, new Date(Date.UTC(2026, 10, 12)), 1_000 + DESK_HOST_CHECKS_TTL_MS);
++await attachDeskHostChecks(live, read, nextWeek, 1_000 + DESK_HOST_CHECKS_TTL_MS - 1);
+@@ -68 +123,8 @@
+-assert.deepEqual(seenWeeks, ["2026-W45", "2026-W45", "2026-W46"]);
++await attachDeskHostChecks(live, read, nextWeek, 1_000 + 2 * DESK_HOST_CHECKS_TTL_MS - 1);
++assert.equal(reads, 4);
++assert.deepEqual(seen, [
++  { day: "2026-11-05", week: "2026-W45" },
++  { day: "2026-11-06", week: "2026-W45" },
++  { day: "2026-11-12", week: "2026-W46" },
++  { day: "2026-11-12", week: "2026-W46" },
++]);
+@@ -75,0 +138,4 @@
++assert.equal(mod.includes('data-n="'), false);
++assert.equal(mod.includes("Outside Guard checks this week ·"), false);
++assert.equal(mod.includes("data-n-day"), true);
++assert.equal(mod.includes("data-n-week"), true);
+@@ -80 +146,2 @@
+-assert.equal(desk.includes("${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_week)}"), true);
++assert.equal(desk.includes("${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_day, x.checks_week)}"), true);
++assert.equal(desk.includes("${deskChipsHtml(x)}${deskHostChecksHtml(x.checks_week)}"), false);
+@@ -83,0 +151 @@
++assert.equal(desk.includes("outsideGuardHostChecksDaySql(day)"), true);
+@@ -84,0 +153 @@
++assert.equal(desk.includes("outsideGuardHostChecksDay("), true);
+@@ -88,0 +158,2 @@
++assert.equal(desk.includes("SELECT"), false);
++assert.equal(desk.includes("FROM callers"), false);
+@@ -98 +169 @@
+-  '.desk-host-checks[data-n="0"],.desk-host-checks:not([data-n]){display:none}',
++  ".desk-host-checks:not([data-n-day]):not([data-n-week]){display:none}",
+@@ -104,0 +176 @@
++assert.equal(site.includes('.desk-host-checks[data-n="0"],.desk-host-checks:not([data-n]){display:none}'), false);
