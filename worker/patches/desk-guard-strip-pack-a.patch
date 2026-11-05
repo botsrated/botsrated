@@ -1,0 +1,30 @@
+# Soft OPEN Prefer KEEP Pack A. Soft CTA tip tip c84cfbaa. want 0e164b9f3cdd46a99b63ab7263b53716.
+# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61. Soft CTA walls HOLD. No tip.
+# Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree at tip c84cfbaa (cadence already live). Pack B is not in this file.
+# Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
+# Design LOCK body md5 372c2635c2e3131da42f62439f95a8db.
+# One emitter: BW_STRIP_HTML in the shared chrome. Existing .bw-strip and .bw-strip b rules stay. Two link rules are inserted under them.
+# Apply from the private tree root:
+#   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/desk-guard-strip-pack-a.patch
+
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -81,6 +81,8 @@
+ /* bw-2026-10-31: last so it wins over hardcoded green / navy / mint chrome */
+ .bw-strip{border-bottom:1px solid var(--bw-line);font-size:12.5px;color:var(--bw-muted);text-align:center;padding:7px 16px;letter-spacing:.01em;background:var(--bw-bg)}
+ .bw-strip b{color:var(--bw-fg);font-weight:600}
++.bw-strip a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
++.bw-strip a:hover{border-bottom-color:var(--bw-muted)}
+ .top,.foot,.desk-bar,.hero{background:var(--bw-bg);color:var(--bw-fg)}
+ .top{border-bottom:1px solid var(--bw-line)}
+ .foot{border-top:1px solid var(--bw-line);color:var(--bw-muted)}
+@@ -999,1 +1001,1 @@
+-export const BW_STRIP_HTML = `<div class="bw-strip"><b>Coming soon</b> — Desk Guard</div>`;
++export const BW_STRIP_HTML = `<div class="bw-strip"><b>Desk Guard</b> live · <a href="/desk">try free</a></div>`;
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -9,1 +9,2 @@
+-t("B/W strip marker", nav.includes("bw-strip") && nav.includes("Desk Guard") && SITE_CSS.includes(".bw-strip") && SITE_CSS.includes("--bw-bg"));
++t("B/W strip marker", nav.includes("bw-strip") && nav.includes("Desk Guard") && SITE_CSS.includes(".bw-strip") && SITE_CSS.includes("--bw-bg"));
++t("Desk Guard strip is live", nav.includes('<div class="bw-strip"><b>Desk Guard</b> live · <a href="/desk">try free</a></div>') && !nav.includes("Coming soon") && SITE_CSS.includes(".bw-strip a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}") && SITE_CSS.includes(".bw-strip a:hover{border-bottom-color:var(--bw-muted)}"));
