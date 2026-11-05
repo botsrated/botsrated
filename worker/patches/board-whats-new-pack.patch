@@ -1,0 +1,55 @@
+# Soft CTA tip tip c844a702. want 30ab1739. Soft CTA walls HOLD. fp ebf26695.
+# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61. No tip.
+# Do not tip, deploy, re-arm writers, migrate D1, or publish from this patch.
+# Apply on the private receipts-mvp tree at tip c844a702 (Pack A strip and Pack B chip already live).
+# Paths: worker/src/site.ts and worker/test/d1_failsoft_unit.ts.
+# Design LOCK body md5 809a05b9db9ad98b6a7c4aa55478ca95.
+# §1+§2+§3 together. Home href=/market becomes 3 (chip + nav Board + card Board).
+# Nav hunk edits export const NAV on tip site.ts. Board is ["/market", "Board"] after Guard.
+# navHtml renders that array. The existing longest-prefix pass sets aria-current.
+# Pack A strip string and Pack B chip string stay byte-identical. desk.ts is not in this patch.
+# Apply from the private tree root:
+#   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/board-whats-new-pack.patch
+
+--- a/worker/src/site.ts
++++ b/worker/src/site.ts
+@@ -1,2 +1,12 @@
+ @media (max-width:767px){.bw-market-chip{padding:0 4px}}
++.bw-whats-new{margin:24px 0 0;padding:16px 24px;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-bg-2);color:var(--bw-muted);font-size:13px;line-height:1.45}
++.bw-whats-new-kicker{margin:0 0 6px;color:var(--bw-fg);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
++.bw-whats-new-one{margin:0;color:var(--bw-muted)}
++.bw-whats-new-one a,.bw-whats-new-else a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}
++.bw-whats-new-one a:hover,.bw-whats-new-else a:hover{border-bottom-color:var(--bw-fg)}
++.bw-whats-new-else{margin:10px 0 0;color:var(--bw-muted)}
++@media (max-width:767px){.bw-whats-new{padding:14px 16px;margin-top:20px}}
++.bw-market-chip{margin:10px 0 0}
++.hh-hero+.wrap+.hh-sec{padding-top:64px}
++@media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}
+ .bw-stats b,.hh-hero .strip b{color:var(--bw-fg);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+@@ -1 +1 @@
+-export const NAV: [string, string][] = [["/desk", "Desk"], ["/tools/payment-guard", "Guard"], ["/tools", "Tools"], ["/pricing", "Pricing"], ["/docs", "Docs"]];   // 2026-10-27 chrome-v1 (SYSTEM-V1 B8): Explore + How it works moved to footer
++export const NAV: [string, string][] = [["/desk", "Desk"], ["/tools/payment-guard", "Guard"], ["/market", "Board"], ["/tools", "Tools"], ["/pricing", "Pricing"], ["/docs", "Docs"]];   // 2026-10-27 chrome-v1 (SYSTEM-V1 B8): Explore + How it works moved to footer
+@@ -1,7 +1,12 @@
+   const days = Number(p?.home_checks_days || 0);
+   const daysLabel = days > 0 ? `${days} days` : "closed days";
+   const title = p?.definitions?.checks_run_home || p?.definitions?.checks_run_7d || "";
+-  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>`;
++  return `<div class="strip bw-stats" id="pulse"><span><b id="p-x">${fmt(p?.paid_services_watched)}</b><span class="vh">: </span>sellers watched</span><span><b id="p-m">${fmt(p?.mcp_servers_checked)}</b><span class="vh">: </span>MCP servers checked</span><span title="${esc(title)}"><b id="p-c">${fmt(homeN)}</b><span class="vh">: </span>checks in the last <span id="p-cd">${esc(daysLabel)}</span></span><span hidden><i id="p-l"></i><i id="p-d"></i></span></div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>
++<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">
++  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What's new</p>
++  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>
++  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>
++</aside>`;
+ }
+ 
+ // ---------- status labels (neutral, factual) ----------
+--- a/worker/test/d1_failsoft_unit.ts
++++ b/worker/test/d1_failsoft_unit.ts
+@@ -16,3 +16,5 @@
+-t("cadence sibling under pulse", liveStrip.includes('</div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence") && liveStrip.endsWith('<p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>'));
+-t("market facts chip under cadence", (liveStrip.split('href="/market"').length === 2) && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-market-chip") && (liveStrip.split("Fresh unpaid checks about every 2 minutes.").length === 2) && SITE_CSS.includes(".bw-market-chip{margin:8px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-market-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-market-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{padding:0 4px}}"));
++t("cadence sibling under pulse", liveStrip.includes('</div><p class="bw-stats-cadence">Fresh unpaid checks about every 2 minutes.</p><p class="bw-market-chip">') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-stats-cadence") && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>\n<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.endsWith('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>'));
++t("market facts chip under cadence", (liveStrip.split('href="/market"').length === 3) && liveStrip.includes('<p class="bw-market-chip"><a href="/market">Market facts</a> — see how others in the space work · dates and sources</p>') && !liveStrip.slice(0, liveStrip.indexOf("</div>")).includes("bw-market-chip") && (liveStrip.split("Fresh unpaid checks about every 2 minutes.").length === 2) && SITE_CSS.includes(".bw-market-chip{margin:8px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-market-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-market-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{padding:0 4px}}"));
++t("board nav order", navHtml("/").includes('<nav class="nav" aria-label="Main"><a href="/desk">Desk</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools/payment-guard">Guard</a><span class="nav-dot" aria-hidden="true">·</span><a href="/market">Board</a><span class="nav-dot" aria-hidden="true">·</span><a href="/tools">Tools</a><span class="nav-dot" aria-hidden="true">·</span><a href="/pricing">Pricing</a><span class="nav-dot" aria-hidden="true">·</span><a href="/docs">Docs</a></nav>') && (navHtml("/").match(/href="\/market"/g) || []).length + (liveStrip.match(/href="\/market"/g) || []).length === 3 && navHtml("/market").includes('href="/market" aria-current="page">Board</a>') && navHtml("/desk").includes('href="/desk" aria-current="page">Desk</a>') && !navHtml("/desk").includes('aria-current="page">Board') && navHtml("/tools/payment-guard").includes('href="/tools/payment-guard" aria-current="page">Guard</a>') && !navHtml("/tools/payment-guard").includes('aria-current="page">Tools') && navHtml("/tools/checks").includes('href="/tools" aria-current="page">Tools</a>') && navHtml("/").split('class="nav-dot"').length === 6);
++t("whats new card", liveStrip.includes('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.split('class="bw-whats-new"').length === 2 && liveStrip.includes("What's new") && liveStrip.includes('href="/courthouse">Courthouse</a>') && SITE_CSS.includes(".bw-whats-new{margin:24px 0 0;padding:16px 24px;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-bg-2);color:var(--bw-muted);font-size:13px;line-height:1.45}") && SITE_CSS.includes(".bw-whats-new-kicker{margin:0 0 6px;color:var(--bw-fg);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}") && SITE_CSS.includes(".bw-whats-new-one{margin:0;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-whats-new-one a,.bw-whats-new-else a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-whats-new-one a:hover,.bw-whats-new-else a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes(".bw-whats-new-else{margin:10px 0 0;color:var(--bw-muted)}") && SITE_CSS.includes("@media (max-width:767px){.bw-whats-new{padding:14px 16px;margin-top:20px}}") && SITE_CSS.includes(".bw-market-chip{margin:10px 0 0}") && SITE_CSS.includes(".hh-hero+.wrap+.hh-sec{padding-top:64px}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}"));
+ t("labels and hidden carrier stay", liveStrip.includes("sellers watched") && liveStrip.includes("MCP servers checked") && liveStrip.includes('checks in the last <span id="p-cd">') && liveStrip.includes('<span hidden><i id="p-l"></i><i id="p-d"></i></span>'));
