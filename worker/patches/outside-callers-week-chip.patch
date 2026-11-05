@@ -1,16 +1,14 @@
-# Soft OPEN Prefer READY rematch Pack 1. Do not partial-apply.
-# Soft CTA tip tip 5fe37df8. want 96a0df8b. Soft CTA walls HOLD. fp ebf26695.
-# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61. No tip. No deploy.
-# Apply on a copy of the private receipts-mvp tree at tip 5fe37df8. All hunks or none.
-# Paths: worker/src/site.ts, worker/src/tools.ts, worker/src/desk.ts, worker/test/d1_failsoft_unit.ts.
-# Design LOCK body md5 df2d95a37140e83b5920fb983999daf9. Whole file md5 c16bb49401b77425702d65a6f0bb701b.
-# Home tease ships under Anton OVERRIDE. Legal OVERRIDE digest 7911ec33. Tease is not a Legal CLEAR.
-# N is outside Guard callers only: callers_week, channel guard, internal excluded. No per-seller or per-host count.
-# Gate: qa_clean === true && Number.isInteger(n) && n > 0. Omit the chip and the tease otherwise.
-# Owner-set published figure: outside_guard_callers_week, 2026-W45, n 2, as_of 2026-11-05T00:14:00Z.
-# DC live full f84345f2 / leaf b1782fb0. Day window stays parked.
-# Desk chip is only immediately before deskGuardHtml(source) and deskGuardHtml(null). deskFreeHtml is not edited.
-# Apply from the private tree root:
+# Soft OPEN Prefer READY Pack 1 Lead BINDING B. Do not partial-apply.
+# Soft CTA tip tip 5fe37df8. want 96a0df8b. Soft CTA walls HOLD. fp ebf26695dfaccfcea740027fc1d2b7b0.
+# Soft CTA Prefer KEEP tip HOLD APPLY. Absolute No-Grade. No tip. No deploy.
+# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61.
+# Design LOCK body md5 aa481854dd2916d21061943630adecf4. File md5 eae645282e05dedc73f1310926d40e4b.
+# Empty /desk chip OUT. Do not edit the Soft CTA recipe line. deskFreeHtml untouched.
+# Map-result chip only, immediately before deskGuardHtml(source).
+# tools hero1 chip after the lead and before .t1-cta, payment-guard lead only.
+# N is outside Guard callers only. callers_week, channel guard, internal excluded.
+# DC live f84345f2 / leaf b1782fb0. Legal OVERRIDE 7911ec33. Day window parked.
+# Apply from the private tree root on a copy of tip 5fe37df8:
 #   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/outside-callers-week-chip.patch
 --- a/worker/src/site.ts
 +++ b/worker/src/site.ts
@@ -73,18 +71,15 @@
 @@ -0,0 +1,1 @@
 +import { outsideCallersChipHtml } from "./site.ts";
 @@ -400,1 +401,1 @@
--<p class="t1-lead">${lead}</p><div class="t1-cta">
-+<p class="t1-lead">${lead}</p>${lead==="Guard compares each payment request with what we measured for that seller, then warns or blocks by your rules."?outsideCallersChipHtml():""}<div class="t1-cta">
+-`<section class="t1-hero">${p}<h1>${esc(h1)}</h1><p class="t1-lead">${lead}</p><div class="t1-cta">
++`<section class="t1-hero">${p}<h1>${esc(h1)}</h1><p class="t1-lead">${lead}</p>${lead==="Guard compares each payment request with what we measured for that seller, then warns or blocks by your rules."?outsideCallersChipHtml():""}<div class="t1-cta">
 --- a/worker/src/desk.ts
 +++ b/worker/src/desk.ts
 @@ -0,0 +1,1 @@
 +import { outsideCallersChipHtml } from "./site.ts";
 @@ -400,1 +401,1 @@
--${deskGuardHtml(source)}
-+${outsideCallersChipHtml()}${deskGuardHtml(source)}
-@@ -400,1 +401,1 @@
--<p class="small" id="sticky-free">Attach Guard free. Keep receipts on Desk. Get alerts when facts change.</p><p class="desk-privacy">Commands, args, env and headers are ignored. Nothing you paste is fetched, and a one-time map isn't kept. Watchlists and policies you choose to save are stored for your plan (<a href="/privacy">Privacy</a>). Desk doesn't run your agents.</p></form><p class="desk-notes"><a class="link-arrow" href="/desk/watchlist">Your watchlist</a> Hosts you already watch with Pro. No plan yet? <a href="/desk/alerts#da-free-card">Watch 1 seller or tool free by email</a>.</p>${deskGuardHtml(null)}</div></section></div></main>
-+<p class="small" id="sticky-free">Attach Guard free. Keep receipts on Desk. Get alerts when facts change.</p><p class="desk-privacy">Commands, args, env and headers are ignored. Nothing you paste is fetched, and a one-time map isn't kept. Watchlists and policies you choose to save are stored for your plan (<a href="/privacy">Privacy</a>). Desk doesn't run your agents.</p></form><p class="desk-notes"><a class="link-arrow" href="/desk/watchlist">Your watchlist</a> Hosts you already watch with Pro. No plan yet? <a href="/desk/alerts#da-free-card">Watch 1 seller or tool free by email</a>.</p>${outsideCallersChipHtml()}${deskGuardHtml(null)}</div></section></div></main>
+-${deskMapNextHtml(r, esc)}${deskGuardHtml(source)}<p class="desk-again">
++${deskMapNextHtml(r, esc)}${outsideCallersChipHtml()}${deskGuardHtml(source)}<p class="desk-again">
 --- a/worker/test/d1_failsoft_unit.ts
 +++ b/worker/test/d1_failsoft_unit.ts
 @@ -400,1 +400,1 @@
@@ -97,6 +92,6 @@
  t("whats new card", liveStrip.includes('<aside class="bw-whats-new" aria-labelledby="bw-whats-new-h">\n  <p id="bw-whats-new-h" class="bw-whats-new-kicker">What\'s new</p>\n  <p class="bw-whats-new-one"><a href="/desk">Desk Guard</a> is live — measured facts and signed receipts on one desk. Free map on Desk.</p>\n  <p class="bw-whats-new-else">What else is new · <a href="/market">Board</a> · <a href="/courthouse">Courthouse</a></p>\n</aside>') && liveStrip.split('class="bw-whats-new"').length === 2 && liveStrip.includes("What's new") && liveStrip.includes('href="/courthouse">Courthouse</a>') && SITE_CSS.includes(".bw-whats-new{margin:24px 0 0;padding:16px 24px;border:1px solid var(--bw-line);border-radius:12px;background:var(--bw-bg-2);color:var(--bw-muted);font-size:13px;line-height:1.45}") && SITE_CSS.includes(".bw-whats-new-kicker{margin:0 0 6px;color:var(--bw-fg);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}") && SITE_CSS.includes(".bw-whats-new-one{margin:0;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-whats-new-one a,.bw-whats-new-else a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-whats-new-one a:hover,.bw-whats-new-else a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes(".bw-whats-new-else{margin:10px 0 0;color:var(--bw-muted)}") && SITE_CSS.includes("@media (max-width:767px){.bw-whats-new{padding:14px 16px;margin-top:20px}}") && SITE_CSS.includes(".bw-market-chip{margin:10px 0 0}") && SITE_CSS.includes(".hh-hero+.wrap+.hh-sec{padding-top:64px}") && SITE_CSS.includes("@media (max-width:767px){.bw-market-chip{margin-top:8px}.hh-hero+.wrap+.hh-sec{padding-top:48px}}"));
 +t("outside week gate uses the shipped helper", outsideGuardCallersWeekN() === 2 && outsideGuardCallersWeekN({ n: 0, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: null, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: 1.5, qa_clean: true }) === null && outsideGuardCallersWeekN({ n: 2, qa_clean: false }) === null && outsideCallersChipHtml().includes("Guard checks this week:") && outsideCallersChipHtml().includes(">2<") && outsideCallersTeaseHtml().includes("See which sellers are being checked out the most"));
 +t("outside callers css", SITE_CSS.includes(".bw-checked-chip{margin:12px 0 0;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-checked-chip b{color:var(--bw-fg);font-weight:600}") && SITE_CSS.includes(".bw-checked-chip a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-checked-chip a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes('.bw-checked-chip[data-n="0"],.bw-checked-chip:not([data-n]){display:none}') && SITE_CSS.includes(".bw-checked-tease{margin:10px 0 0;padding:0 24px;font-size:13px;line-height:1.4;color:var(--bw-muted)}") && SITE_CSS.includes(".bw-checked-tease a{color:var(--bw-fg);text-decoration:none;border-bottom:1px solid var(--bw-line)}") && SITE_CSS.includes(".bw-checked-tease a:hover{border-bottom-color:var(--bw-fg)}") && SITE_CSS.includes('.bw-checked-tease[data-n="0"],.bw-checked-tease:not([data-n]){display:none}') && SITE_CSS.includes("@media (max-width:767px){.bw-checked-tease{padding:0 4px;margin-top:8px}}"));
-+t("home tease between market chip and whats new", liveStrip.includes('sources</p>\n<p class="bw-checked-tease" data-n="2"><a href="/desk">See which sellers are being checked out the most → here</a></p><aside class="bw-whats-new"') && liveStrip.split("bw-checked-tease").length === 2 && !liveStrip.includes("bw-checked-chip") && !liveStrip.includes("Guard checks this week"));
-+t("chip call sites", (() => { const site = readFileSync("src/site.ts", "utf8"); const tools = readFileSync("src/tools.ts", "utf8"); const desk = readFileSync("src/desk.ts", "utf8"); const chip = (s: string) => s.split("${outsideCallersChipHtml()}").length - 1; const freeAt = desk.indexOf("deskFreeHtml"); const freeBody = freeAt < 0 ? "" : desk.slice(freeAt, freeAt + 700); return site.split("${outsideCallersTeaseHtml()}").length - 1 === 1 && chip(site) === 0 && chip(tools) === 1 && tools.includes('?outsideCallersChipHtml():""}<div class="t1-cta">') && chip(desk) === 2 && desk.includes("${outsideCallersChipHtml()}${deskGuardHtml(source)}") && desk.includes("${outsideCallersChipHtml()}${deskGuardHtml(null)}") && !freeBody.includes("outsideCallersChipHtml") && site.includes("qa_clean === true && Number.isInteger(n) && n > 0") && site.includes('metric: "outside_guard_callers_week"') && site.includes("n: 2") && site.includes("internal excluded"); })());
++t("home tease between market chip and whats new", liveStrip.includes('sources</p>\n<p class="bw-checked-tease" data-n="2"><a href="/desk">See which sellers are being checked out the most → here</a></p><aside class="bw-whats-new"') && liveStrip.split("bw-checked-tease").length === 2 && !liveStrip.includes("bw-checked-chip"));
++t("chip call sites option B", (() => { const site = readFileSync("src/site.ts", "utf8"); const tools = readFileSync("src/tools.ts", "utf8"); const desk = readFileSync("src/desk.ts", "utf8"); const chip = (s: string) => s.split("${outsideCallersChipHtml()}").length - 1; const freeAt = desk.indexOf("deskFreeHtml"); const freeBody = freeAt < 0 ? "" : desk.slice(freeAt, freeAt + 700); return site.split("${outsideCallersTeaseHtml()}").length - 1 === 1 && chip(site) === 0 && chip(tools) === 1 && tools.includes('?outsideCallersChipHtml():""}<div class="t1-cta">') && chip(desk) === 1 && desk.includes("${deskMapNextHtml(r, esc)}${outsideCallersChipHtml()}${deskGuardHtml(source)}") && !desk.includes("outsideCallersChipHtml()}${deskGuardHtml(null)") && !desk.includes("outsideCallersChipHtml() + deskGuardHtml(null)") && !freeBody.includes("outsideCallersChipHtml") && site.includes("qa_clean === true && Number.isInteger(n) && n > 0"); })());
  t("labels and hidden carrier stay", liveStrip.includes("sellers watched") && liveStrip.includes("MCP servers checked") && liveStrip.includes('checks in the last <span id="p-cd">') && liveStrip.includes('<span hidden><i id="p-l"></i><i id="p-d"></i></span>'));
