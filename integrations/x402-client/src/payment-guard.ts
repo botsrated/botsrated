@@ -26,8 +26,14 @@ import {
   hostAndPath,
   isAddress,
   isAtomicAmount,
+  isBase58Pubkey,
   isBytes32,
   isTxHash,
+  networkFamily,
+  networkLabel,
+  normalizePayTo,
+  payToFormatFor,
+  payToInvalidFact,
   sameSiteHost,
   tryHostOf,
 } from "./util.js";
@@ -38,7 +44,11 @@ export type RuleEffect = "allow" | "warn" | "block";
 export interface PaymentGuardPolicy {
   /** The payTo is not among the payTos BotsRated's probes recorded for the host. Default "warn". */
   payToMismatch?: RuleEffect;
-  /** The payTo is not a 20-byte hex address. Default "warn". */
+  /**
+   * The payTo is not a valid address for the quote's network: `eip155:*` and the x402 v1 name `base` need a
+   * 20-byte hex address; `solana:*` and the x402 v1 name `solana` need a base58 32-byte public key. Other
+   * networks are not format-checked (info `network_not_validated`). Default "warn".
+   */
   payToInvalid?: RuleEffect;
   /** Same route, quoted amount above the last amount BotsRated recorded. Default "warn". */
   priceAboveObserved?: RuleEffect;
@@ -115,7 +125,7 @@ export const presets = Object.freeze({
 });
 
 export interface GuardReason {
-  /** Fact-only code, e.g. `payto_not_observed`, `price_above_observed`, `not_covered`, `data_stale`, `botsrated_unreachable`, `payment_state_unknown`. */
+  /** Fact-only code, e.g. `payto_not_observed`, `payto_invalid`, `network_not_validated`, `network_not_observed`, `price_above_observed`, `not_covered`, `data_stale`, `botsrated_unreachable`, `payment_state_unknown`. */
   code: string;
   effect: "info" | "warn" | "block";
   /** The policy rule that set the effect, when one did. */
@@ -134,6 +144,15 @@ export interface GuardFacts {
   observedAmount?: string;
   stale?: boolean;
   receiptUrl?: string;
+  /**
+   * Per-network records from preflight `quotes_by_network`, when present. payTo stays in that network's format
+   * (hex lower-case for eip155, base58 exact for solana). A request whose network string is listed here is
+   * compared with that record. Host-level fields above keep their meaning for older bodies.
+   * This is a local fact comparison. It does not change the Desk hard rule `network_or_asset_not: true`
+   * (Base USDC only), which still rejects a Solana quote under every preset. That rule is not in this package.
+   * `onchain.ts` still checks Base USDC only.
+   */
+  quotesByNetwork?: Record<string, { payTo?: string; amount?: string; rotating?: boolean }>;
 }
 
 export interface GuardDecision {
@@ -310,20 +329,36 @@ export function guardFactsFrom(body: Record<string, any>, host: string): GuardFa
   const probe = (b.latest_probe && typeof b.latest_probe === "object" ? b.latest_probe : b.receipts?.[0]) ?? {};
   const measured = b.measured ?? {};
   const listing = b.listing ?? {};
-  const payTos = [probe.live_payTo, measured.last_quoted_payTo].filter(isAddress).map((p) => p.toLowerCase());
+  const network = probe.live_network ?? listing.network;
+  // Known payTos follow the recorded network. Untagged records stay hex, as before.
+  const payToOk = (p: unknown): p is string => (networkFamily(network) ? payToFormatFor(network, p) === "ok" : isAddress(p));
+  const payTos = [probe.live_payTo, measured.last_quoted_payTo].filter(payToOk).map(normalizePayTo);
   const receipt = typeof probe.receipt_url === "string" ? probe.receipt_url : undefined;
   const receiptHost = tryHostOf(receipt);
   const amount = probe.live_amount ?? measured.last_quoted_amount_atomic;
-  const network = probe.live_network ?? listing.network;
+  // Per-network records. Only a known family with a well-formed payTo is kept. Cap 16 keys, in body order.
+  const qbn: Record<string, { payTo?: string; amount?: string; rotating?: boolean }> = {};
+  if (b.quotes_by_network && typeof b.quotes_by_network === "object" && !Array.isArray(b.quotes_by_network)) {
+    for (const [net, q] of Object.entries(b.quotes_by_network as Record<string, any>).slice(0, 16)) {
+      if (!networkFamily(net) || !q || typeof q !== "object") continue;
+      const okPay = payToFormatFor(net, q.payTo) === "ok";
+      qbn[cleanText(net, 40)] = {
+        ...(okPay ? { payTo: normalizePayTo(q.payTo) } : {}),
+        ...(isAtomicAmount(q.amount_atomic) ? { amount: q.amount_atomic } : {}),
+        ...(q.payto_pattern === "rotating_per_request" ? { rotating: true } : {}),
+      };
+    }
+  }
   return {
     covered: b.found !== false,
     host,
     knownPayTos: [...new Set(payTos)],
-    listingPayTo: isAddress(listing.payTo) ? listing.payTo.toLowerCase() : undefined,
+    listingPayTo: payToOk(listing.payTo) ? normalizePayTo(listing.payTo) : undefined,
     observedNetwork: typeof network === "string" ? cleanText(network, 40) : undefined,
     observedAmount: isAtomicAmount(amount) ? amount : undefined,
     stale: b.freshness?.stale === true,
     receiptUrl: receipt && receiptHost && sameSiteHost(receiptHost, "botsrated.com") && /^https:\/\//.test(receipt) ? cleanText(receipt, 200) : undefined,
+    ...(Object.keys(qbn).length ? { quotesByNetwork: qbn } : {}),
     ...(hostAndPath(probe.url ?? b.route_probed?.url) ? { _probed: hostAndPath(probe.url ?? b.route_probed?.url) } : {}),
   } as GuardFacts;
 }
@@ -354,23 +389,40 @@ function noFactsNote(reasons: GuardReason[]): string {
   return "no seller facts were checked.";
 }
 
-/** Pure, local comparison of one payment option with BotsRated facts. */
-export function evaluateFacts(facts: GuardFacts, req: { payTo?: unknown; amount?: unknown; network?: unknown }, paidUrl: string | undefined, policy: PaymentGuardPolicy): GuardReason[] {
+/**
+ * Pure, local comparison of one payment option with BotsRated facts.
+ * When `quotesByNetwork` has this request's network string, that record is the one compared (its payTo, its amount).
+ * A body without `quotes_by_network` keeps the earlier family check: a known-family payTo is compared, any other
+ * format is not. This does not override `network_or_asset_not: true` (Base USDC only) on Desk. That hard rule is
+ * not in this package, and a Solana quote remains outside what this package will settle.
+ */
+export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount?: unknown; network?: unknown }, paidUrl: string | undefined, policy: PaymentGuardPolicy): GuardReason[] {
   const p = { ...policies.warn, ...policy };
   const out: GuardReason[] = [];
   const add = (code: string, rule: keyof PaymentGuardPolicy | undefined, effect: GuardReason["effect"], fact: string) => {
     out.push({ code, effect, ...(rule ? { rule } : {}), fact });
   };
   const network = typeof req.network === "string" ? cleanText(req.network, 40) : "";
-  const payTo = isAddress(req.payTo) ? req.payTo.toLowerCase() : undefined;
+  const perNet = network && facts0.quotesByNetwork ? facts0.quotesByNetwork[network] : undefined;
+  const facts: GuardFacts = perNet
+    ? { ...facts0, knownPayTos: perNet.payTo ? [perNet.payTo] : [], observedNetwork: network, observedAmount: perNet.amount, listingPayTo: undefined }
+    : facts0;
+  if (perNet?.rotating) add("payto_rotating", undefined, "info", `BotsRated's probes recorded ${facts.host} quoting a new payTo on (nearly) every request on ${networkLabel(network)}; the payTo is not compared.`);
+  // A payTo is compared only when it matches a known network family. Other formats are not compared.
+  const payTo = typeof req.payTo === "string" && payToFormatFor(network, req.payTo) === "ok" ? normalizePayTo(req.payTo) : undefined;
   if (!facts.covered) {
     add("not_covered", "notCovered", RULE_TO_EFFECT(p.notCovered, "info"), `BotsRated has no probe record for ${facts.host}.`);
     return out;
   }
-  if (payTo) {
-    if (facts.observedNetwork && network && facts.observedNetwork !== network) {
-      add("network_not_observed", undefined, "info", `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${network}.`);
-    } else if (facts.knownPayTos.length > 0 && !facts.knownPayTos.includes(payTo)) {
+  const quoteFamily = networkFamily(network);
+  const knownFamily = facts.observedNetwork ? networkFamily(facts.observedNetwork) : "eip155";
+  const hasKnown = facts.knownPayTos.length > 0 || !!facts.listingPayTo;
+  if (facts.observedNetwork && network && facts.observedNetwork !== network) {
+    add("network_not_observed", undefined, "info", `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${networkLabel(network)}.`);
+  } else if (!facts.observedNetwork && hasKnown && quoteFamily !== undefined && quoteFamily !== knownFamily) {
+    add("network_not_observed", undefined, "info", `the payTo addresses BotsRated's probes recorded for ${facts.host} are eip155 addresses, not ${networkLabel(network)} addresses.`);
+  } else if (payTo && !perNet?.rotating) {
+    if (facts.knownPayTos.length > 0 && !facts.knownPayTos.includes(payTo)) {
       add(
         "payto_not_observed",
         "payToMismatch",
@@ -494,10 +546,17 @@ function originOf(baseUrl: string): string {
   return url.origin;
 }
 
-/** Quote fields sent to `/v1/policy/check`: payTo, amount, asset, network. Nothing else. */
+/**
+ * Quote fields sent to `/v1/policy/check`: payTo, amount, asset, network. Nothing else.
+ * payTo is included for a 20-byte hex address, and for a base58 32-byte public key when the network family is solana
+ * (`solana:*` or the x402 v1 name `solana`). The base58 value is sent exact, not lower-cased. A Solana asset mint
+ * is not added: `asset` stays a 20-byte hex address. Sending this quote does not lift the Desk hard rule
+ * `network_or_asset_not: true` (Base USDC only).
+ */
 export function policyQuote(req: { payTo?: unknown; amount?: unknown; asset?: unknown; network?: unknown } | null | undefined): Record<string, string> {
   const quote: Record<string, string> = {};
-  if (isAddress(req?.payTo)) quote.payTo = String(req?.payTo);
+  if (networkFamily(req?.network) === "solana" && isBase58Pubkey(req?.payTo)) quote.payTo = String(req?.payTo);
+  else if (isAddress(req?.payTo)) quote.payTo = String(req?.payTo);
   const amount = typeof req?.amount === "bigint" ? req.amount.toString() : typeof req?.amount === "number" && Number.isSafeInteger(req.amount) ? String(req.amount) : req?.amount;
   if (isAtomicAmount(amount)) quote.amount = String(amount);
   if (isAddress(req?.asset)) quote.asset = String(req?.asset);
@@ -784,8 +843,13 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
         fact: "the URL being paid is unknown to the guard (the paying fetch is not wrapped with guard.wrapFetch); the host named in the 402 is only the seller's claim.",
       });
     }
-    if (!isAddress(req?.payTo)) {
-      reasons.push({ code: "payto_invalid", effect: RULE_TO_EFFECT(policy.payToInvalid, "warn"), rule: "payToInvalid", fact: "the payTo in this payment request is not a 20-byte hex address." });
+    // payTo format follows the quote network (eip155 and v1 `base`: hex; solana and v1 `solana`: base58 32 bytes).
+    // Any other network is reported and is not stopped for format alone.
+    const payToFormat = payToFormatFor(req?.network, req?.payTo);
+    if (payToFormat === "invalid") {
+      reasons.push({ code: "payto_invalid", effect: RULE_TO_EFFECT(policy.payToInvalid, "warn"), rule: "payToInvalid", fact: payToInvalidFact(req?.network) });
+    } else if (payToFormat === "not_validated") {
+      reasons.push({ code: "network_not_validated", effect: "info", fact: `the payTo format for network ${networkLabel(req?.network)} is not validated by this guard.` });
     }
     const t = req?.maxTimeoutSeconds;
     if (t === undefined || t === null) reasons.push({ code: "max_timeout_missing", effect: "info", fact: "the payment request has no maxTimeoutSeconds." });

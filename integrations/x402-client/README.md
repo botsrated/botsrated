@@ -139,7 +139,8 @@ A stopped payment throws `Payment creation aborted:` with text like:
 | Rule (`policy.…`) | Reason code | `policies.warn` (default) | `policies.carefulBuyer` / `policies.strict` |
 |---|---|---|---|
 | `payToMismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
-| `payToInvalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
+| `payToInvalid`: the payTo does not match the quote network (20-byte hex on `eip155` and v1 `base`; base58 32-byte public key on `solana` and v1 `solana`) | `payto_invalid` | warn | **block** |
+| network is not one of those families (format is not checked) | `network_not_validated` | info | info |
 | `resourceHostMismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
 | `paidUrlUnknown`: the URL being paid is unknown (no `guard.wrapFetch`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |
 | `priceAboveObserved`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
@@ -169,6 +170,9 @@ Reason texts state facts only; seller text is never echoed except a parsed host 
 | `observedAmount` | Last amount recorded on the probed route, in atomic units |
 | `stale` | True when the latest probe is older than 24 hours |
 | `receiptUrl` | `https://botsrated.com/receipt/...` when the preflight included a receipt on botsrated.com |
+| `quotesByNetwork` | Per-network payTo, amount, and rotating flag from preflight `quotes_by_network`, when that object is present. Absent on older bodies |
+
+`quotesByNetwork` compares a request with the record stored under that same network string. x402 v1 names `base` and `solana` are known families for the format check. A v1 name is not rewritten to a CAIP-2 id. The Desk hard rule `network_or_asset_not: true` (Base USDC only) is unchanged and is not in this package, so a Solana quote stays outside what this package will settle. `evaluatePayment` on the package root still requires a 20-byte hex payTo. The on-chain check stays Base USDC.
 
 `reasons` lists each fact (`code`, `effect` of `info`, `warn` or `block`, `rule`, `fact`). `disputeUrl` is
 https://botsrated.com/disputes. `wouldBlock` is true when a rule's effect is `block`, including in dry-run, where
@@ -217,7 +221,7 @@ const guard = createPaymentGuard({
 });
 ```
 
-`failMode` is yours: `"open"` or `"closed"` (`fail_mode` is accepted as an alias). Omit it and the check stays open. Nothing defaults you to closed. `"closed"` stops the payment when BotsRated or your policy cannot answer. The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). On HTTP 503, HTTP 429, HTTP 404, a timeout, or `"decision": null`, it applies `failMode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). A 503, 429 or timeout also opens the in-process circuit above, and the next hosted lookup is skipped. A missing decision is never a pass. A remote pass never clears a local block. Server fields are kept when the server sends them. The last `policy_version` is remembered (`remotePolicyVersion()`). The policy decision is not signed. Leave `remotePolicy` unset and local presets behave as before.
+`failMode` is yours: `"open"` or `"closed"` (`fail_mode` is accepted as an alias). Omit it and the check stays open. Nothing defaults you to closed. `"closed"` stops the payment when BotsRated or your policy cannot answer. The guard `POST`s `/v1/policy/check` with the seller host and the quote (`payTo`, `amount`, `asset`, `network`). `payTo` is a 20-byte hex address, or a base58 32-byte public key when the network family is solana (v1 name `solana` or `solana:*`), sent exact. A Solana mint is not put in `asset`. That quote does not change the Desk Base-USDC hard rule. On HTTP 503, HTTP 429, HTTP 404, a timeout, or `"decision": null`, it applies `failMode` (`open`: an info reason, payment continues unless a local rule stops it; `closed`: the payment stops). A 503, 429 or timeout also opens the in-process circuit above, and the next hosted lookup is skipped. A missing decision is never a pass. A remote pass never clears a local block. Server fields are kept when the server sends them. The last `policy_version` is remembered (`remotePolicyVersion()`). The policy decision is not signed. Leave `remotePolicy` unset and local presets behave as before.
 
 `BOTSRATED_TOKEN` is optional. Framework attaches read it when `token` is omitted and send it only as `remotePolicy` on `@botsrated/x402-preflight` 0.3.0 and later. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. Get a token in [Desk](https://botsrated.com/desk).
 
