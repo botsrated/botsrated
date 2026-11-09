@@ -94,5 +94,90 @@ export const isTxHash = (v: unknown): v is string => typeof v === "string" && TX
 export const isBytes32 = (v: unknown): v is string => typeof v === "string" && BYTES32_RE.test(v);
 export const isAtomicAmount = (v: unknown): v is string => typeof v === "string" && /^[0-9]{1,78}$/.test(v);
 
+/**
+ * x402 v1 network names for the two families this guard knows how to format-check.
+ * `base` is eip155. `solana` is solana. CAIP-2 `eip155:<digits>` and `solana:<reference>` are the same families.
+ * A v1 name is not rewritten to a CAIP-2 id: `base` and `eip155:8453` stay different network strings.
+ */
+const EVM_V1_NETWORKS = new Set([
+  "base",
+  "base-sepolia",
+  "avalanche",
+  "avalanche-fuji",
+  "iotex",
+  "sei",
+  "sei-testnet",
+  "polygon",
+  "polygon-amoy",
+  "peaq",
+]);
+const SOLANA_V1_NETWORKS = new Set(["solana", "solana-devnet", "solana-testnet"]);
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+export type NetworkFamily = "eip155" | "solana";
+
+/** `eip155` or `solana` when the network string is a known family. Anything else is unknown. */
+export function networkFamily(network: unknown): NetworkFamily | undefined {
+  if (typeof network !== "string") return undefined;
+  const raw = network.trim();
+  if (!raw || raw.length > 80) return undefined;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("eip155:")) return /^\d+$/.test(lower.slice("eip155:".length)) ? "eip155" : undefined;
+  if (lower.startsWith("solana:")) {
+    const ref = raw.slice(raw.indexOf(":") + 1);
+    return ref.length > 0 && ref.length <= 64 && !/[\s/]/.test(ref) ? "solana" : undefined;
+  }
+  if (EVM_V1_NETWORKS.has(lower)) return "eip155";
+  if (SOLANA_V1_NETWORKS.has(lower)) return "solana";
+  return undefined;
+}
+
+/** Network string for a fact sentence. Capped. Not a translation of v1 names into CAIP-2. */
+export function networkLabel(network: unknown): string {
+  if (typeof network !== "string") return "this network";
+  return cleanText(network, 40) || "this network";
+}
+
+/** Solana public key: base58, decodes to 32 bytes. A 64-byte secret key does not match. Case is kept. */
+export function isBase58Pubkey(v: unknown): v is string {
+  if (typeof v !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return false;
+  let n = 0n;
+  for (const c of v) {
+    const i = BASE58_ALPHABET.indexOf(c);
+    if (i < 0) return false;
+    n = n * 58n + BigInt(i);
+  }
+  const bytes: number[] = [];
+  while (n > 0n) {
+    bytes.push(Number(n % 256n));
+    n /= 256n;
+  }
+  let zeros = 0;
+  while (zeros < v.length && v[zeros] === "1") zeros++;
+  return zeros + bytes.length === 32;
+}
+
+/** Hex addresses are lower-cased. A base58 public key is returned unchanged. */
+export function normalizePayTo(payTo: string): string {
+  return isAddress(payTo) ? payTo.toLowerCase() : payTo;
+}
+
+/**
+ * `ok` when payTo matches the network family. `invalid` when the family is known and the payTo does not match it.
+ * `not_validated` when the network is not a known family (the payTo is not compared).
+ */
+export function payToFormatFor(network: unknown, payTo: unknown): "ok" | "invalid" | "not_validated" {
+  const family = networkFamily(network);
+  if (family === "eip155") return isAddress(payTo) ? "ok" : "invalid";
+  if (family === "solana") return isBase58Pubkey(payTo) ? "ok" : "invalid";
+  return "not_validated";
+}
+
+/** Fact sentence for `payto_invalid`. eip155 keeps the 20-byte hex sentence. */
+export function payToInvalidFact(network: unknown): string {
+  if (networkFamily(network) === "solana") return "the payTo in this payment request is not a base58 32-byte public key.";
+  return "the payTo in this payment request is not a 20-byte hex address.";
+}
+
 /** Largest decoded x402 header (PAYMENT-REQUIRED / PAYMENT-RESPONSE) we parse. */
 export const MAX_HEADER_BYTES = 16 * 1024;

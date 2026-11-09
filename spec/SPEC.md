@@ -1,9 +1,9 @@
-# BotsRated Receipt & Rating Format v0.2.1 (Draft)
+# BotsRated Receipt & Rating Format v0.3 (Draft)
 
 | | |
 |---|---|
-| Status | Draft for comment (v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4; v0.2.1: reference schedules, MCP retention and receipt URLs, §3.4 and §5; no format change). Not stable: fields may still change before 1.0 (see §11). |
-| Date | 2026-10-23 |
+| Status | Draft for comment (v0.3: adds the OPTIONAL versioned `chain` field, `quotes[]`, `facilitator_supported` and `checks.solana_usdc` to unpaid probes, §3.2.1; no change to ids, canonical JSON or signatures, §4; v0.2: adds the `mcp_probe` receipt for remote MCP servers, §3.4; v0.2.1: reference schedules, MCP retention and receipt URLs, §3.4 and §5; no format change). Not stable: fields may still change before 1.0 (see §11). |
+| Date | 2026-11-09 |
 | Editors | BotsRated (https://botsrated.com) |
 | Reference implementation | https://botsrated.com. Producer code: unpaid probe, canonical JSON, ids, signatures (`worker/src/probe.ts`); MCP probe (`worker/src/mcp.ts`, `prober/src/mcpcron.ts`); snapshot (`pipeline/score.py`); paid receipts (`pipeline/record_paid.py`) |
 | Files | [`receipt.schema.json`](receipt.schema.json), [`examples/`](examples/), [`verify.mjs`](verify.mjs), [`verify-core.mjs`](verify-core.mjs), [`receipt-page.mjs`](receipt-page.mjs), [`courthouse/`](courthouse/README.md) |
@@ -21,7 +21,7 @@ Buyers of x402 resources (agents, wallets, directories) need facts about a selle
 
 The format records observations, not opinions. It does not label sellers good or bad. Any producer (directory, agent, seller, auditor) can emit, sign and publish receipts in this format; BotsRated is one producer.
 
-In scope: HTTP x402 resources (x402 v1 and v2), EVM networks, with USDC on Base (`eip155:8453`) as the reference case. From v0.2 also **remote MCP servers** (Streamable HTTP and the legacy HTTP+SSE transport): an unauthenticated handshake is recorded as an `mcp_probe` receipt (§3.4). Out of scope: payment execution (see the x402 core spec), identity registries (see ERC-8004), and how a buyer acts on the facts.
+In scope: HTTP x402 resources (x402 v1 and v2), EVM networks, with USDC on Base (`eip155:8453`) as the reference case. From v0.3 an unpaid probe may also record a Solana option (`chain`, `quotes`, `checks.solana_usdc`, §3.2.1). Paid receipts and EAS anchoring stay EVM (§3.3, §7). From v0.2 also **remote MCP servers** (Streamable HTTP and the legacy HTTP+SSE transport): an unauthenticated handshake is recorded as an `mcp_probe` receipt (§3.4). Out of scope: payment execution (see the x402 core spec), identity registries (see ERC-8004), and how a buyer acts on the facts.
 
 ### 1.1 Relation to existing work
 - **x402 core and extensions** ([coinbase/x402 `specs/`](https://github.com/coinbase/x402/tree/main/specs)). Receipts reuse x402 terms as defined there (`PaymentRequired`, `accepts`, `scheme`, `network` in CAIP-2, `amount`, `asset`, `payTo`) and do not redefine them.
@@ -67,11 +67,22 @@ One plain HTTP request to the resource, **with no payment header**. The referenc
 | `total_header_bytes`, `payment_required_header_bytes` | int | Size of the response headers and of the `PAYMENT-REQUIRED` header |
 | `valid_402` | bool | `status == 402` and a PaymentRequired parsed (v2 `PAYMENT-REQUIRED` header, base64 JSON, or a v1 JSON body) with a non-empty `accepts` list |
 | `x402_version` | int\|null | 2 if the v2 header is present, else the body's `x402Version` |
-| `live_amount`, `live_payTo`, `live_asset`, `live_network` | string | Terms of the chosen `accepts` entry: the first entry whose `network` matches the listing, else the first entry |
+| `live_amount`, `live_payTo`, `live_asset`, `live_network` | string | Terms of the chosen `accepts` entry: the first entry whose `network` matches the listing, else the first Base entry, else (v0.3) the first Solana-mainnet entry in the known USDC mint, else the first entry. `live_payTo` is an EVM `0x` address (compare case-insensitively) or, when `chain.namespace` is `solana`, a base58 public key (compare exactly) |
 | `listed_amount`, `listed_payTo`, `network` | string\|null | The same terms as the directory listing states them (empty or `null` if unknown) |
 | `prober_ua`, `prober`, `probe_version` | string | Who probed and with which implementation version. `probe_version` is absent on legacy receipts (§4.2). |
 | `scope` | string | `primary` (the host's representative route) or `extra_route`. Reference implementation 0.3. |
-| `checks` | object | Reference implementation 0.3: neutral 402 checks (`terms_consistent`, `terms_issues[]`, `base_usdc`, `payto_stable`, `price_matches_listing`, `payto_matches_listing`). See the methodology page. |
+| `checks` | object | Reference implementation 0.3: neutral 402 checks (`terms_consistent`, `terms_issues[]`, `base_usdc`, `payto_stable`, `price_matches_listing`, `payto_matches_listing`; v0.3 adds `solana_usdc`). `payto_stable` compares with the previous valid 402 on the **same network**. See the methodology page. |
+| `chain` | object | OPTIONAL, v0.3, versioned. See §3.2.1. |
+| `quotes` | array | OPTIONAL, v0.3. Every `accepts` option (max 8) as a normalised quote: `{network, chain, scheme, asset, asset_label, amount, price_usd, payTo, payto_shape, fee_payer?, facilitator_url?, testnet}`. `asset_label` is `USDC` only for the known USDC contract/mint of that network (Base, Solana mainnet, exact case), else `null`. `fee_payer` is the facilitator fee payer from `extra.feePayer`; it is not the seller's `payTo`. |
+| `facilitator_supported` | object | OPTIONAL, v0.3. Per quoted Solana network: `{network_listed, listed_by[], asset_listed, checked_at, read}` from the producer's unpaid `GET /supported` read of public and seller-advertised facilitators. A dated fact about the facilitator; it says nothing about the seller. |
+
+#### 3.2.1 Chain field (v0.3, optional, versioned)
+`chain = {v: 1, namespace, network, networks?}` describes the network of the `live_*` option: `namespace` is the CAIP-2 namespace of `live_network` (`eip155` or `solana`), `network` its CAIP-2 id with x402 v1 aliases normalised (`base` → `eip155:8453`, `solana` → `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`), and `networks` the sorted unique CAIP-2 ids of every `accepts` option. Rules:
+- Additive and backwards compatible. A receipt without `chain` is a valid receipt (every receipt issued before v0.3 lacks it) and is read as an EVM receipt when `live_network` is an `eip155` id or alias. Verifiers MUST NOT require `chain`.
+- `v` is the shape version of this object only. A verifier that sees a `v` it does not know MUST treat the object as unreadable (and may still verify id and signature); it MUST NOT guess.
+- Nothing in §4 changes: `chain`, `quotes` and `facilitator_supported` are ordinary fields, covered by the id and the Ed25519 signature over canonical JSON exactly like any other field, only when present. Old signatures verify over their unchanged payload.
+- Both networks are measured the same way, unpaid. A Solana receipt records `payTo`/mint as quoted, exact case; the known Solana USDC mint is matched exactly, other mints are recorded as the quoted asset and are never called USDC.
+- Reference producer: `worker/src/chains.ts` (`chainField`, `quoteOf`), `worker/src/probe.ts` (`probe`, `chooseOption`), `probe_version` 0.3. The public tree does not contain that producer. The private worker is the producer. This spec records the field shape only.
 
 Real examples: [`examples/unpaid-probe.signed.json`](examples/unpaid-probe.signed.json) (cron prober, signed individually) and [`examples/unpaid-probe.legacy.json`](examples/unpaid-probe.legacy.json) (early box prober, covered by the signed snapshot). Published receipts observed on 2026-10-23 carry `probe_version` `0.2`. The 0.3 fields (`scope`, `checks`) exist in the reference code but did not yet appear in the published receipts checked for this draft.
 
@@ -173,7 +184,7 @@ Host facts are a pure function of the receipts. Each number MUST be reproducible
 | `probes`, `reachable_count`, `valid_402_count`, `free_200_count` | Count of unpaid probes; with `status != null`; with `valid_402`; with `status == 200` |
 | `recent_window` | The last 20 primary-route unpaid probes: `probes`, `valid_402`, `valid_402_rate` = k/n, and `wilson_lower_bound_95` = Wilson score lower bound with z = 1.96 (0 when n = 0) |
 | `latency_p50_ms`, `latency_p90_ms` | Nearest rank over probes with a response: `sorted[min(n-1, floor(p·(n-1) + 0.5))]` (ties round half **up**, never half to even). The snapshot uses all receipts; the live API uses the recent window. All BotsRated producers (TS live store and daily aggregates, Python snapshot) use this rule since 2026-10-23 (snapshot `methodology_version` 0.2.1). |
-| `price_differs_from_listing_count`, `payto_differs_from_listing_count` | Valid-402 probes where `live_amount != listed_amount` or `live_payTo != listed_payTo` (case-insensitive), with both sides known |
+| `price_differs_from_listing_count`, `payto_differs_from_listing_count` | Valid-402 probes where `live_amount != listed_amount` or `live_payTo != listed_payTo` (case-insensitive for EVM addresses; exact for base58, v0.3), with both sides known |
 | `distinct_payto_seen`, `last_quoted_amount_atomic`, `x402_version` | From valid-402 probes |
 | `paid_tests`, `paid_test_days`, `paid_total_usd`, `last_paid_test` | Count, distinct UTC days, sum and latest time of published paid receipts |
 | `first_pass_success_rate` | Share of paid tests with `delivered ∧ non_empty ∧ schema_valid ∧ looks_correct` |
@@ -218,7 +229,7 @@ string host,string kind,string receiptId,uint16 httpStatus,bool valid402,uint64 
 ### 7.2 Field mapping
 | Field | Value |
 |---|---|
-| `recipient` | Seller `payTo` (`live_payTo` for probes, `payTo` for buys), so explorers group records per seller |
+| `recipient` | Seller `payTo` (`live_payTo` for probes, `payTo` for buys), so explorers group records per seller. EVM address only: anchoring stays on Base/EAS; a receipt whose `chain.namespace` is `solana` (base58 `live_payTo`) is not anchored and there is no Solana attester (v0.3) |
 | `kind` | `probe` or `paid_buy` |
 | `httpStatus` | Status. `0` = not exposed (connector buys). |
 | `quotedAtomic` / `paidAtomic` | `live_amount` / `quoted_amount_atomic`, and `paid_amount_atomic` (0 for probes) |
@@ -229,7 +240,7 @@ string host,string kind,string receiptId,uint16 httpStatus,bool valid402,uint64 
 | `datasetSha256` | sha256 of the signed snapshot that lists the receipt |
 
 ### 7.3 Rules
-- Anchoring is optional. The off-chain receipt is the source of truth.
+- Anchoring is optional. The off-chain receipt is the source of truth. Anchoring is EVM/Base only (v0.3): receipts with a Solana `live_*` option are published and verified off-chain like any other and are not attested.
 - Attest only receipts that are already published. Nothing held under §9 may be anchored before it is published.
 - A correction revokes the old attestation and issues a new one with `refUID` set to the old UID.
 - Verify (`pipeline/onchain/verify.mjs`) as follows:
@@ -292,7 +303,7 @@ A dispute is a seller's reply about a measurement. It is not a finding about the
 - Spec versions are `MAJOR.MINOR`, plus an optional `.PATCH` for editorial or reference-schedule changes that change no receipt field, id rule or signature rule. 0.x drafts may break. From 1.0, adding optional fields is a MINOR change. Renaming or removing a field, changing its meaning, or changing §4 is a MAJOR change.
 - Receipts are immutable. Verifiers MUST verify a receipt under the rules in force when it was issued, using `probe_version` and the legacy rule in §4.2. Producers MAY set `spec`.
 - Producer implementation (`probe_version`) and methodology (`methodology_version` in snapshots) are versioned separately from this spec.
-- Changes: 0.2.1 (2026-10-23, draft): reference x402 schedule about 1.8 h, MCP priority tier about every 6 h, MCP retention 30 days (14 above 3.5 GB), `&s=<server_id>` in MCP receipt URLs (older links still resolve and verify). No format change: receipts keep `spec: botsrated-receipt/0.2`. 0.2 (2026-10-23, draft) adds the `mcp_probe` receipt (§3.4), its id rule (§4.2), the prober key covering it (§4.3) and MCP server facts (§5). Nothing in 0.1 changed. 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
+- Changes: 0.3 (2026-11-09, draft, from the 2026-11-07 proposal): OPTIONAL versioned `chain` field, `quotes[]`, `facilitator_supported` and `checks.solana_usdc` on unpaid probes (§3.2, §3.2.1); `live_payTo` may be a base58 public key when `chain.namespace` is `solana`; `payto_stable` is per network. No change to canonical JSON, ids or signatures (§4); receipts without `chain` stay valid; EAS anchoring stays EVM/Base only (§7). Producers MAY set `spec: botsrated-receipt/0.3`; the reference prober keeps `probe_version` 0.3. Later public edits (redacted copies, courthouse) stay. 0.2.1 (2026-10-23, draft): reference x402 schedule about 1.8 h, MCP priority tier about every 6 h, MCP retention 30 days (14 above 3.5 GB), `&s=<server_id>` in MCP receipt URLs (older links still resolve and verify). No format change: receipts keep `spec: botsrated-receipt/0.2`. 0.2 (2026-10-23, draft) adds the `mcp_probe` receipt (§3.4), its id rule (§4.2), the prober key covering it (§4.3) and MCP server facts (§5). Nothing in 0.1 changed. 0.1 (2026-10-23) is the first draft. It documents the format in production and adds `issuer`, `spec`, `evidence`, and the MUST to sign paid receipts. Same day: key validity windows and `status` in the key set (§4.3), BotsRated key rotation `botsrated-staging-1` → `botsrated-prod-1`, Q6 resolved.
 
 ## 12. License
 This specification text is licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). `receipt.schema.json`, `verify.mjs` and the files in `examples/` are licensed under MIT, like the rest of this repository. The examples are real BotsRated receipts and public on-chain data from 2026-10-23.
