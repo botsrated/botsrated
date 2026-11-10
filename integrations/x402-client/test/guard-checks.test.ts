@@ -426,6 +426,53 @@ describe("schema work budget and strict payTo rows", () => {
     }
   });
 
+  it("stops an enum of zeros against a large string", () => {
+    const schema = { enum: Array.from({ length: 19_998 }, () => 0) };
+    for (const chars of [100_000, 300_000, 990_000]) {
+      const body = JSON.stringify("x".repeat(chars));
+      const started = Date.now();
+      const check = evaluateDelivery({ status: 200, body, contentType: "application/json", schema });
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(check.checks.schema).toBe("not_evaluated");
+      expect(check.effect).toBe("warn");
+    }
+  });
+
+  it("stops an enum of zeros against a wide object", () => {
+    const schema = { enum: Array.from({ length: 19_998 }, () => 0) };
+    for (const keys of [10_000, 80_000]) {
+      const obj: Record<string, number> = {};
+      for (let i = 0; i < keys; i++) obj[`k${i}`] = 1;
+      const body = JSON.stringify(obj);
+      const started = Date.now();
+      const check = evaluateDelivery({ status: 200, body, contentType: "application/json", schema });
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(check.checks.schema).toBe("not_evaluated");
+    }
+  });
+
+  it("stops an anyOf of consts against a large string", () => {
+    const schema = { anyOf: Array.from({ length: 5_000 }, () => ({ const: 0 })) };
+    const body = JSON.stringify("x".repeat(990_000));
+    const started = Date.now();
+    const check = evaluateDelivery({ status: 200, body, contentType: "application/json", schema });
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(check.checks.schema).toBe("not_evaluated");
+    expect(check.effect).toBe("warn");
+  });
+
+  it("stops an anyOf of additionalProperties against a wide object", () => {
+    const schema = { anyOf: Array.from({ length: 2_000 }, () => ({ additionalProperties: false })) };
+    const obj: Record<string, number> = {};
+    for (let i = 0; i < 80_000; i++) obj[`k${i}`] = 1;
+    const body = JSON.stringify(obj);
+    const started = Date.now();
+    const check = evaluateDelivery({ status: 200, body, contentType: "application/json", schema });
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(check.checks.schema).toBe("not_evaluated");
+    expect(check.effect).toBe("warn");
+  });
+
   it("keeps strict blocks for non-solana payTo and compares a valid Solana payTo", () => {
     const facts = factsFrom(FOUND, "blockrun.ai", "preflight");
     const strict = strictGuardPolicy;

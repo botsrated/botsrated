@@ -237,6 +237,9 @@ export const DELIVERY_READ_DEADLINE_MS = 5_000;
 export interface SchemaWork {
   left: number;
   exhausted: boolean;
+  /** Last value whose size was measured, so a later comparison does not measure it again. */
+  sized?: unknown;
+  sizedCost?: number;
 }
 
 export function schemaWork(): SchemaWork {
@@ -288,11 +291,18 @@ function typeOk(spec: unknown, value: unknown): boolean {
   return names.some((name) => name === got || (name === "number" && got === "integer"));
 }
 
+/** Equal for schema const/enum. Primitives use ===. Objects are serialized only after the budget already paid for both sides. */
 function sameJson(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== "object") return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
 }
 
-/** Extra visits for one comparison, roughly one per 64 serialized bytes. Strings use their length. */
+/** Extra visits for a schema literal, roughly one per 64 serialized bytes. Numbers cost nothing extra. */
 function compareSizeCost(value: unknown): number {
   if (typeof value === "string") return Math.ceil(value.length / 64);
   if (value == null || typeof value === "number" || typeof value === "boolean") return 0;
@@ -301,6 +311,41 @@ function compareSizeCost(value: unknown): number {
   } catch {
     return 1;
   }
+}
+
+/**
+ * Visits owed by the response value. Measured once per value. Strings use their length.
+ * Objects and arrays count keys and nested strings, and stop once the count passes the budget.
+ */
+function instanceCost(work: SchemaWork, value: unknown): number {
+  if (work.sized === value && work.sizedCost !== undefined) return work.sizedCost;
+  let cost = 1;
+  if (typeof value === "string") cost = Math.max(1, Math.ceil(value.length / 64));
+  else if (value && typeof value === "object") {
+    let n = 0;
+    const limit = work.left + 1;
+    if (Array.isArray(value)) {
+      n = value.length;
+      if (n <= limit) {
+        for (const item of value) {
+          if (typeof item === "string") n += Math.ceil(item.length / 64);
+          if (n > limit) break;
+        }
+      }
+    } else {
+      for (const key in value as object) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        n += 1;
+        const child = (value as Record<string, unknown>)[key];
+        if (typeof child === "string") n += Math.ceil(child.length / 64);
+        if (n > limit) break;
+      }
+    }
+    cost = Math.max(1, n);
+  }
+  work.sized = value;
+  work.sizedCost = cost;
+  return cost;
 }
 
 const allowedKeys = new WeakMap<object, Set<string>>();
@@ -343,16 +388,17 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
     if (hits !== 1) return false;
   }
   if (Object.prototype.hasOwnProperty.call(s, "const")) {
-    if (!takeWork(work, 1 + compareSizeCost(s.const))) return false;
+    // Charge the response value as well as the literal. A number literal is tiny; the body may not be.
+    if (!takeWork(work, 1 + compareSizeCost(s.const) + instanceCost(work, value))) return false;
     if (!sameJson(s.const, value)) return false;
   }
   if (Array.isArray(s.enum)) {
     // Charge the length up front. Math.min(len, 1) was always 1, so a long enum was free.
     if (!takeWork(work, s.enum.length)) return false;
+    const valueCost = instanceCost(work, value);
     let found = false;
     for (const item of s.enum) {
-      const extra = compareSizeCost(item);
-      if (extra > 0 && !takeWork(work, extra)) return false;
+      if (!takeWork(work, valueCost + compareSizeCost(item))) return false;
       if (sameJson(item, value)) {
         found = true;
         break;
@@ -382,14 +428,19 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
         if (Object.prototype.hasOwnProperty.call(obj, key) && !schemaMatches(sub, obj[key], depth + 1, work)) return false;
       }
       if (s.additionalProperties === false) {
+        // Pay for the object's keys before enumerating them. A wide body must not be listed in full first.
+        if (!takeWork(work, instanceCost(work, obj))) return false;
         const allowed = allowedKeySet(s.properties as object);
-        for (const key of Object.keys(obj)) {
+        for (const key in obj) {
+          if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
           if (!takeWork(work, 1)) return false;
           if (!allowed.has(key)) return false;
         }
       }
     } else if (s.additionalProperties === false) {
-      for (const _key of Object.keys(obj)) {
+      if (!takeWork(work, instanceCost(work, obj))) return false;
+      for (const key in obj) {
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
         if (!takeWork(work, 1)) return false;
         return false;
       }
@@ -398,7 +449,10 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
   if (s.items !== undefined || s.type === "array") {
     if (!Array.isArray(value)) return false;
     if (s.items && typeof s.items === "object" && !Array.isArray(s.items)) {
-      for (const item of value) if (!schemaMatches(s.items, item, depth + 1, work)) return false;
+      for (const item of value) {
+        if (!takeWork(work, 1)) return false;
+        if (!schemaMatches(s.items, item, depth + 1, work)) return false;
+      }
     }
   }
   return !work.exhausted;
