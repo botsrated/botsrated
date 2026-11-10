@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import time
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from botsrated import BASE_USDC, PaymentGuard, PaymentGuardPolicy, PrePaymentGuard
-from botsrated.guard import GuardPolicy, evaluate_payment, facts_from
+from botsrated.guard import (
+    STRICT_GUARD_POLICY,
+    GuardPolicy,
+    evaluate_payment,
+    facts_from,
+)
 from botsrated.guard_checks import (
     REPLAY_TESTED,
+    delivery_fact,
     evaluate_delivery,
     payto_base58_assessment,
 )
@@ -212,6 +220,8 @@ def test_server_quote_above_listing_is_not_collapsed(found):
 def test_delivery_check_examples_and_wrap(found):
     empty = evaluate_delivery(status=200, body=b"", content_type="application/json")
     assert empty["code"] == "delivery_check" and empty["blocks_by_default"] is False
+    assert delivery_fact(empty) == "a 2xx is not a delivery. The body is empty."
+    assert "did not all match" not in delivery_fact(empty)
     assert empty["rule"] == "a 2xx is not a delivery"
     assert empty["checks"] == {"http_2xx": True, "body_non_empty": False, "content_type_sane": True, "schema": "not_declared"}
     assert empty["outcome"] == "not_a_delivery" and empty["effect"] == "warn"
@@ -220,6 +230,7 @@ def test_delivery_check_examples_and_wrap(found):
     assert delivered["outcome"] == "delivered" and delivered["effect"] == "allow" and delivered["checks"]["schema"] == "pass"
     undeclared = evaluate_delivery(status=200, body=b'{"ok": true}', content_type="application/json")
     assert undeclared["checks"]["schema"] == "not_declared" and undeclared["effect"] == "warn"
+    assert delivery_fact(undeclared) == "a 2xx is not a delivery. The seller declared no JSON schema for this response."
     assert evaluate_delivery(status=200, body=b"<p>x</p>", content_type="text/html")["checks"]["content_type_sane"] is False
 
     seen = []
@@ -308,3 +319,92 @@ def test_no_delivery_check_when_the_pre_payment_hook_blocks(found):
 
     guard.wrap_get(paid_get)(url)
     assert not any(any(r.code == "delivery_check" for r in d.reasons) for d in seen)
+
+
+def test_schema_work_budget_stops_a_huge_seller_schema():
+    schema = {"type": "array", "items": {"anyOf": [{"const": "nope"} for _ in range(1999)] + [{"const": "x"}]}}
+    body = json.dumps(["x"] * 40).encode()
+    started = time.perf_counter()
+    check = evaluate_delivery(status=200, body=body, content_type="application/json", schema=schema)
+    assert time.perf_counter() - started < 0.5
+    assert check["checks"]["schema"] == "not_evaluated"
+    assert check["effect"] == "warn"
+
+
+def test_strict_payto_rows_keep_non_solana_blocks_and_compare_solana(found):
+    facts = facts_from(found, "blockrun.ai", "preflight")
+    url = found["latest_probe"]["url"]
+
+    def codes(network, pay_to):
+        row = req(found, payTo=pay_to)
+        if network is None:
+            row.pop("network", None)
+        else:
+            row["network"] = network
+        decision = evaluate_payment(facts, row, url, STRICT_GUARD_POLICY)
+        return decision.action, [r.code for r in decision.reasons]
+
+    action, got = codes("eip155:8453", "nothex")
+    assert action == "block" and "payto_invalid" in got
+    action, got = codes("aptos:1", "garbage")
+    assert action == "block" and "payto_invalid" in got and "payto_base58_format" not in got
+    action, got = codes(None, "garbage")
+    assert action == "block" and "payto_invalid" in got
+    action, got = codes(SOL, "not-a-key")
+    assert action == "allow" and "payto_base58_format" in got and "payto_invalid" not in got
+    other = "So11111111111111111111111111111111111111112"
+    sol_facts = dataclasses.replace(facts, observed_network=SOL, known_pay_tos=[SOL_KEY])
+    swapped = evaluate_payment(sol_facts, req(found, network=SOL, payTo=other), url, STRICT_GUARD_POLICY)
+    swapped_codes = [r.code for r in swapped.reasons]
+    assert swapped.action == "block" and "payto_not_observed" in swapped_codes and "payto_invalid" not in swapped_codes
+    matched = evaluate_payment(sol_facts, req(found, network=SOL, payTo=SOL_KEY), url, STRICT_GUARD_POLICY)
+    matched_codes = [r.code for r in matched.reasons]
+    assert "payto_invalid" not in matched_codes
+    assert "payto_base58_format" not in matched_codes
+    assert "payto_not_observed" not in matched_codes
+    _action, unseen = codes(SOL, SOL_KEY)
+    assert "network_not_observed" in unseen
+    assert "payto_invalid" not in unseen
+
+
+def test_unread_streaming_response_does_not_raise(found):
+    class Unread:
+        status_code = 200
+
+        @property
+        def headers(self):
+            return {"content-type": "text/event-stream"}
+
+        @property
+        def content(self):
+            raise httpx.ResponseNotRead()
+
+    class Client:
+        host = "botsrated.com"
+
+        def preflight(self, host):
+            return type("P", (), {"found": True, "body": found})()
+
+    guard = PrePaymentGuard(client=Client())  # type: ignore[arg-type]
+    url = found["latest_probe"]["url"]
+
+    def paid_get(target, **kwargs):
+        guard.decide(url, req(found, extra={"nonce": NONCE, "name": "USD Coin", "version": "2"}), request_url=url)
+        return Unread()
+
+    assert guard.wrap_get(paid_get)(url).status_code == 200
+
+    g, _ = guard_with(found, hosted=False)
+    payload = {
+        "x402Version": 2,
+        "payload": {"authorization": {"from": "0x" + "a" * 40, "nonce": NONCE, "validBefore": "9999999999"}},
+        "accepted": req(found),
+    }
+
+    def paid_payment_get(target, **kwargs):
+        with g.request(target):
+            g.before_payment_creation(ctx(url, req(found)))
+            g.after_payment_creation({"payment_payload": payload, "selected_requirements": req(found)})
+        return Unread()
+
+    assert g.wrap_get(paid_payment_get)(url).status_code == 200

@@ -42,10 +42,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from botsrated.guard_checks import (
-    DELIVERY_FACT,
     PAYTO_BASE58_FACT,
     RepeatWindow,
     declared_output_schema,
+    delivery_fact,
     evaluate_delivery,
     listed_amount_of,
     nonce_of,
@@ -1146,7 +1146,10 @@ class PaymentGuard:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, self._lookup_sync(lookup), req, paid_url) if lookup else None
             remote = self._remember_remote(reasons, self._remote_sync(host, req) if self.remote_policy and host else None)
-            return self._finish("before_payment", reasons, host, facts, remote)
+            decision = self._finish("before_payment", reasons, host, facts, remote)
+            if decision.action == "allow":
+                self._note_repeat(ctx, _REQUEST_URL.get(), req, "record")
+            return decision
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -1156,7 +1159,10 @@ class PaymentGuard:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, await self._lookup_async(lookup), req, paid_url) if lookup else None
             remote = self._remember_remote(reasons, await self._remote_async(host, req) if self.remote_policy and host else None)
-            return self._finish("before_payment", reasons, host, facts, remote)
+            decision = self._finish("before_payment", reasons, host, facts, remote)
+            if decision.action == "allow":
+                self._note_repeat(ctx, _REQUEST_URL.get(), req, "record")
+            return decision
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -1248,33 +1254,40 @@ class PaymentGuard:
         sighting = self._sighting(ctx, request_url, req)
         now = self._repeats.now()
         hit = self._repeats.check(sighting, now) if mode == "check" else None
-        self._repeats.record(sighting, now)
+        if mode != "check":
+            self._repeats.record(sighting, now)
         return hit
 
     def _note_delivery(self, result: Any, note: dict[str, Any], url: str) -> None:
-        status = getattr(result, "status_code", None)
-        if status is None:
-            status = getattr(result, "status", None)
-        if not isinstance(status, int):
+        try:
+            status = getattr(result, "status_code", None)
+            if status is None:
+                status = getattr(result, "status", None)
+            if not isinstance(status, int):
+                return
+            try:
+                raw = result.content
+            except Exception:  # noqa: BLE001 - an unread stream must not raise out of the wrapper
+                return
+            if raw is None:
+                text = getattr(result, "text", None)
+                raw = text.encode() if isinstance(text, str) else b""
+            if not isinstance(raw, (bytes, bytearray)):
+                raw = b""
+            truncated = len(raw) > 1_000_000
+            body = bytes(raw[:1_000_000] if truncated else raw)
+            headers = getattr(result, "headers", None)
+            content_type = None
+            if headers is not None:
+                getter = getattr(headers, "get", None)
+                if callable(getter):
+                    content_type = getter("content-type")
+            check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
+            if check["effect"] != "warn":
+                return
+            self._emit(self._finish("payment_response", [GuardReason("delivery_check", "warn", delivery_fact(check))], try_host_of(url)))
+        except Exception:  # noqa: BLE001
             return
-        raw = getattr(result, "content", None)
-        if raw is None:
-            text = getattr(result, "text", None)
-            raw = text.encode() if isinstance(text, str) else b""
-        if not isinstance(raw, (bytes, bytearray)):
-            raw = b""
-        truncated = len(raw) > 1_000_000
-        body = bytes(raw[:1_000_000] if truncated else raw)
-        headers = getattr(result, "headers", None)
-        content_type = None
-        if headers is not None:
-            getter = getattr(headers, "get", None)
-            if callable(getter):
-                content_type = getter("content-type")
-        check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
-        if check["effect"] != "warn":
-            return
-        self._emit(self._finish("payment_response", [GuardReason("delivery_check", "warn", DELIVERY_FACT)], try_host_of(url)))
 
     def _after(self, ctx: Any) -> None:
         self._prune()

@@ -29,6 +29,20 @@ REPEAT_WINDOW_S = 60.0
 QUOTE_ABOVE_LISTING_FACT = "the quoted amount is above the listed amount."
 PAYTO_BASE58_FACT = "the payTo in this payment request is not a base58 32-byte public key."
 DELIVERY_FACT = "a 2xx is not a delivery. The body, content type, or declared JSON schema did not all match."
+
+
+def delivery_fact(check: dict[str, Any] | None = None) -> str:
+    """Fact sentence. Does not say a schema failed to match when the seller declared none."""
+    checks = (check or {}).get("checks") if isinstance(check, dict) else None
+    if not isinstance(checks, dict) or checks.get("schema") != "not_declared":
+        return DELIVERY_FACT
+    if not checks.get("body_non_empty"):
+        return "a 2xx is not a delivery. The body is empty."
+    if not checks.get("content_type_sane"):
+        return "a 2xx is not a delivery. The content type is not one this check accepts."
+    return "a 2xx is not a delivery. The seller declared no JSON schema for this response."
+
+
 DELIVERY_CONTENT_TYPES = frozenset({"application/json", "application/problem+json", "text/plain", "text/json"})
 
 _BANNED_FACT = re.compile(
@@ -37,7 +51,8 @@ _BANNED_FACT = re.compile(
 )
 _SCHEMA_KEYS = frozenset({"$schema", "type", "properties", "required", "items", "enum", "const", "anyOf", "oneOf", "allOf"})
 RepeatHit = Literal["payment_identifier", "tuple", "both"]
-SchemaStatus = Literal["not_declared", "pass", "fail"]
+SchemaStatus = Literal["not_declared", "pass", "fail", "not_evaluated"]
+SCHEMA_WORK_BUDGET = 20_000
 
 
 class RepeatWindow:
@@ -299,17 +314,46 @@ def _type_ok(spec: Any, value: Any) -> bool:
     return any(name == got or (name == "number" and got == "integer") for name in names)
 
 
-def schema_matches(schema: Any, value: Any, depth: int = 0) -> bool:
-    """JSON Schema keywords sellers declare: type, properties, required, items, enum, const, anyOf/oneOf/allOf."""
+def _take_work(work: dict[str, Any], n: int = 1) -> bool:
+    if work.get("exhausted") or work["left"] < n:
+        work["exhausted"] = True
+        work["left"] = 0
+        return False
+    work["left"] -= n
+    return True
+
+
+def schema_matches(schema: Any, value: Any, depth: int = 0, work: dict[str, Any] | None = None) -> bool:
+    """JSON Schema keywords sellers declare. Stops after SCHEMA_WORK_BUDGET visits."""
+    budget = work if work is not None else {"left": SCHEMA_WORK_BUDGET, "exhausted": False}
+    if not _take_work(budget):
+        return False
     if depth > 12 or not isinstance(schema, dict):
         return False
-    if isinstance(schema.get("allOf"), list) and not all(schema_matches(part, value, depth + 1) for part in schema["allOf"]):
-        return False
-    if isinstance(schema.get("anyOf"), list) and not any(schema_matches(part, value, depth + 1) for part in schema["anyOf"]):
-        return False
+    if isinstance(schema.get("allOf"), list):
+        for part in schema["allOf"]:
+            if not schema_matches(part, value, depth + 1, budget):
+                return False
+    if isinstance(schema.get("anyOf"), list):
+        matched = False
+        for part in schema["anyOf"]:
+            if budget.get("exhausted"):
+                return False
+            if schema_matches(part, value, depth + 1, budget):
+                matched = True
+                break
+        if not matched:
+            return False
     if isinstance(schema.get("oneOf"), list):
-        hits = [part for part in schema["oneOf"] if schema_matches(part, value, depth + 1)]
-        if len(hits) != 1:
+        hits = 0
+        for part in schema["oneOf"]:
+            if budget.get("exhausted"):
+                return False
+            if schema_matches(part, value, depth + 1, budget):
+                hits += 1
+            if hits > 1:
+                return False
+        if hits != 1:
             return False
     if "const" in schema and schema["const"] != value:
         return False
@@ -346,16 +390,18 @@ def schema_matches(schema: Any, value: Any, depth: int = 0) -> bool:
             for key, sub in properties.items():
                 if key in ("__proto__", "constructor", "prototype"):
                     continue
-                if key in value and not schema_matches(sub, value[key], depth + 1):
+                if key in value and not schema_matches(sub, value[key], depth + 1, budget):
                     return False
             if schema.get("additionalProperties") is False and any(key not in properties for key in value):
                 return False
     if "items" in schema or schema.get("type") == "array":
         if not isinstance(value, list):
             return False
-        if isinstance(schema.get("items"), dict) and not all(schema_matches(schema["items"], item, depth + 1) for item in value):
-            return False
-    return True
+        if isinstance(schema.get("items"), dict):
+            for item in value:
+                if not schema_matches(schema["items"], item, depth + 1, budget):
+                    return False
+    return not budget.get("exhausted")
 
 
 def evaluate_delivery(*, status: int, body: bytes | str, content_type: str | None = None, schema: Any = None, truncated: bool = False) -> dict[str, Any]:
@@ -368,7 +414,9 @@ def evaluate_delivery(*, status: int, body: bytes | str, content_type: str | Non
         if not truncated and _is_json_schema(schema):
             text = body if isinstance(body, str) else raw.decode(errors="replace")
             try:
-                schema_status = "pass" if schema_matches(schema, json.loads(text)) else "fail"
+                budget = {"left": SCHEMA_WORK_BUDGET, "exhausted": False}
+                matched = schema_matches(schema, json.loads(text), 0, budget)
+                schema_status = "not_evaluated" if budget["exhausted"] else "pass" if matched else "fail"
             except (json.JSONDecodeError, UnicodeError):
                 schema_status = "fail"
     checks = {

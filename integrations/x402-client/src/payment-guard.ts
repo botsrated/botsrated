@@ -28,8 +28,10 @@ import {
   paymentIdentifierOf,
   payToBase58Assessment,
   quoteAboveListingSentence,
+  readDeliveryBody,
   repeatFact,
   repeatSighting,
+  scheduleDeliveryCheck,
   splitPolicyReasons,
 } from "./guard-checks.js";
 import { checkPaymentState, rpcListOf, type OnchainOptions, type PaymentRecord, type PaymentState } from "./onchain.js";
@@ -934,7 +936,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     if (base58.applies && base58.valid === false) {
       reasons.push({ code: "payto_base58_format", effect: RULE_TO_EFFECT(policy.payToBase58Format, "warn"), rule: "payToBase58Format", fact: PAYTO_BASE58_FACT });
     }
-    const repeatHit = noteRepeat(ctx, requestUrl, req, "check");
+    const repeatSight = sightingOf(ctx, requestUrl, req);
+    const repeatHit = repeats.check(repeatSight, Date.now());
     if (repeatHit) {
       reasons.push({ code: "repeat_payment", effect: RULE_TO_EFFECT(policy.repeatPayment, "warn"), rule: "repeatPayment", fact: repeatFact(repeatHit) });
     }
@@ -998,6 +1001,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       }
     }
     const publicFacts = facts ? (({ _probed, ...rest }: any) => rest)(facts) : undefined;
+    // A blocked decision did not create a payment, so it is not a later repeat.
+    if (!reasons.some((r) => r.effect === "block") || dryRun) repeats.record(repeatSight, Date.now());
     return finish({
       phase: "before_payment",
       host,
@@ -1067,7 +1072,7 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     const now = Date.now();
     const sighting = sightingOf(ctx, requestUrl, req);
     const hit = mode === "check" ? repeats.check(sighting, now) : undefined;
-    repeats.record(sighting, now);
+    if (mode !== "check") repeats.record(sighting, now);
     return hit;
   }
 
@@ -1080,28 +1085,21 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
   }
 
   async function noteDelivery(res: Response, store: Ctx): Promise<void> {
-    let body: Uint8Array = new Uint8Array();
-    let truncated = false;
-    try {
-      const buf = await res.clone().arrayBuffer();
-      truncated = buf.byteLength > 1_000_000;
-      body = new Uint8Array(truncated ? buf.slice(0, 1_000_000) : buf);
-    } catch {
-      body = new Uint8Array();
-    }
+    const read = await readDeliveryBody(res);
+    if (read.skipped) return;
     const check = evaluateDelivery({
       status: res.status,
-      body,
+      body: read.body,
       contentType: res.headers.get("content-type"),
       schema: store.outputSchema,
-      truncated,
+      truncated: read.truncated,
     });
     if (check.effect !== "warn") return;
     emit(
       finish({
         phase: "payment_response",
         ...(store.requestUrl && tryHostOf(store.requestUrl) ? { host: tryHostOf(store.requestUrl) } : {}),
-        reasons: [{ code: "delivery_check", effect: "warn", fact: deliveryFact() }],
+        reasons: [{ code: "delivery_check", effect: "warn", fact: deliveryFact(check) }],
       }),
     );
   }
@@ -1200,15 +1198,10 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     },
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
       return (async (input: any, init?: any) => {
-        const store: Ctx = { ...currentCtx(), requestUrl: requestUrlOf(input) };
+        const parent = currentCtx();
+        const store: Ctx = { requestUrl: requestUrlOf(input), ...(parent.operationKey !== undefined ? { operationKey: parent.operationKey } : {}) };
         const res = await (als ? als.run(store, () => fetchWithPayment(input, init)) : fetchWithPayment(input, init));
-        if (store.paid && res instanceof Response) {
-          try {
-            await noteDelivery(res, store);
-          } catch {
-            /* a delivery note never changes the response the caller receives */
-          }
-        }
+        if (store.paid && res instanceof Response) scheduleDeliveryCheck(() => noteDelivery(res, store));
         return res;
       }) as F;
     },

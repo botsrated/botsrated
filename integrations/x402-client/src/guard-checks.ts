@@ -226,7 +226,30 @@ export function declaredOutputSchema(...sources: unknown[]): Record<string, unkn
   return undefined;
 }
 
-export type SchemaStatus = "not_declared" | "pass" | "fail";
+export type SchemaStatus = "not_declared" | "pass" | "fail" | "not_evaluated";
+/** How many schema nodes one delivery check will visit. Past this, the schema is not evaluated and the check warns. */
+export const SCHEMA_WORK_BUDGET = 20_000;
+/** Bytes read from a response body for the delivery check. The reader stops here; it does not buffer the rest first. */
+export const DELIVERY_READ_CAP = 1_000_000;
+
+export interface SchemaWork {
+  left: number;
+  exhausted: boolean;
+}
+
+export function schemaWork(): SchemaWork {
+  return { left: SCHEMA_WORK_BUDGET, exhausted: false };
+}
+
+function takeWork(work: SchemaWork, n = 1): boolean {
+  if (work.exhausted || work.left < n) {
+    work.exhausted = true;
+    work.left = 0;
+    return false;
+  }
+  work.left -= n;
+  return true;
+}
 
 export interface DeliveryCheck {
   code: "delivery_check";
@@ -267,18 +290,39 @@ function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-/** A small JSON Schema check for the keywords sellers declare (type, properties, required, items, enum, const, anyOf/oneOf/allOf). */
-export function schemaMatches(schema: unknown, value: unknown, depth = 0): boolean {
+/** A small JSON Schema check. Stops when {@link SCHEMA_WORK_BUDGET} is used up so a seller schema cannot tie up the process. */
+export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: SchemaWork = schemaWork()): boolean {
+  if (!takeWork(work)) return false;
   if (depth > 12 || !schema || typeof schema !== "object" || Array.isArray(schema)) return false;
   const s = schema as Record<string, unknown>;
-  if (Array.isArray(s.allOf) && !s.allOf.every((part) => schemaMatches(part, value, depth + 1))) return false;
-  if (Array.isArray(s.anyOf) && !s.anyOf.some((part) => schemaMatches(part, value, depth + 1))) return false;
+  if (Array.isArray(s.allOf)) {
+    for (const part of s.allOf) if (!schemaMatches(part, value, depth + 1, work)) return false;
+  }
+  if (Array.isArray(s.anyOf)) {
+    let any = false;
+    for (const part of s.anyOf) {
+      if (work.exhausted) return false;
+      if (schemaMatches(part, value, depth + 1, work)) {
+        any = true;
+        break;
+      }
+    }
+    if (!any) return false;
+  }
   if (Array.isArray(s.oneOf)) {
-    const hits = s.oneOf.filter((part) => schemaMatches(part, value, depth + 1));
-    if (hits.length !== 1) return false;
+    let hits = 0;
+    for (const part of s.oneOf) {
+      if (work.exhausted) return false;
+      if (schemaMatches(part, value, depth + 1, work)) hits += 1;
+      if (hits > 1) return false;
+    }
+    if (hits !== 1) return false;
   }
   if (Object.prototype.hasOwnProperty.call(s, "const") && !sameJson(s.const, value)) return false;
-  if (Array.isArray(s.enum) && !s.enum.some((item) => sameJson(item, value))) return false;
+  if (Array.isArray(s.enum)) {
+    if (!takeWork(work, Math.min(s.enum.length, 1))) return false;
+    if (!s.enum.some((item) => sameJson(item, value))) return false;
+  }
   if (s.type !== undefined && !typeOk(s.type, value)) return false;
   if (typeof s.minLength === "number" && (typeof value !== "string" || value.length < s.minLength)) return false;
   if (typeof s.maxLength === "number" && (typeof value !== "string" || value.length > s.maxLength)) return false;
@@ -294,7 +338,7 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0): boole
     if (s.properties && typeof s.properties === "object" && !Array.isArray(s.properties)) {
       for (const [key, sub] of Object.entries(s.properties as Record<string, unknown>)) {
         if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
-        if (Object.prototype.hasOwnProperty.call(obj, key) && !schemaMatches(sub, obj[key], depth + 1)) return false;
+        if (Object.prototype.hasOwnProperty.call(obj, key) && !schemaMatches(sub, obj[key], depth + 1, work)) return false;
       }
       if (s.additionalProperties === false) {
         const allowed = new Set(Object.keys(s.properties as object));
@@ -305,10 +349,10 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0): boole
   if (s.items !== undefined || s.type === "array") {
     if (!Array.isArray(value)) return false;
     if (s.items && typeof s.items === "object" && !Array.isArray(s.items)) {
-      if (!value.every((item) => schemaMatches(s.items, item, depth + 1))) return false;
+      for (const item of value) if (!schemaMatches(s.items, item, depth + 1, work)) return false;
     }
   }
-  return true;
+  return !work.exhausted;
 }
 
 /**
@@ -326,7 +370,9 @@ export function evaluateDelivery(input: { status: number; body: Uint8Array | str
     if (!input.truncated && isJsonSchema(input.schema)) {
       const text = typeof input.body === "string" ? input.body : new TextDecoder().decode(bytes);
       try {
-        schema = schemaMatches(input.schema, JSON.parse(text)) ? "pass" : "fail";
+        const work = schemaWork();
+        const matched = schemaMatches(input.schema, JSON.parse(text), 0, work);
+        schema = work.exhausted ? "not_evaluated" : matched ? "pass" : "fail";
       } catch {
         schema = "fail";
       }
@@ -343,8 +389,67 @@ export function evaluateDelivery(input: { status: number; body: Uint8Array | str
   };
 }
 
-export function deliveryFact(): string {
-  return "a 2xx is not a delivery. The body, content type, or declared JSON schema did not all match.";
+export function deliveryFact(check?: DeliveryCheck): string {
+  if (!check || check.checks.schema !== "not_declared") {
+    return "a 2xx is not a delivery. The body, content type, or declared JSON schema did not all match.";
+  }
+  if (!check.checks.body_non_empty) return "a 2xx is not a delivery. The body is empty.";
+  if (!check.checks.content_type_sane) return "a 2xx is not a delivery. The content type is not one this check accepts.";
+  return "a 2xx is not a delivery. The seller declared no JSON schema for this response.";
+}
+
+const STREAMING_TYPES = new Set(["text/event-stream", "application/x-ndjson", "multipart/x-mixed-replace"]);
+
+/** Streaming responses are not read. Other bodies are read only up to {@link DELIVERY_READ_CAP}. */
+export function isStreamingContentType(header: string | null | undefined): boolean {
+  if (typeof header !== "string") return false;
+  const media = header.split(";")[0]?.trim().toLowerCase() ?? "";
+  return STREAMING_TYPES.has(media);
+}
+
+/** Read at most {@link DELIVERY_READ_CAP} bytes, then cancel. Does not buffer the unread remainder. */
+export async function readDeliveryBody(res: Response): Promise<{ body: Uint8Array; truncated: boolean; skipped: boolean }> {
+  const contentType = res.headers.get("content-type");
+  if (isStreamingContentType(contentType)) return { body: new Uint8Array(), truncated: false, skipped: true };
+  const reader = res.clone().body?.getReader();
+  if (!reader) return { body: new Uint8Array(), truncated: false, skipped: false };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  try {
+    while (total < DELIVERY_READ_CAP) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      const room = DELIVERY_READ_CAP - total;
+      if (value.byteLength > room) {
+        chunks.push(value.subarray(0, room));
+        total += room;
+        truncated = true;
+        break;
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      /* the caller still owns the original body */
+    }
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { body, truncated, skipped: false };
+}
+
+/** Run a delivery note without holding the response. Errors are swallowed. */
+export function scheduleDeliveryCheck(task: () => Promise<void>): void {
+  void task().catch(() => undefined);
 }
 
 export interface ServerReasonSplit {

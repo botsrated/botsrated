@@ -17,10 +17,10 @@ from botsrated.client import (
     usd_to_atomic,
 )
 from botsrated.guard_checks import (
-    DELIVERY_FACT,
     PAYTO_BASE58_FACT,
     RepeatWindow,
     declared_output_schema,
+    delivery_fact,
     evaluate_delivery,
     listed_amount_of,
     nonce_of,
@@ -41,9 +41,8 @@ from botsrated.util import (
     clean_text,
     is_address,
     is_atomic_amount,
+    is_base58_pubkey,
     network_family,
-    pay_to_format_for,
-    pay_to_invalid_fact,
     same_site_host,
     try_host_of,
 )
@@ -143,12 +142,16 @@ def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "ch
     pay_tos = [probe.get("live_payTo"), measured.get("last_quoted_payTo")]
     freshness = body.get("freshness") or {}
     listing_pay_to = listing.get("payTo")
+
+    def stored_pay_to(value: str) -> str:
+        return value if is_base58_pubkey(value) else value.lower()
+
     return SellerFacts(
         covered=body.get("found") is not False,
         host=host,
         source=source,
-        known_pay_tos=sorted({p.lower() for p in pay_tos if isinstance(p, str) and p}),
-        listing_pay_to=listing_pay_to.lower() if isinstance(listing_pay_to, str) and listing_pay_to else None,
+        known_pay_tos=sorted({stored_pay_to(p) for p in pay_tos if isinstance(p, str) and p}),
+        listing_pay_to=stored_pay_to(listing_pay_to) if isinstance(listing_pay_to, str) and listing_pay_to else None,
         observed_network=probe.get("live_network") or listing.get("network"),
         probed_url=probe.get("url") or (body.get("route_probed") or {}).get("url"),
         observed_amount=probe.get("live_amount") or measured.get("last_quoted_amount_atomic"),
@@ -203,10 +206,32 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
         observed = clean_text(facts.observed_network, 40) if facts.observed_network else None
         known = [x.lower() for x in facts.known_pay_tos if is_address(x)]
         listing = facts.listing_pay_to.lower() if is_address(facts.listing_pay_to) else None
-        pay_to_format = pay_to_format_for(req.get("network"), raw_pay_to)
-        # A Solana format failure is payto_base58_format, not this hex rule.
-        if pay_to_format == "invalid" and network_family(req.get("network")) != "solana":
-            add("payto_invalid", pay_to_invalid_fact(req.get("network")), p.pay_to_mismatch)
+        family = network_family(req.get("network"))
+        # A non-hex payTo on any family that is not Solana, including an unknown or missing network, stays payto_invalid.
+        if family == "solana" and is_base58_pubkey(raw_pay_to):
+            known_sol = [x for x in facts.known_pay_tos if is_base58_pubkey(x)]
+            listing_sol = facts.listing_pay_to if is_base58_pubkey(facts.listing_pay_to) else None
+            if observed and observed != network:
+                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
+            elif not observed and (facts.known_pay_tos or facts.listing_pay_to):
+                add("network_not_observed", f"the payTo addresses BotsRated's probes recorded for {host} are eip155 addresses, not {network} addresses.", "info")
+            elif facts.known_pay_tos and raw_pay_to not in known_sol:
+                add(
+                    "payto_not_observed",
+                    f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed or network}.",
+                    p.pay_to_mismatch,
+                )
+            elif not facts.known_pay_tos and facts.listing_pay_to:
+                if listing_sol and raw_pay_to == listing_sol:
+                    add("payto_listing_only", f"the payTo matches {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.", "info")
+                else:
+                    add(
+                        "payto_not_observed",
+                        f"the payTo in this payment request differs from the payTo in {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.",
+                        p.pay_to_mismatch,
+                    )
+        elif family != "solana" and not is_address(raw_pay_to):
+            add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.pay_to_mismatch)
         elif is_address(raw_pay_to):
             if observed and observed != network:
                 add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
@@ -342,39 +367,46 @@ class PrePaymentGuard:
         )
         now = self._repeats.now()
         hit = self._repeats.check(sighting, now)
-        self._repeats.record(sighting, now)
         effect = self.policy.repeat_payment
         if hit and effect != "allow":
             decision.reasons.append(Reason("repeat_payment", repeat_fact(hit), "block" if effect == "block" else "warn"))
             if effect == "block":
                 decision.action = "block"
+        if decision.action == "allow":
+            self._repeats.record(sighting, now)
         return decision
 
     def _note_delivery(self, result: Any, note: dict[str, Any], url: str) -> None:
-        if not note.get("paid"):
-            return
-        status = getattr(result, "status_code", None)
-        if status is None:
-            status = getattr(result, "status", None)
-        if not isinstance(status, int):
-            return
-        raw = getattr(result, "content", None)
-        if raw is None:
-            text = getattr(result, "text", None)
-            raw = text.encode() if isinstance(text, str) else b""
-        if not isinstance(raw, (bytes, bytearray)):
-            raw = b""
-        truncated = len(raw) > 1_000_000
-        body = bytes(raw[:1_000_000] if truncated else raw)
-        headers = getattr(result, "headers", None)
-        content_type = headers.get("content-type") if hasattr(headers, "get") else None
-        check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
-        if check["effect"] != "warn" or self.on_decision is None:
-            return
-        host = try_host_of(url)
-        decision = Decision("allow", host, [Reason("delivery_check", DELIVERY_FACT, "warn")])
         try:
-            self.on_decision(decision)
+            if not note.get("paid"):
+                return
+            status = getattr(result, "status_code", None)
+            if status is None:
+                status = getattr(result, "status", None)
+            if not isinstance(status, int):
+                return
+            try:
+                raw = result.content
+            except Exception:  # noqa: BLE001 - an unread stream must not raise out of the wrapper
+                return
+            if raw is None:
+                text = getattr(result, "text", None)
+                raw = text.encode() if isinstance(text, str) else b""
+            if not isinstance(raw, (bytes, bytearray)):
+                raw = b""
+            truncated = len(raw) > 1_000_000
+            body = bytes(raw[:1_000_000] if truncated else raw)
+            headers = getattr(result, "headers", None)
+            content_type = headers.get("content-type") if hasattr(headers, "get") else None
+            check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
+            if check["effect"] != "warn" or self.on_decision is None:
+                return
+            host = try_host_of(url)
+            decision = Decision("allow", host, [Reason("delivery_check", delivery_fact(check), "warn")])
+            try:
+                self.on_decision(decision)
+            except Exception:  # noqa: BLE001
+                return
         except Exception:  # noqa: BLE001
             return
 

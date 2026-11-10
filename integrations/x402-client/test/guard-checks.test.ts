@@ -1,10 +1,11 @@
 // The four checks from the live Guard page: repeat_payment, delivery_check, payto_base58_format, quote_above_listing.
 import { describe, expect, it, vi } from "vitest";
 import { BASE_USDC } from "../src/util.js";
-import { createPrePaymentGuard, evaluatePayment, factsFrom } from "../src/index.js";
+import { createPrePaymentGuard, evaluatePayment, factsFrom, mcpPaymentApprover, strictGuardPolicy } from "../src/index.js";
 import {
   REPLAY_TESTED,
   createPaymentGuard,
+  deliveryFact,
   evaluateDelivery,
   interpretPolicyBody,
   payToBase58Assessment,
@@ -18,6 +19,7 @@ const SOL_KEY = "EPjFWdd5AufqSSQEm2Qn1xzybapC8G4wEGGkZwyTDt1v";
 const PAY_ID = "pay_0123456789abcdef0123456789abcdef";
 const NONCE = "0x" + "ab".repeat(32);
 const SCHEMA = { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } };
+const flushDelivery = () => new Promise((resolve) => setTimeout(resolve, 30));
 
 function withId(id = PAY_ID) {
   return pr(SELLER_URL, [req()], { "payment-identifier": { info: { id } } });
@@ -202,6 +204,8 @@ describe("quote_above_listing", () => {
 describe("delivery_check", () => {
   it("treats an empty 2xx as not a delivery and a matching schema as delivered", () => {
     const empty = evaluateDelivery({ status: 200, body: "", contentType: "application/json" });
+    expect(deliveryFact(empty)).toBe("a 2xx is not a delivery. The body is empty.");
+    expect(deliveryFact(empty)).not.toContain("did not all match");
     expect(empty).toMatchObject({
       code: "delivery_check",
       blocks_by_default: false,
@@ -217,6 +221,7 @@ describe("delivery_check", () => {
     const undeclared = evaluateDelivery({ status: 200, body: JSON.stringify({ ok: true }), contentType: "application/json" });
     expect(undeclared.checks.schema).toBe("not_declared");
     expect(undeclared.effect).toBe("warn");
+    expect(deliveryFact(undeclared)).toBe("a 2xx is not a delivery. The seller declared no JSON schema for this response.");
     expect(evaluateDelivery({ status: 200, body: "<p>x</p>", contentType: "text/html" }).checks.content_type_sane).toBe(false);
     expect(evaluateDelivery({ status: 500, body: JSON.stringify({ ok: true }), contentType: "application/json", schema: SCHEMA }).effect).toBe("warn");
   });
@@ -234,6 +239,7 @@ describe("delivery_check", () => {
       await g.hooks.afterPaymentCreation({ paymentPayload: payload });
       return new Response("", { status: 200, headers: { "content-type": "application/json" } });
     })(SELLER_URL);
+    await flushDelivery();
     const delivery = seen.filter((d) => d.reasons.some((r) => r.code === "delivery_check"));
     expect(delivery).toHaveLength(1);
     expect(delivery[0].action).toBe("allow");
@@ -250,6 +256,7 @@ describe("delivery_check", () => {
       await ok.hooks.afterPaymentCreation({ paymentPayload: payload });
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
     })(SELLER_URL);
+    await flushDelivery();
     expect(matched.some((d) => d.reasons.some((r) => r.code === "delivery_check"))).toBe(false);
   });
 
@@ -263,6 +270,7 @@ describe("delivery_check", () => {
       await guard.decide(SELLER_URL, req({ extra: { nonce: NONCE } }), SELLER_URL);
       return new Response("", { status: 200, headers: { "content-type": "application/json" } });
     })(SELLER_URL);
+    await flushDelivery();
     expect(seen.some((d) => d.reasons.some((r) => r.code === "delivery_check" && r.effect === "warn"))).toBe(true);
     const second = await guard.decide(SELLER_URL, req({ extra: { nonce: NONCE } }), SELLER_URL);
     expect(second.reasons).toContainEqual(expect.objectContaining({ code: "repeat_payment", effect: "warn" }));
@@ -285,6 +293,122 @@ describe("delivery_check", () => {
       expect(out).toMatchObject({ abort: true });
       return new Response("", { status: 200, headers: { "content-type": "application/json" } });
     })(SELLER_URL);
+    await flushDelivery();
     expect(seen.some((d) => d.reasons.some((r) => r.code === "delivery_check"))).toBe(false);
+  });
+
+  it("returns a never-ending stream without waiting for the body", async () => {
+    const g = createPaymentGuard({ hosted: false });
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(1024));
+      },
+    });
+    const payload = {
+      x402Version: 2,
+      payload: { authorization: { from: "0x" + "a".repeat(40), nonce: NONCE, validBefore: "9999999999" } },
+      accepted: req(),
+    };
+    const raced = await Promise.race([
+      g.wrapFetch(async () => {
+        await g.hooks.beforePaymentCreation({ paymentRequired: pr(SELLER_URL), selectedRequirements: req() });
+        await g.hooks.afterPaymentCreation({ paymentPayload: payload });
+        return new Response(stream, { headers: { "content-type": "application/json" } });
+      })(SELLER_URL).then(async (res) => {
+        await res.body?.cancel();
+        return "returned";
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 200)),
+    ]);
+    expect(raced).toBe("returned");
+    const events = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new TextEncoder().encode("data: hi\n\n"));
+      },
+    });
+    const pre = createPrePaymentGuard({
+      client: { unpaidFetch: () => async () => json(FOUND), unpaidTimeoutMs: () => 1000, host: "botsrated.com", preflight: async () => ({ found: true, body: FOUND }) } as never,
+    });
+    const preRaced = await Promise.race([
+      pre.wrapFetch(async () => {
+        await pre.decide(SELLER_URL, req(), SELLER_URL);
+        return new Response(events, { headers: { "content-type": "text/event-stream" } });
+      })(SELLER_URL).then(async (res) => {
+        await res.body?.cancel();
+        return "returned";
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("hung"), 200)),
+    ]);
+    expect(preRaced).toBe("returned");
+  });
+});
+
+describe("schema work budget and strict payTo rows", () => {
+  it("stops a huge seller schema instead of tying up the process", () => {
+    const schema = { type: "array", items: { anyOf: [...Array.from({ length: 1999 }, () => ({ const: "nope" })), { const: "x" }] } };
+    const body = JSON.stringify(Array.from({ length: 40 }, () => "x"));
+    const started = Date.now();
+    const check = evaluateDelivery({ status: 200, body, contentType: "application/json", schema });
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(check.checks.schema).toBe("not_evaluated");
+    expect(check.effect).toBe("warn");
+  });
+
+  it("keeps strict blocks for non-solana payTo and compares a valid Solana payTo", () => {
+    const facts = factsFrom(FOUND, "blockrun.ai", "preflight");
+    const strict = strictGuardPolicy;
+    const codes = (network: string | undefined, payTo: string) => {
+      const row = network === undefined ? { ...req(), network: undefined, payTo } : req({ network, payTo });
+      const d = evaluatePayment(facts, row, SELLER_URL, strict);
+      return { action: d.action, codes: d.reasons.map((r) => r.code) };
+    };
+    expect(codes("eip155:8453", "nothex")).toMatchObject({ action: "block", codes: expect.arrayContaining(["payto_invalid"]) });
+    expect(codes("aptos:1", "garbage").action).toBe("block");
+    expect(codes("aptos:1", "garbage").codes).toContain("payto_invalid");
+    expect(codes("aptos:1", "garbage").codes).not.toContain("payto_base58_format");
+    const missing = evaluatePayment(facts, { ...req(), network: undefined, payTo: "garbage" }, SELLER_URL, strict);
+    expect(missing.action).toBe("block");
+    expect(missing.reasons.map((r) => r.code)).toContain("payto_invalid");
+    const invalidSolana = codes(SOL, "not-a-key");
+    expect(invalidSolana.action).toBe("allow");
+    expect(invalidSolana.codes).toContain("payto_base58_format");
+    expect(invalidSolana.codes).not.toContain("payto_invalid");
+    const otherSol = "So11111111111111111111111111111111111111112";
+    const swapped = evaluatePayment(
+      { ...facts, observedNetwork: SOL, knownPayTos: [SOL_KEY] },
+      req({ network: SOL, payTo: otherSol }),
+      SELLER_URL,
+      strict,
+    );
+    expect(swapped.action).toBe("block");
+    expect(swapped.reasons.map((r) => r.code)).toContain("payto_not_observed");
+    expect(swapped.reasons.map((r) => r.code)).not.toContain("payto_invalid");
+    const matched = evaluatePayment(
+      { ...facts, observedNetwork: SOL, knownPayTos: [SOL_KEY] },
+      req({ network: SOL, payTo: SOL_KEY }),
+      SELLER_URL,
+      strict,
+    );
+    expect(matched.reasons.map((r) => r.code)).not.toContain("payto_invalid");
+    expect(matched.reasons.map((r) => r.code)).not.toContain("payto_base58_format");
+    expect(matched.reasons.map((r) => r.code)).not.toContain("payto_not_observed");
+    const unseenOnBase = codes(SOL, SOL_KEY);
+    expect(unseenOnBase.codes.length).toBeGreaterThan(0);
+    expect(unseenOnBase.codes).toContain("network_not_observed");
+  });
+
+  it("does not treat a second accept in one 402 as a repeat payment", async () => {
+    const seen: GuardDecision[] = [];
+    const guard = createPrePaymentGuard({
+      client: { unpaidFetch: () => async () => json(FOUND), unpaidTimeoutMs: () => 1000, host: "botsrated.com", preflight: async () => ({ found: true, body: FOUND }) } as never,
+      onDecision: (d) => seen.push(d),
+    });
+    const approve = mcpPaymentApprover(guard, SELLER_URL, { onDecision: (d) => seen.push(d) });
+    const paymentRequired = pr(SELLER_URL, [req({ amount: "1000" }), req({ amount: "2000" })], { "payment-identifier": { info: { id: PAY_ID } } });
+    expect(await approve({ paymentRequired })).toBe(true);
+    expect(seen).toHaveLength(2);
+    expect(seen.flatMap((d) => d.reasons).map((r) => r.code)).not.toContain("repeat_payment");
+    const later = await guard.decide(SELLER_URL, req({ amount: "1000" }), SELLER_URL, paymentRequired);
+    expect(later.reasons.map((r) => r.code)).toContain("repeat_payment");
   });
 });

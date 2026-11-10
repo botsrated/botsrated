@@ -7,7 +7,7 @@
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
-import { PAYTO_BASE58_FACT, RepeatWindow, declaredOutputSchema, deliveryFact, evaluateDelivery, listedAmountOf, nonceOf, paymentIdentifierOf, payToBase58Assessment, quoteAboveListingSentence, repeatFact, repeatSighting } from "./guard-checks.js";
+import { PAYTO_BASE58_FACT, RepeatWindow, declaredOutputSchema, deliveryFact, evaluateDelivery, listedAmountOf, nonceOf, paymentIdentifierOf, payToBase58Assessment, quoteAboveListingSentence, readDeliveryBody, repeatFact, repeatSighting, scheduleDeliveryCheck } from "./guard-checks.js";
 import { normalizeRemotePolicy, policyQuote, requestPolicyCheck, type RemotePolicyOptions } from "./payment-guard.js";
 import {
   BASE_MAINNET,
@@ -20,8 +20,8 @@ import {
   cleanText,
   hostOf,
   isAddress,
+  isBase58Pubkey,
   networkFamily,
-  payToFormatFor,
   payToInvalidFact,
   sameSiteHost,
   tryHostOf,
@@ -578,11 +578,13 @@ export function factsFrom(body: Record<string, any>, host: string, source: "pref
   const listing = body.listing ?? {};
   const rw = body.recent_window ?? measured.recent_window ?? {};
   const payTos = [probe.live_payTo, measured.last_quoted_payTo].filter((x): x is string => typeof x === "string" && x.length > 0);
+  const base58PayTo = (p: string): boolean => isBase58Pubkey(p);
+  const storedPayTo = (p: string) => (base58PayTo(p) ? p : p.toLowerCase());
   return {
     covered: body.found !== false,
     host,
-    knownPayTos: [...new Set(payTos.map((p) => p.toLowerCase()))],
-    listingPayTo: typeof listing.payTo === "string" && listing.payTo ? listing.payTo.toLowerCase() : undefined,
+    knownPayTos: [...new Set(payTos.map(storedPayTo))],
+    listingPayTo: typeof listing.payTo === "string" && listing.payTo ? storedPayTo(listing.payTo) : undefined,
     observedNetwork: probe.live_network ?? listing.network,
     probedUrl: probe.url ?? body.route_probed?.url,
     observedAmount: probe.live_amount ?? measured.last_quoted_amount_atomic,
@@ -694,9 +696,34 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
     const observedNetwork = facts.observedNetwork ? cleanText(facts.observedNetwork, 40) : undefined;
     const known = facts.knownPayTos.filter(isAddress).map((x) => x.toLowerCase());
     const listing = isAddress(facts.listingPayTo) ? facts.listingPayTo.toLowerCase() : undefined;
-    const payToFormat = payToFormatFor(req?.network, req?.payTo);
-    // A Solana format failure is payto_base58_format, not this hex rule.
-    if (payToFormat === "invalid" && networkFamily(req?.network) !== "solana") {
+    const family = networkFamily(req?.network);
+    const rawPayTo = typeof req?.payTo === "string" ? req.payTo : "";
+    // A non-hex payTo on any family that is not Solana, including an unknown or missing network, stays payto_invalid.
+    if (family === "solana" && isBase58Pubkey(rawPayTo)) {
+      const knownSol = facts.knownPayTos.filter((p) => isBase58Pubkey(p));
+      const listingSol = facts.listingPayTo && isBase58Pubkey(facts.listingPayTo) ? facts.listingPayTo : undefined;
+      if (observedNetwork && observedNetwork !== network) {
+        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
+      } else if (!observedNetwork && (facts.knownPayTos.length > 0 || facts.listingPayTo)) {
+        add("network_not_observed", `the payTo addresses BotsRated's probes recorded for ${host} are eip155 addresses, not ${network} addresses.`, "info");
+      } else if (facts.knownPayTos.length > 0 && !knownSol.includes(rawPayTo)) {
+        add(
+          "payto_not_observed",
+          `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork ?? network}.`,
+          p.payToMismatch,
+        );
+      } else if (facts.knownPayTos.length === 0 && facts.listingPayTo) {
+        if (listingSol && rawPayTo === listingSol) {
+          add("payto_listing_only", `the payTo matches ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`, "info");
+        } else {
+          add(
+            "payto_not_observed",
+            `the payTo in this payment request differs from the payTo in ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`,
+            p.payToMismatch,
+          );
+        }
+      }
+    } else if (family !== "solana" && !isAddress(rawPayTo)) {
       add("payto_invalid", payToInvalidFact(req?.network), p.payToMismatch);
     } else if (isAddress(req?.payTo)) {
       if (observedNetwork && observedNetwork !== network) {
@@ -768,7 +795,9 @@ export interface PrePaymentGuard {
    * @param requestUrl The URL actually being requested and paid. When given, its host is looked up, and the payment
    *   is blocked (even with `failOpen`) if `resourceUrl` names a different host. Only host names go to BotsRated.
    */
-  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike): Promise<Decision>;
+  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike, repeatMode?: "check" | "both"): Promise<Decision>;
+  /** Remember a payment sighting without checking it. Used after every accept in one 402 has been checked. */
+  noteRepeat(requestUrl: string | undefined, req: PaymentRequirementsLike, paymentRequired?: PaymentRequiredLike): void;
   /**
    * Register with `x402Client.onBeforePaymentCreation(guard.beforePaymentCreation)`. The URL being paid comes from
    * {@link payingRequest} / {@link PrePaymentGuard.wrapFetch}; without it the host is read from the 402's `resource.url`.
@@ -842,21 +871,30 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     return decision;
   }
 
-  function applyRepeat(decision: Decision, req: PaymentRequirementsLike, requestUrl: string | undefined, paymentRequired?: PaymentRequiredLike): Decision {
-    const sighting = repeatSighting({
+  function sightingFor(req: PaymentRequirementsLike, requestUrl: string | undefined, paymentRequired?: PaymentRequiredLike) {
+    return repeatSighting({
       paymentId: paymentIdentifierOf(paymentRequired, req),
       url: requestUrl,
       amount: req?.amount,
       nonce: nonceOf(req),
     });
+  }
+
+  function applyRepeat(decision: Decision, req: PaymentRequirementsLike, requestUrl: string | undefined, paymentRequired?: PaymentRequiredLike, repeatMode: "check" | "both" = "both"): Decision {
+    const sighting = sightingFor(req, requestUrl, paymentRequired);
     const hit = repeats.check(sighting, Date.now());
-    repeats.record(sighting, Date.now());
     const effect = options.policy?.repeatPayment ?? "warn";
     if (hit && effect !== "allow") {
       decision.reasons.push({ code: "repeat_payment", detail: repeatFact(hit), effect: effect === "block" ? "block" : "warn" });
       if (effect === "block") decision.action = "block";
     }
+    // A blocked decision did not pay, so it is not a later repeat. "check" waits until every accept in one 402 is seen.
+    if (repeatMode !== "check" && decision.action === "allow") repeats.record(sighting, Date.now());
     return decision;
+  }
+
+  function noteRepeat(requestUrl: string | undefined, req: PaymentRequirementsLike, paymentRequired?: PaymentRequiredLike): void {
+    repeats.record(sightingFor(req, requestUrl, paymentRequired), Date.now());
   }
 
   function markPaid(decision: Decision): void {
@@ -864,7 +902,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     if (note) note.paid = decision.action === "allow";
   }
 
-  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike): Promise<Decision> {
+  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike, repeatMode: "check" | "both" = "both"): Promise<Decision> {
     const note = paidNotes?.getStore();
     if (note) {
       note.req = req;
@@ -873,7 +911,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     }
     let decision: Decision;
     try {
-      decision = applyRepeat(await decideInner(resourceUrl, req, requestUrl), req, requestUrl ?? resourceUrl, paymentRequired);
+      decision = applyRepeat(await decideInner(resourceUrl, req, requestUrl), req, requestUrl ?? resourceUrl, paymentRequired, repeatMode);
     } catch {
       decision = openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
     }
@@ -1000,6 +1038,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
   return {
     client,
     decide,
+    noteRepeat,
     beforePaymentCreation: (ctx) => hook(ctx, currentRequestUrl()),
     forRequest: (requestUrl) => (ctx) => hook(ctx, requestUrl),
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
@@ -1008,32 +1047,25 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
         const run = () => payingRequest(note.url, () => fetchWithPayment(input, init));
         const res = await (paidNotes ? paidNotes.run(note, run) : run());
         if (note.paid && res instanceof Response) {
-          try {
-            let body: Uint8Array = new Uint8Array();
-            let truncated = false;
-            try {
-              const buf = await res.clone().arrayBuffer();
-              truncated = buf.byteLength > 1_000_000;
-              body = new Uint8Array(truncated ? buf.slice(0, 1_000_000) : buf);
-            } catch {
-              body = new Uint8Array();
-            }
-            const check = evaluateDelivery({ status: res.status, body, contentType: res.headers.get("content-type"), schema: note.schema, truncated });
-            if (check.effect === "warn") {
-              const host = tryHostOf(note.url);
-              options.onDecision?.(
-                {
-                  action: "allow",
-                  ...(host ? { host } : {}),
-                  reasons: [{ code: "delivery_check", detail: deliveryFact(), effect: "warn" }],
-                  disputeUrl: DISPUTE_URL,
-                },
-                note.req ?? { scheme: "exact", network: "", amount: "0", asset: "", payTo: "" },
-              );
-            }
-          } catch {
-            /* a delivery note never changes the response */
-          }
+          const schema = note.schema;
+          const reqForNote = note.req;
+          const url = note.url;
+          scheduleDeliveryCheck(async () => {
+            const read = await readDeliveryBody(res);
+            if (read.skipped) return;
+            const check = evaluateDelivery({ status: res.status, body: read.body, contentType: res.headers.get("content-type"), schema, truncated: read.truncated });
+            if (check.effect !== "warn") return;
+            const host = tryHostOf(url);
+            options.onDecision?.(
+              {
+                action: "allow",
+                ...(host ? { host } : {}),
+                reasons: [{ code: "delivery_check", detail: deliveryFact(check), effect: "warn" }],
+                disputeUrl: DISPUTE_URL,
+              },
+              reqForNote ?? { scheme: "exact", network: "", amount: "0", asset: "", payTo: "" },
+            );
+          });
         }
         return res;
       }) as F;
@@ -1108,12 +1140,15 @@ export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string, op
         }
       }
     }
-    for (const req of ctx.paymentRequired.accepts ?? []) {
-      const d = await guard.decide(resourceUrl, req, serverUrl, ctx.paymentRequired);
+    const accepts = ctx.paymentRequired.accepts ?? [];
+    for (const req of accepts) {
+      // Check every accept before recording, so accept #2 is not a repeat of accept #1 in the same 402.
+      const d = await guard.decide(resourceUrl, req, serverUrl, ctx.paymentRequired, "check");
       if (note) d.reasons.push(note);
       options.onDecision?.(d, req);
       if (d.action === "block") return false;
     }
+    for (const req of accepts) guard.noteRepeat(serverUrl, req, ctx.paymentRequired);
     return true;
   };
 }
