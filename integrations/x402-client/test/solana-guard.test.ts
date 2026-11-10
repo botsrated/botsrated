@@ -1,5 +1,5 @@
-// Per-network guard facts from the 2026-11-07 Solana proposal, reconciled onto package 0.3.1.
-// The proposal called the behavior 0.5.0. This package stays 0.3.1, so wedge pins stay below 0.4.
+// Per-network guard facts from the 2026-11-07 Solana proposal, reconciled onto this package.
+// The proposal called the behavior 0.5.0. This package is 0.3.2, so wedge pins stay below 0.4.
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { evaluateFacts, guardFactsFrom, policies, policyQuote } from "../src/payment-guard.js";
@@ -72,7 +72,11 @@ describe("x402 v1 network names are known families", () => {
     expect(payToFormatFor("base", X.SOL_PAY)).toBe("invalid");
     expect(isBase58Pubkey(X.SECRET)).toBe(false);
     const f = guardFactsFrom(body, "seller.example");
-    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).toContain("network_not_observed");
+    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).not.toContain("network_not_observed");
+    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).not.toContain("payto_not_observed");
+    expect(codes(f, { payTo: X.SOL_OTHER, network: "solana" })).toContain("payto_not_observed");
+    expect(codes(f, { payTo: X.EVM, network: "base" })).not.toContain("network_not_observed");
+    expect(codes(f, { payTo: "0x000000000000000000000000000000000000dEaD", network: "base" })).toContain("payto_not_observed");
     const v1 = guardFactsFrom(
       { ...body, quotes_by_network: { solana: { payTo: X.SOL_PAY, amount_atomic: "10000", payto_pattern: "single_address" } } },
       "seller.example",
@@ -104,10 +108,10 @@ describe("policyQuote base58 payTo", () => {
 });
 
 describe("0.4.x wedge pins", () => {
-  it("keeps this package at 0.3.1 and wedge dependency ceilings below 0.4", () => {
+  it("keeps this package at 0.3.2 and wedge dependency ceilings below 0.4", () => {
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-    expect(pkg.version).toBe("0.3.1");
-    expect(VERSION).toBe("0.3.1");
+    expect(pkg.version).toBe("0.3.2");
+    expect(VERSION).toBe("0.3.2");
     const root = new URL("../../", import.meta.url);
     const pyprojectPins: string[] = [];
     for (const dir of readdirSync(root, { withFileTypes: true })) {

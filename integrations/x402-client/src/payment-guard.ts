@@ -17,6 +17,23 @@
  *   sends a payment header, and never asks a client to create a payment payload.
  * - The seller's 402 and the x402 contexts are treated as read-only.
  */
+import {
+  PAYTO_BASE58_FACT,
+  RepeatWindow,
+  declaredOutputSchema,
+  deliveryFact,
+  evaluateDelivery,
+  listedAmountOf,
+  nonceOf,
+  paymentIdentifierOf,
+  payToBase58Assessment,
+  quoteAboveListingSentence,
+  readDeliveryBody,
+  repeatFact,
+  repeatSighting,
+  scheduleDeliveryCheck,
+  splitPolicyReasons,
+} from "./guard-checks.js";
 import { checkPaymentState, rpcListOf, type OnchainOptions, type PaymentRecord, type PaymentState } from "./onchain.js";
 import {
   BOTSRATED_BASE_URL,
@@ -29,14 +46,36 @@ import {
   isBase58Pubkey,
   isBytes32,
   isTxHash,
+  canonicalNetwork,
   networkFamily,
   networkLabel,
   normalizePayTo,
+  sameObservedNetwork,
   payToFormatFor,
   payToInvalidFact,
   sameSiteHost,
   tryHostOf,
 } from "./util.js";
+
+export {
+  DELIVERY_CONTENT_TYPES,
+  PAYTO_BASE58_FACT,
+  QUOTE_ABOVE_LISTING_FACT,
+  REPLAY_TESTED,
+  REPEAT_WINDOW_MS,
+  RepeatWindow,
+  declaredOutputSchema,
+  deliveryFact,
+  DELIVERY_READ_DEADLINE_MS,
+  evaluateDelivery,
+  payToBase58Assessment,
+  quoteAboveListingSentence,
+  repeatFact,
+  type DeliveryCheck,
+  type PayToBase58Assessment,
+  type RepeatHit,
+  type RepeatSighting,
+} from "./guard-checks.js";
 
 export type RuleEffect = "allow" | "warn" | "block";
 
@@ -63,6 +102,21 @@ export interface PaymentGuardPolicy {
   notCovered?: RuleEffect;
   /** BotsRated's data for the host is older than 24 h. Default "allow" (reported as info). */
   stale?: RuleEffect;
+  /**
+   * The same payment identifier, or the same host, route, amount and nonce, repeats within 60 seconds.
+   * Local only. Default "warn". `policies.strict` stays "warn".
+   */
+  repeatPayment?: RuleEffect;
+  /**
+   * A Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Default "warn".
+   * `policies.strict` stays "warn". Does not change the Base USDC hard rule.
+   */
+  payToBase58Format?: RuleEffect;
+  /**
+   * Same route, quoted amount above the listed amount. Default "warn". `policies.strict` stays "warn".
+   * A server policy reason with this code uses this effect too.
+   */
+  quoteAboveListing?: RuleEffect;
 }
 
 const warnPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
@@ -73,6 +127,9 @@ const warnPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   paidUrlUnknown: "warn",
   notCovered: "allow",
   stale: "allow",
+  repeatPayment: "warn",
+  payToBase58Format: "warn",
+  quoteAboveListing: "warn",
 });
 
 /**
@@ -88,6 +145,9 @@ const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   paidUrlUnknown: "block",
   notCovered: "allow",
   stale: "allow",
+  repeatPayment: "warn",
+  payToBase58Format: "warn",
+  quoteAboveListing: "warn",
 });
 
 /** Rule-effect tables. Choosing one is your decision; the zero-config default is `policies.warn`. */
@@ -142,6 +202,8 @@ export interface GuardFacts {
   listingPayTo?: string;
   observedNetwork?: string;
   observedAmount?: string;
+  /** Listed atomic amount for the probed route, when the preflight included one. */
+  listedAmount?: string;
   stale?: boolean;
   receiptUrl?: string;
   /**
@@ -265,6 +327,9 @@ export interface PaymentGuard {
 interface Ctx {
   requestUrl?: string;
   operationKey?: string;
+  /** Set once a payment payload was created inside this wrapped request. */
+  paid?: boolean;
+  outputSchema?: Record<string, unknown>;
 }
 interface Als<T> {
   run<R>(store: T, fn: () => R): R;
@@ -356,6 +421,7 @@ export function guardFactsFrom(body: Record<string, any>, host: string): GuardFa
     listingPayTo: payToOk(listing.payTo) ? normalizePayTo(listing.payTo) : undefined,
     observedNetwork: typeof network === "string" ? cleanText(network, 40) : undefined,
     observedAmount: isAtomicAmount(amount) ? amount : undefined,
+    ...(listedAmountOf(b) ? { listedAmount: listedAmountOf(b) } : {}),
     stale: b.freshness?.stale === true,
     receiptUrl: receipt && receiptHost && sameSiteHost(receiptHost, "botsrated.com") && /^https:\/\//.test(receipt) ? cleanText(receipt, 200) : undefined,
     ...(Object.keys(qbn).length ? { quotesByNetwork: qbn } : {}),
@@ -396,6 +462,15 @@ function noFactsNote(reasons: GuardReason[]): string {
  * format is not. This does not override `network_or_asset_not: true` (Base USDC only) on Desk. That hard rule is
  * not in this package, and a Solana quote remains outside what this package will settle.
  */
+function quoteRecord<T>(quotes: Record<string, T>, network: string): T | undefined {
+  if (Object.prototype.hasOwnProperty.call(quotes, network)) return quotes[network];
+  const want = canonicalNetwork(network);
+  for (const [key, value] of Object.entries(quotes)) {
+    if (canonicalNetwork(key) === want) return value;
+  }
+  return undefined;
+}
+
 export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount?: unknown; network?: unknown }, paidUrl: string | undefined, policy: PaymentGuardPolicy): GuardReason[] {
   const p = { ...policies.warn, ...policy };
   const out: GuardReason[] = [];
@@ -403,7 +478,7 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
     out.push({ code, effect, ...(rule ? { rule } : {}), fact });
   };
   const network = typeof req.network === "string" ? cleanText(req.network, 40) : "";
-  const perNet = network && facts0.quotesByNetwork ? facts0.quotesByNetwork[network] : undefined;
+  const perNet = network && facts0.quotesByNetwork ? quoteRecord(facts0.quotesByNetwork, network) : undefined;
   const facts: GuardFacts = perNet
     ? { ...facts0, knownPayTos: perNet.payTo ? [perNet.payTo] : [], observedNetwork: network, observedAmount: perNet.amount, listingPayTo: undefined }
     : facts0;
@@ -417,7 +492,7 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
   const quoteFamily = networkFamily(network);
   const knownFamily = facts.observedNetwork ? networkFamily(facts.observedNetwork) : "eip155";
   const hasKnown = facts.knownPayTos.length > 0 || !!facts.listingPayTo;
-  if (facts.observedNetwork && network && facts.observedNetwork !== network) {
+  if (facts.observedNetwork && network && !sameObservedNetwork(facts.observedNetwork, network)) {
     add("network_not_observed", undefined, "info", `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${networkLabel(network)}.`);
   } else if (!facts.observedNetwork && hasKnown && quoteFamily !== undefined && quoteFamily !== knownFamily) {
     add("network_not_observed", undefined, "info", `the payTo addresses BotsRated's probes recorded for ${facts.host} are eip155 addresses, not ${networkLabel(network)} addresses.`);
@@ -450,6 +525,14 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
       "priceAboveObserved",
       RULE_TO_EFFECT(p.priceAboveObserved, "warn"),
       `the quoted amount (${req.amount} atomic units) is above the last amount BotsRated recorded on this route (${facts.observedAmount}).`,
+    );
+  }
+  if (facts.listedAmount && isAtomicAmount(req.amount) && probed && paid && probed.host === paid.host && probed.path === paid.path && BigInt(req.amount) > BigInt(facts.listedAmount)) {
+    add(
+      "quote_above_listing",
+      "quoteAboveListing",
+      RULE_TO_EFFECT(p.quoteAboveListing, "warn"),
+      quoteAboveListingSentence(String(req.amount), facts.listedAmount),
     );
   }
   if (facts.stale) add("data_stale", "stale", RULE_TO_EFFECT(p.stale, "info"), `BotsRated's latest probe of ${facts.host} is older than 24 hours.`);
@@ -491,6 +574,11 @@ export interface RemotePolicyEffect {
   decided_by?: string;
   not_a_botsrated_rating?: boolean;
   policy_version?: string;
+  /**
+   * Set when a warn or pass names `quote_above_listing`. The guard applies the local `quoteAboveListing` effect.
+   * A server block on that reason is returned as `effect: "block"` and `code: "quote_above_listing"` instead, so a local allow cannot clear it.
+   */
+  quoteAboveListingFact?: string;
 }
 
 function asciiLabel(text: string, extra: string): boolean {
@@ -591,11 +679,18 @@ function namedDecision(body: unknown): "pass" | "warn" | "block" | null {
 /** Map a policy-check response. 503, 429, 404, transport failure and `decision: null` use `failMode`. A non-2xx body is never a pass. */
 export function interpretPolicyBody(status: number | null, body: unknown, failMode: "open" | "closed", host: string): RemotePolicyEffect {
   const framing = framingOf(body);
+  const split = splitPolicyReasons(body);
+  const quote = split.quoteFact ? { quoteAboveListingFact: split.quoteFact } : {};
   if (status !== null && status >= 200 && status < 300) {
     const decision = namedDecision(body);
-    if (decision === "block") return { decision, effect: "block", code: "remote_policy", fact: `your policy returned block for ${host}.`, ...framing };
-    if (decision === "warn") return { decision, effect: "warn", code: "remote_policy", fact: `your policy returned warn for ${host}.`, ...framing };
-    if (decision === "pass") return { decision, ...framing };
+    const onlyQuote = !!split.quoteFact && split.hasReasons && !split.otherWarnOrBlock;
+    // A server block stays a block. The specific code is kept so it is not rewritten as remote_policy, and the local setting cannot clear it.
+    if (onlyQuote && (decision === "block" || split.quoteBlocks)) {
+      return { decision: "block", effect: "block", code: "quote_above_listing", fact: split.quoteFact, ...framing };
+    }
+    if (decision === "block" && !onlyQuote) return { decision, effect: "block", code: "remote_policy", fact: `your policy returned block for ${host}.`, ...quote, ...framing };
+    if (decision === "warn" && !onlyQuote) return { decision, effect: "warn", code: "remote_policy", fact: `your policy returned warn for ${host}.`, ...quote, ...framing };
+    if (decision === "block" || decision === "warn" || decision === "pass") return { decision, ...quote, ...framing };
   }
   return {
     decision: null,
@@ -735,6 +830,7 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
   const cache = new Map<string, { at: number; value: { found: boolean; body: Record<string, any> } }>();
   const records = new Map<string, PaymentRecord & { expiresAt: number }>();
   const retryKeys = new Map<string, { id: string; expiresAt: number }>();
+  const repeats = new RepeatWindow();
 
   const emit = (d: GuardDecision) => {
     try {
@@ -846,11 +942,23 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     // payTo format follows the quote network (eip155 and v1 `base`: hex; solana and v1 `solana`: base58 32 bytes).
     // Any other network is reported and is not stopped for format alone.
     const payToFormat = payToFormatFor(req?.network, req?.payTo);
-    if (payToFormat === "invalid") {
+    // A Solana format failure is payto_base58_format below, not this hex rule.
+    if (payToFormat === "invalid" && networkFamily(req?.network) !== "solana") {
       reasons.push({ code: "payto_invalid", effect: RULE_TO_EFFECT(policy.payToInvalid, "warn"), rule: "payToInvalid", fact: payToInvalidFact(req?.network) });
     } else if (payToFormat === "not_validated") {
       reasons.push({ code: "network_not_validated", effect: "info", fact: `the payTo format for network ${networkLabel(req?.network)} is not validated by this guard.` });
     }
+    const base58 = payToBase58Assessment(req?.network, req?.payTo);
+    if (base58.applies && base58.valid === false) {
+      reasons.push({ code: "payto_base58_format", effect: RULE_TO_EFFECT(policy.payToBase58Format, "warn"), rule: "payToBase58Format", fact: PAYTO_BASE58_FACT });
+    }
+    const repeatSight = sightingOf(ctx, requestUrl, req);
+    const repeatHit = repeats.check(repeatSight, Date.now());
+    if (repeatHit) {
+      reasons.push({ code: "repeat_payment", effect: RULE_TO_EFFECT(policy.repeatPayment, "warn"), rule: "repeatPayment", fact: repeatFact(repeatHit) });
+    }
+    const schema = declaredOutputSchema(pr, req);
+    if (schema) currentCtx().outputSchema = schema;
     const t = req?.maxTimeoutSeconds;
     if (t === undefined || t === null) reasons.push({ code: "max_timeout_missing", effect: "info", fact: "the payment request has no maxTimeoutSeconds." });
     else if (!Number.isInteger(t) || t <= 0 || t > 600) reasons.push({ code: "max_timeout_above_600", effect: "info", fact: "the payment request's maxTimeoutSeconds is not an integer from 1 to 600." });
@@ -891,6 +999,14 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       });
       if (remoteEffect.policy_version) cachedPolicyVersion = remoteEffect.policy_version;
       else if (cachedPolicyVersion) remoteEffect = { ...remoteEffect, policy_version: cachedPolicyVersion };
+      if (remoteEffect.quoteAboveListingFact && !reasons.some((r) => r.code === "quote_above_listing")) {
+        reasons.push({
+          code: "quote_above_listing",
+          effect: RULE_TO_EFFECT(policy.quoteAboveListing, "warn"),
+          rule: "quoteAboveListing",
+          fact: remoteEffect.quoteAboveListingFact,
+        });
+      }
       if (remoteEffect.effect && remoteEffect.code && remoteEffect.fact) {
         reasons.push({
           code: remoteEffect.code,
@@ -901,6 +1017,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       }
     }
     const publicFacts = facts ? (({ _probed, ...rest }: any) => rest)(facts) : undefined;
+    // A blocked decision did not create a payment, so it is not a later repeat.
+    if (!reasons.some((r) => r.effect === "block") || dryRun) repeats.record(repeatSight, Date.now());
     return finish({
       phase: "before_payment",
       host,
@@ -947,10 +1065,59 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     for (const [k, r] of retryKeys) if (r.expiresAt < now) retryKeys.delete(k);
   };
 
+  function retryIdFor(payTo: unknown, requestUrl: string | undefined): string | undefined {
+    const op = currentCtx().operationKey;
+    const route = hostAndPath(requestUrl);
+    if (op === undefined || !isAddress(payTo) || !route) return undefined;
+    return retryKeys.get(JSON.stringify([op, payTo.toLowerCase(), route.host, route.path]))?.id;
+  }
+
+  function sightingOf(ctx: any, requestUrl: string | undefined, req: any): ReturnType<typeof repeatSighting> {
+    const payload = ctx?.paymentPayload;
+    const accepted = payload?.accepted ?? req;
+    return repeatSighting({
+      paymentId: paymentIdentifierOf(ctx?.paymentRequired, req, payload) ?? retryIdFor(accepted?.payTo ?? req?.payTo, requestUrl),
+      url: requestUrl ?? (typeof ctx?.paymentRequired?.resource?.url === "string" ? ctx.paymentRequired.resource.url : undefined),
+      amount: accepted?.amount ?? req?.amount,
+      nonce: nonceOf(payload, req),
+    });
+  }
+
+  /** `check` warns on a prior sighting and then records. `record` only remembers, so the payload just built is not a repeat of itself. */
+  function noteRepeat(ctx: any, requestUrl: string | undefined, req: any, mode: "check" | "record") {
+    const now = Date.now();
+    const sighting = sightingOf(ctx, requestUrl, req);
+    const hit = mode === "check" ? repeats.check(sighting, now) : undefined;
+    if (mode !== "check") repeats.record(sighting, now);
+    return hit;
+  }
+
   function afterBody(ctx: any): void {
     prune();
     const rec = recordFrom(ctx);
     if (rec) records.set(`${rec.payTo}:${rec.nonce}`, rec);
+    noteRepeat(ctx, currentCtx().requestUrl, ctx?.paymentPayload?.accepted ?? ctx?.selectedRequirements, "record");
+    currentCtx().paid = true;
+  }
+
+  async function noteDelivery(res: Response, store: Ctx): Promise<void> {
+    const read = await readDeliveryBody(res);
+    if (read.skipped) return;
+    const check = evaluateDelivery({
+      status: res.status,
+      body: read.body,
+      contentType: res.headers.get("content-type"),
+      schema: store.outputSchema,
+      truncated: read.truncated,
+    });
+    if (check.effect !== "warn") return;
+    emit(
+      finish({
+        phase: "payment_response",
+        ...(store.requestUrl && tryHostOf(store.requestUrl) ? { host: tryHostOf(store.requestUrl) } : {}),
+        reasons: [{ code: "delivery_check", effect: "warn", fact: deliveryFact(check) }],
+      }),
+    );
   }
 
   function responseBody(ctx: any): void {
@@ -1046,7 +1213,13 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
       return client;
     },
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
-      return ((input: any, init?: any) => runWith({ requestUrl: requestUrlOf(input) }, () => fetchWithPayment(input, init))) as F;
+      return (async (input: any, init?: any) => {
+        const parent = currentCtx();
+        const store: Ctx = { requestUrl: requestUrlOf(input), ...(parent.operationKey !== undefined ? { operationKey: parent.operationKey } : {}) };
+        const res = await (als ? als.run(store, () => fetchWithPayment(input, init)) : fetchWithPayment(input, init));
+        if (store.paid && res instanceof Response) scheduleDeliveryCheck(() => noteDelivery(res, store));
+        return res;
+      }) as F;
     },
     operation<R>(operationKey: string, fn: () => Promise<R>): Promise<R> {
       return runWith({ operationKey: String(operationKey) }, fn);

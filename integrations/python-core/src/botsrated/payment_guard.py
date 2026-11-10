@@ -41,6 +41,22 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from botsrated.guard_checks import (
+    PAYTO_BASE58_FACT,
+    RepeatWindow,
+    declared_output_schema,
+    delivery_fact,
+    evaluate_delivery,
+    listed_amount_of,
+    nonce_of,
+    payment_identifier_of,
+    payto_base58_assessment,
+    quote_above_listing_sentence,
+    read_buffered_body,
+    repeat_fact,
+    repeat_sighting,
+    split_policy_reasons,
+)
 from botsrated.onchain import (
     DEFAULT_BASE_RPCS,
     PaymentRecord,
@@ -59,6 +75,11 @@ from botsrated.util import (
     is_atomic_amount,
     is_bytes32,
     is_tx_hash,
+    network_family,
+    network_label,
+    pay_to_format_for,
+    pay_to_invalid_fact,
+    same_observed_network,
     same_site_host,
     try_host_of,
 )
@@ -82,6 +103,12 @@ class PaymentGuardPolicy:
     paid_url_unknown: RuleEffect = "warn"
     not_covered: RuleEffect = "allow"  # reported as info
     stale: RuleEffect = "allow"  # reported as info
+    # Same payment identifier, or the same host, route, amount and nonce, within 60 seconds. Local only.
+    repeat_payment: RuleEffect = "warn"
+    # Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Does not change the Base USDC rule.
+    pay_to_base58_format: RuleEffect = "warn"
+    # Same route, quoted amount above the listed amount. A server reason with this code uses this effect too.
+    quote_above_listing: RuleEffect = "warn"
 
 
 _WARN = PaymentGuardPolicy()
@@ -117,6 +144,9 @@ _RULE_NAMES = {
     "paid_url_unknown": "paidUrlUnknown",
     "not_covered": "notCovered",
     "stale": "stale",
+    "repeat_payment": "repeatPayment",
+    "pay_to_base58_format": "payToBase58Format",
+    "quote_above_listing": "quoteAboveListing",
 }
 
 
@@ -138,6 +168,7 @@ class GuardFacts:
     listing_pay_to: str | None = None
     observed_network: str | None = None
     observed_amount: str | None = None
+    listed_amount: str | None = None
     stale: bool = False
     receipt_url: str | None = None
     probed: tuple[str, str] | None = field(default=None, repr=False)
@@ -188,6 +219,7 @@ def guard_facts_from(body: Any, host: str) -> GuardFacts:
         listing_pay_to=listing["payTo"].lower() if is_address(listing.get("payTo")) else None,
         observed_network=clean_text(network, 40) if isinstance(network, str) else None,
         observed_amount=amount if is_atomic_amount(amount) else None,
+        listed_amount=listed_amount_of(b),
         stale=freshness.get("stale") is True,
         receipt_url=clean_text(receipt, 200) if receipt and rhost and same_site_host(rhost, "botsrated.com") and receipt.startswith("https://") else None,
         probed=host_and_path(route),
@@ -296,6 +328,9 @@ class RemotePolicyEffect:
     decided_by: str | None = None
     not_a_botsrated_rating: bool | None = None
     policy_version: str | None = None
+    # Set when a warn or pass names quote_above_listing. The guard applies the local effect.
+    # A server block on that reason is effect "block" and code "quote_above_listing", so a local allow cannot clear it.
+    quote_above_listing_fact: str | None = None
 
 
 def policy_quote(req: Any) -> dict[str, str]:
@@ -355,14 +390,20 @@ def _named_decision(body: Any) -> RemoteDecision | None:
 def interpret_policy_body(status: int | None, body: Any, fail_mode: FailMode, host: str) -> RemotePolicyEffect:
     """Map a policy-check response. 503, 429, 404, transport failure and ``decision: null`` use ``fail_mode``. A non-2xx body is never a pass."""
     decided_by, rating, version = _framing(body)
+    split = split_policy_reasons(body)
+    quote = split["quote_fact"]
     if status is not None and 200 <= status < 300:
         decision = _named_decision(body)
-        if decision == "block":
-            return RemotePolicyEffect("block", "block", "remote_policy", f"your policy returned block for {host}.", decided_by, rating, version)
-        if decision == "warn":
-            return RemotePolicyEffect("warn", "warn", "remote_policy", f"your policy returned warn for {host}.", decided_by, rating, version)
-        if decision == "pass":
-            return RemotePolicyEffect("pass", None, None, None, decided_by, rating, version)
+        only_quote = bool(quote) and split["has_reasons"] and not split["other_warn_or_block"]
+        # A server block stays a block. The specific code is kept, and the local setting cannot clear it.
+        if only_quote and (decision == "block" or split["quote_blocks"]):
+            return RemotePolicyEffect("block", "block", "quote_above_listing", quote, decided_by, rating, version, None)
+        if decision == "block" and not only_quote:
+            return RemotePolicyEffect("block", "block", "remote_policy", f"your policy returned block for {host}.", decided_by, rating, version, quote)
+        if decision == "warn" and not only_quote:
+            return RemotePolicyEffect("warn", "warn", "remote_policy", f"your policy returned warn for {host}.", decided_by, rating, version, quote)
+        if decision in ("block", "warn", "pass"):
+            return RemotePolicyEffect(decision, None, None, None, decided_by, rating, version, quote)
     effect: Effect = "block" if fail_mode == "closed" else "info"
     fact = f"your policy check returned no decision; fail_mode is {fail_mode}."
     return RemotePolicyEffect(None, effect, "remote_policy_unavailable", fact, decided_by, rating, version)
@@ -518,7 +559,7 @@ def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: Pa
         out.append(GuardReason("not_covered", _effect(policy.not_covered, "info"), f"BotsRated has no probe record for {facts.host}.", "notCovered"))
         return out
     if pay_to:
-        if facts.observed_network and network and facts.observed_network != network:
+        if facts.observed_network and network and not same_observed_network(facts.observed_network, network):
             out.append(GuardReason("network_not_observed", "info", f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network}."))
         elif facts.known_pay_tos and pay_to not in facts.known_pay_tos:
             on = facts.observed_network or network or "this network"
@@ -550,6 +591,23 @@ def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: Pa
                 _effect(policy.price_above_observed, "warn"),
                 f"the quoted amount ({amount} atomic units) is above the last amount BotsRated recorded on this route ({facts.observed_amount}).",
                 "priceAboveObserved",
+            )
+        )
+    if (
+        facts.listed_amount
+        and isinstance(amount, str)
+        and is_atomic_amount(amount)
+        and facts.probed
+        and paid
+        and facts.probed == paid
+        and int(amount) > int(facts.listed_amount)
+    ):
+        out.append(
+            GuardReason(
+                "quote_above_listing",
+                _effect(policy.quote_above_listing, "warn"),
+                quote_above_listing_sentence(amount, facts.listed_amount),
+                "quoteAboveListing",
             )
         )
     if facts.stale:
@@ -645,6 +703,8 @@ def abort_only_async(body: Callable[[Any], Awaitable[tuple[bool, str]]]) -> Call
 
 _REQUEST_URL: ContextVar[str | None] = ContextVar("botsrated_guard_request_url", default=None)
 _OPERATION: ContextVar[str | None] = ContextVar("botsrated_guard_operation", default=None)
+# Set by wrap_get / wrap_async_get for the delivery check. None outside those wrappers.
+_DELIVERY: ContextVar[dict[str, Any] | None] = ContextVar("botsrated_guard_delivery", default=None)
 
 
 def _now() -> int:
@@ -745,6 +805,7 @@ class PaymentGuard:
         self.remote_policy_version: str | None = None
         self._records: dict[str, PaymentRecord] = {}
         self._retry_keys: dict[str, tuple[str, int]] = {}
+        self._repeats = RepeatWindow()
         self._lock = threading.Lock()
         self.extension = _RetryKeyExtension(self)
         # Hook adapters (C1): return values of the bodies are discarded.
@@ -798,15 +859,31 @@ class PaymentGuard:
         """Wrap a paying GET (e.g. an x402 ``requests`` session's ``get``) so the guard knows the URL being paid."""
 
         def guarded(url: Any, *args: Any, **kwargs: Any) -> T:
-            with self.request(str(url)):
-                return get(url, *args, **kwargs)
+            note: dict[str, Any] = {"paid": False, "schema": None}
+            token = _DELIVERY.set(note)
+            try:
+                with self.request(str(url)):
+                    result = get(url, *args, **kwargs)
+            finally:
+                _DELIVERY.reset(token)
+            if note.get("paid"):
+                self._note_delivery(result, note, str(url))
+            return result
 
         return guarded
 
     def wrap_async_get(self, get: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         async def guarded(url: Any, *args: Any, **kwargs: Any) -> T:
-            with self.request(str(url)):
-                return await get(url, *args, **kwargs)
+            note: dict[str, Any] = {"paid": False, "schema": None}
+            token = _DELIVERY.set(note)
+            try:
+                with self.request(str(url)):
+                    result = await get(url, *args, **kwargs)
+            finally:
+                _DELIVERY.reset(token)
+            if note.get("paid"):
+                self._note_delivery(result, note, str(url))
+            return result
 
         return guarded
 
@@ -855,6 +932,15 @@ class PaymentGuard:
             self.remote_policy_version = effect.policy_version
         if version != effect.policy_version:
             effect = replace(effect, policy_version=version)
+        if effect.quote_above_listing_fact and not any(r.code == "quote_above_listing" for r in reasons):
+            reasons.append(
+                GuardReason(
+                    "quote_above_listing",
+                    _effect(self.policy.quote_above_listing, "warn"),
+                    effect.quote_above_listing_fact,
+                    "quoteAboveListing",
+                )
+            )
         if effect.effect and effect.code and effect.fact:
             rule = "remotePolicy" if effect.decision else "failMode"
             reasons.append(GuardReason(effect.code, effect.effect, effect.fact, rule))
@@ -918,8 +1004,22 @@ class PaymentGuard:
                     "paidUrlUnknown",
                 )
             )
-        if not is_address(_get(req, "payTo", "pay_to")):
-            reasons.append(GuardReason("payto_invalid", _effect(p.pay_to_invalid, "warn"), "the payment request's payTo is not a 20-byte hex address.", "payToInvalid"))
+        pay_to_format = pay_to_format_for(_get(req, "network"), _get(req, "payTo", "pay_to"))
+        # A Solana format failure is payto_base58_format below, not this hex rule.
+        if pay_to_format == "invalid" and network_family(_get(req, "network")) != "solana":
+            reasons.append(GuardReason("payto_invalid", _effect(p.pay_to_invalid, "warn"), pay_to_invalid_fact(_get(req, "network")), "payToInvalid"))
+        elif pay_to_format == "not_validated":
+            reasons.append(GuardReason("network_not_validated", "info", f"the payTo format for network {network_label(_get(req, 'network'))} is not validated by this guard."))
+        base58 = payto_base58_assessment(_get(req, "network"), _get(req, "payTo", "pay_to"))
+        if base58["applies"] and base58["valid"] is False:
+            reasons.append(GuardReason("payto_base58_format", _effect(p.pay_to_base58_format, "warn"), PAYTO_BASE58_FACT, "payToBase58Format"))
+        repeat_hit = self._note_repeat(ctx, request_url, req, "check")
+        if repeat_hit and p.repeat_payment != "allow":
+            reasons.append(GuardReason("repeat_payment", "block" if p.repeat_payment == "block" else "warn", repeat_fact(repeat_hit), "repeatPayment"))
+        schema = declared_output_schema(pr, req)
+        note = _DELIVERY.get()
+        if note is not None and schema is not None:
+            note["schema"] = schema
         t = _get(req, "maxTimeoutSeconds", "max_timeout_seconds")
         if t is None:
             reasons.append(GuardReason("max_timeout_missing", "info", "the payment request has no maxTimeoutSeconds."))
@@ -1051,7 +1151,10 @@ class PaymentGuard:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, self._lookup_sync(lookup), req, paid_url) if lookup else None
             remote = self._remember_remote(reasons, self._remote_sync(host, req) if self.remote_policy and host else None)
-            return self._finish("before_payment", reasons, host, facts, remote)
+            decision = self._finish("before_payment", reasons, host, facts, remote)
+            if decision.action == "allow":
+                self._note_repeat(ctx, _REQUEST_URL.get(), req, "record")
+            return decision
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -1061,7 +1164,10 @@ class PaymentGuard:
             reasons, host, lookup, req, paid_url = self._local(ctx)
             facts = self._with_facts(reasons, lookup, await self._lookup_async(lookup), req, paid_url) if lookup else None
             remote = self._remember_remote(reasons, await self._remote_async(host, req) if self.remote_policy and host else None)
-            return self._finish("before_payment", reasons, host, facts, remote)
+            decision = self._finish("before_payment", reasons, host, facts, remote)
+            if decision.action == "allow":
+                self._note_repeat(ctx, _REQUEST_URL.get(), req, "record")
+            return decision
         except Exception:  # noqa: BLE001
             return self._hook_error()
 
@@ -1123,12 +1229,68 @@ class PaymentGuard:
             for k in [k for k, v in self._retry_keys.items() if v[1] < now]:
                 del self._retry_keys[k]
 
+    def _retry_id_for(self, pay_to: Any, request_url: str | None) -> str | None:
+        op = _OPERATION.get()
+        route = host_and_path(request_url)
+        if op is None or not is_address(pay_to) or route is None:
+            return None
+        key = json.dumps([op, pay_to.lower(), route[0], route[1]])
+        with self._lock:
+            hit = self._retry_keys.get(key)
+        return hit[0] if hit else None
+
+    def _sighting(self, ctx: Any, request_url: str | None, req: Any) -> dict[str, str]:
+        payload = _get(ctx, "payment_payload", "paymentPayload")
+        accepted = _get(payload, "accepted") or req
+        pay_to = _get(accepted, "payTo", "pay_to") or _get(req, "payTo", "pay_to")
+        url = request_url
+        if not url:
+            resource = _get(_get(ctx, "payment_required", "paymentRequired"), "resource")
+            candidate = _get(resource, "url")
+            url = candidate if isinstance(candidate, str) else None
+        return repeat_sighting(
+            payment_id=payment_identifier_of(_get(ctx, "payment_required", "paymentRequired"), req, payload) or self._retry_id_for(pay_to, url),
+            url=url,
+            amount=_get(accepted, "amount") if accepted is not None else _get(req, "amount"),
+            nonce=nonce_of(payload, req),
+        )
+
+    def _note_repeat(self, ctx: Any, request_url: str | None, req: Any, mode: str) -> str | None:
+        sighting = self._sighting(ctx, request_url, req)
+        now = self._repeats.now()
+        hit = self._repeats.check(sighting, now) if mode == "check" else None
+        if mode != "check":
+            self._repeats.record(sighting, now)
+        return hit
+
+    def _note_delivery(self, result: Any, note: dict[str, Any], url: str) -> None:
+        try:
+            status = getattr(result, "status_code", None)
+            if status is None:
+                status = getattr(result, "status", None)
+            if not isinstance(status, int):
+                return
+            loaded = read_buffered_body(result)
+            if loaded is None:
+                return
+            body, content_type, truncated = loaded
+            check = evaluate_delivery(status=status, body=body, content_type=content_type, schema=note.get("schema"), truncated=truncated)
+            if check["effect"] != "warn":
+                return
+            self._emit(self._finish("payment_response", [GuardReason("delivery_check", "warn", delivery_fact(check))], try_host_of(url)))
+        except Exception:  # noqa: BLE001
+            return
+
     def _after(self, ctx: Any) -> None:
         self._prune()
         rec = self._record_from(ctx)
         if rec is not None:
             with self._lock:
                 self._records[f"{rec.pay_to}:{rec.nonce}"] = rec
+        self._note_repeat(ctx, _REQUEST_URL.get(), _get(ctx, "selected_requirements", "selectedRequirements"), "record")
+        note = _DELIVERY.get()
+        if note is not None:
+            note["paid"] = True
 
     async def _aafter(self, ctx: Any) -> None:
         self._after(ctx)

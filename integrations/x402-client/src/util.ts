@@ -3,7 +3,7 @@
  */
 
 /** Package version. Kept equal to package.json by a test. */
-export const VERSION = "0.3.1";
+export const VERSION = "0.3.2";
 /** User-Agent sent on hosted BotsRated calls. No install id, wallet or other user identifier. */
 export const USER_AGENT = `botsrated-x402-preflight/${VERSION}`;
 export const BOTSRATED_BASE_URL = "https://botsrated.com";
@@ -130,6 +130,26 @@ export function networkFamily(network: unknown): NetworkFamily | undefined {
   if (EVM_V1_NETWORKS.has(lower)) return "eip155";
   if (SOLANA_V1_NETWORKS.has(lower)) return "solana";
   return undefined;
+}
+
+/**
+ * Documented x402 v1 names for one chain. The strings stay as written on quotes and receipts.
+ * Comparison treats each pair as the same network. Other v1 names stay distinct.
+ */
+const NETWORK_ALIASES: Record<string, string> = {
+  base: BASE_MAINNET,
+  solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+};
+
+/** CAIP-2 id for a documented v1 alias. Any other network string is returned unchanged. */
+export function canonicalNetwork(network: string): string {
+  const trimmed = network.trim();
+  return NETWORK_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+}
+
+/** True when two network strings are equal or are the documented v1/CAIP-2 pair for the same chain. */
+export function sameObservedNetwork(a: string, b: string): boolean {
+  return canonicalNetwork(a) === canonicalNetwork(b);
 }
 
 /** Network string for a fact sentence. Capped. Not a translation of v1 names into CAIP-2. */
