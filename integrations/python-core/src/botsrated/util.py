@@ -149,6 +149,38 @@ def network_family(network: Any) -> str | None:
     return None
 
 
+def pay_to_format_for(network: Any, pay_to: Any) -> str:
+    """``ok`` when payTo matches the network family. ``invalid`` when the family is known and it does not.
+
+    ``not_validated`` when the network is not a known family (the payTo is not compared).
+    ``eip155`` needs a 20-byte hex address. ``solana`` needs a base58 32-byte public key.
+    """
+    family = network_family(network)
+    if family == "eip155":
+        return "ok" if is_address(pay_to) else "invalid"
+    if family == "solana":
+        return "ok" if is_base58_pubkey(pay_to) else "invalid"
+    return "not_validated"
+
+
+def pay_to_invalid_fact(network: Any) -> str:
+    """Fact sentence for ``payto_invalid``. eip155 keeps the 20-byte hex sentence.
+
+    A Solana format failure is ``payto_base58_format``, not ``payto_invalid``. This sentence stays for a caller
+    that still asks for the Solana wording.
+    """
+    if network_family(network) == "solana":
+        return "the payTo in this payment request is not a base58 32-byte public key."
+    return "the payTo in this payment request is not a 20-byte hex address."
+
+
+def network_label(network: Any) -> str:
+    """Network string for a fact sentence. Capped. Not a translation of v1 names into CAIP-2."""
+    if not isinstance(network, str):
+        return "this network"
+    return clean_text(network, 40) or "this network"
+
+
 def is_base58_pubkey(value: Any) -> bool:
     """Solana public key: base58, decodes to 32 bytes. A 64-byte secret key does not match. Case is kept."""
     if not isinstance(value, str) or re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", value) is None:

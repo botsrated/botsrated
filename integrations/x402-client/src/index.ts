@@ -20,6 +20,9 @@ import {
   cleanText,
   hostOf,
   isAddress,
+  networkFamily,
+  payToFormatFor,
+  payToInvalidFact,
   sameSiteHost,
   tryHostOf,
 } from "./util.js";
@@ -691,25 +694,29 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
     const observedNetwork = facts.observedNetwork ? cleanText(facts.observedNetwork, 40) : undefined;
     const known = facts.knownPayTos.filter(isAddress).map((x) => x.toLowerCase());
     const listing = isAddress(facts.listingPayTo) ? facts.listingPayTo.toLowerCase() : undefined;
-    if (!isAddress(req?.payTo)) {
-      add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.payToMismatch);
-    } else if (observedNetwork && observedNetwork !== network) {
-      add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
-    } else if (known.length > 0 && !known.includes(req.payTo.toLowerCase())) {
-      add(
-        "payto_not_observed",
-        `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork ?? network}.`,
-        p.payToMismatch,
-      );
-    } else if (known.length === 0 && listing) {
-      if (req.payTo.toLowerCase() === listing) {
-        add("payto_listing_only", `the payTo matches ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`, "info");
-      } else {
+    const payToFormat = payToFormatFor(req?.network, req?.payTo);
+    // A Solana format failure is payto_base58_format, not this hex rule.
+    if (payToFormat === "invalid" && networkFamily(req?.network) !== "solana") {
+      add("payto_invalid", payToInvalidFact(req?.network), p.payToMismatch);
+    } else if (isAddress(req?.payTo)) {
+      if (observedNetwork && observedNetwork !== network) {
+        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
+      } else if (known.length > 0 && !known.includes(req.payTo.toLowerCase())) {
         add(
           "payto_not_observed",
-          `the payTo in this payment request differs from the payTo in ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`,
+          `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork ?? network}.`,
           p.payToMismatch,
         );
+      } else if (known.length === 0 && listing) {
+        if (req.payTo.toLowerCase() === listing) {
+          add("payto_listing_only", `the payTo matches ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`, "info");
+        } else {
+          add(
+            "payto_not_observed",
+            `the payTo in this payment request differs from the payTo in ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`,
+            p.payToMismatch,
+          );
+        }
       }
     }
     if (facts.observedAmount && /^[0-9]+$/.test(facts.observedAmount) && /^[0-9]+$/.test(String(req?.amount)) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
@@ -852,10 +859,14 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     return decision;
   }
 
+  function markPaid(decision: Decision): void {
+    const note = paidNotes?.getStore();
+    if (note) note.paid = decision.action === "allow";
+  }
+
   async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike): Promise<Decision> {
     const note = paidNotes?.getStore();
     if (note) {
-      note.paid = true;
       note.req = req;
       const schema = declaredOutputSchema(paymentRequired, req);
       if (schema) note.schema = schema;
@@ -867,19 +878,21 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
       decision = openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
     }
     try {
-      return await mergeRemote(decision, req);
+      decision = await mergeRemote(decision, req);
     } catch {
-      if (!remote || !decision.host) return decision;
-      const closed = remote.failMode === "closed";
-      decision.reasons.push({
-        code: "remote_policy_unavailable",
-        detail: `your policy check returned no decision; fail_mode is ${remote.failMode}.`,
-        effect: closed ? "block" : "info",
-      });
-      if (closed) decision.action = "block";
-      decision.remote_decision = null;
-      return decision;
+      if (remote && decision.host) {
+        const closed = remote.failMode === "closed";
+        decision.reasons.push({
+          code: "remote_policy_unavailable",
+          detail: `your policy check returned no decision; fail_mode is ${remote.failMode}.`,
+          effect: closed ? "block" : "info",
+        });
+        if (closed) decision.action = "block";
+        decision.remote_decision = null;
+      }
     }
+    markPaid(decision);
+    return decision;
   }
 
   async function decideInner(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
@@ -960,6 +973,10 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
       } else {
         delete ctx.paymentRequired.extensions;
       }
+    }
+    if (d.action !== "allow") {
+      const note = paidNotes?.getStore();
+      if (note) note.paid = false;
     }
     return d;
   }

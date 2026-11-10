@@ -924,7 +924,8 @@ export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGu
     // payTo format follows the quote network (eip155 and v1 `base`: hex; solana and v1 `solana`: base58 32 bytes).
     // Any other network is reported and is not stopped for format alone.
     const payToFormat = payToFormatFor(req?.network, req?.payTo);
-    if (payToFormat === "invalid") {
+    // A Solana format failure is payto_base58_format below, not this hex rule.
+    if (payToFormat === "invalid" && networkFamily(req?.network) !== "solana") {
       reasons.push({ code: "payto_invalid", effect: RULE_TO_EFFECT(policy.payToInvalid, "warn"), rule: "payToInvalid", fact: payToInvalidFact(req?.network) });
     } else if (payToFormat === "not_validated") {
       reasons.push({ code: "network_not_validated", effect: "info", fact: `the payTo format for network ${networkLabel(req?.network)} is not validated by this guard.` });

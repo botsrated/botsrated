@@ -139,7 +139,7 @@ A stopped payment throws `Payment creation aborted:` with text like:
 | Rule (`policy.…`) | Reason code | `policies.warn` (default) | `policies.carefulBuyer` / `policies.strict` |
 |---|---|---|---|
 | `payToMismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
-| `payToInvalid`: the payTo does not match the quote network (20-byte hex on `eip155` and v1 `base`; base58 32-byte public key on `solana` and v1 `solana`) | `payto_invalid` | warn | **block** |
+| `payToInvalid`: the payTo is not a 20-byte hex address on `eip155` or v1 `base`. A Solana payTo that is not a base58 32-byte public key is `payto_base58_format`, not this code | `payto_invalid` | warn | **block** |
 | network is not one of those families (format is not checked) | `network_not_validated` | info | info |
 | `resourceHostMismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
 | `paidUrlUnknown`: the URL being paid is unknown (no `guard.wrapFetch`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |

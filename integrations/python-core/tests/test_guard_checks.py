@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from botsrated import BASE_USDC, PaymentGuard, PaymentGuardPolicy, PrePaymentGuard
 from botsrated.guard import GuardPolicy, evaluate_payment, facts_from
-from botsrated.guard_checks import REPLAY_TESTED, evaluate_delivery, payto_base58_assessment
+from botsrated.guard_checks import (
+    REPLAY_TESTED,
+    evaluate_delivery,
+    payto_base58_assessment,
+)
 from botsrated.payment_guard import POLICIES, interpret_policy_body
 
 USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
@@ -135,11 +140,20 @@ def test_payto_base58_format_matches_the_live_examples(found):
     bad = ctx(url, req(found, network=SOL, payTo="not-a-key"))
     with g.request(url):
         assert g.before_payment_creation(bad) is None
+    codes = [r.code for r in seen[0].reasons]
+    assert "payto_base58_format" in codes and "payto_invalid" not in codes
     assert any(r.code == "payto_base58_format" and r.effect == "warn" for r in seen[0].reasons)
     good = ctx(url, req(found, network=SOL, payTo=SOL_KEY))
     with g.request(url):
         g.before_payment_creation(good)
-    assert "payto_base58_format" not in [r.code for r in seen[1].reasons]
+    good_codes = [r.code for r in seen[1].reasons]
+    assert "payto_base58_format" not in good_codes and "payto_invalid" not in good_codes
+    facts = facts_from(found, "blockrun.ai", "preflight")
+    invalid = [r.code for r in evaluate_payment(facts, req(found, network=SOL, payTo="not-a-key"), url).reasons]
+    assert "payto_base58_format" in invalid and "payto_invalid" not in invalid
+    valid = [r.code for r in evaluate_payment(facts, req(found, network=SOL, payTo=SOL_KEY), url).reasons]
+    assert "payto_base58_format" not in valid and "payto_invalid" not in valid
+    assert "payto_invalid" in [r.code for r in evaluate_payment(facts, req(found, payTo="junk"), url).reasons]
 
     base = []
     judging, _ = guard_with(found, hosted=False, policy=PaymentGuardPolicy(pay_to_base58_format="block"), on_decision=base.append)
@@ -267,3 +281,30 @@ def test_pre_payment_guard_repeat_and_delivery(found):
     second = guard.decide(url, req(found, extra={"nonce": NONCE, "name": "USD Coin", "version": "2"}), request_url=url)
     assert second.action == "allow"
     assert any(r.code == "repeat_payment" and r.effect == "warn" for r in second.reasons)
+
+
+def test_no_delivery_check_when_the_pre_payment_hook_blocks(found):
+    pytest.importorskip("x402")
+
+    class Client:
+        host = "botsrated.com"
+
+        def preflight(self, host):
+            return type("P", (), {"found": True, "body": found})()
+
+    seen = []
+    guard = PrePaymentGuard(client=Client(), policy=GuardPolicy(pay_to_mismatch="block"), on_decision=seen.append)  # type: ignore[arg-type]
+    url = found["latest_probe"]["url"]
+    dead = "0x000000000000000000000000000000000000dEaD"
+
+    def paid_get(target, **kwargs):
+        context = SimpleNamespace(
+            payment_required=SimpleNamespace(resource=SimpleNamespace(url=url), extensions=None),
+            selected_requirements=req(found, payTo=dead),
+        )
+        out = guard.x402_hook(context)
+        assert out is not None
+        return httpx.Response(200, content=b"", headers={"content-type": "application/json"})
+
+    guard.wrap_get(paid_get)(url)
+    assert not any(any(r.code == "delivery_check" for r in d.reasons) for d in seen)

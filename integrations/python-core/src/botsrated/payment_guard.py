@@ -42,8 +42,8 @@ from urllib.parse import urlsplit
 import httpx
 
 from botsrated.guard_checks import (
-    PAYTO_BASE58_FACT,
     DELIVERY_FACT,
+    PAYTO_BASE58_FACT,
     RepeatWindow,
     declared_output_schema,
     evaluate_delivery,
@@ -74,6 +74,10 @@ from botsrated.util import (
     is_atomic_amount,
     is_bytes32,
     is_tx_hash,
+    network_family,
+    network_label,
+    pay_to_format_for,
+    pay_to_invalid_fact,
     same_site_host,
     try_host_of,
 )
@@ -995,8 +999,12 @@ class PaymentGuard:
                     "paidUrlUnknown",
                 )
             )
-        if not is_address(_get(req, "payTo", "pay_to")):
-            reasons.append(GuardReason("payto_invalid", _effect(p.pay_to_invalid, "warn"), "the payment request's payTo is not a 20-byte hex address.", "payToInvalid"))
+        pay_to_format = pay_to_format_for(_get(req, "network"), _get(req, "payTo", "pay_to"))
+        # A Solana format failure is payto_base58_format below, not this hex rule.
+        if pay_to_format == "invalid" and network_family(_get(req, "network")) != "solana":
+            reasons.append(GuardReason("payto_invalid", _effect(p.pay_to_invalid, "warn"), pay_to_invalid_fact(_get(req, "network")), "payToInvalid"))
+        elif pay_to_format == "not_validated":
+            reasons.append(GuardReason("network_not_validated", "info", f"the payTo format for network {network_label(_get(req, 'network'))} is not validated by this guard."))
         base58 = payto_base58_assessment(_get(req, "network"), _get(req, "payTo", "pay_to"))
         if base58["applies"] and base58["valid"] is False:
             reasons.append(GuardReason("payto_base58_format", _effect(p.pay_to_base58_format, "warn"), PAYTO_BASE58_FACT, "payToBase58Format"))

@@ -13,7 +13,15 @@ import re
 import time
 from typing import Any, Literal
 
-from botsrated.util import clean_text, host_and_path, is_atomic_amount, is_base58_pubkey, is_bytes32, network_family, try_host_of
+from botsrated.util import (
+    clean_text,
+    host_and_path,
+    is_atomic_amount,
+    is_base58_pubkey,
+    is_bytes32,
+    network_family,
+    try_host_of,
+)
 
 # The repeat check never resends a settled payment, so this stays false.
 REPLAY_TESTED = False
@@ -313,12 +321,18 @@ def schema_matches(schema: Any, value: Any, depth: int = 0) -> bool:
         return False
     if isinstance(schema.get("maxLength"), int) and (not isinstance(value, str) or len(value) > schema["maxLength"]):
         return False
-    if isinstance(schema.get("minimum"), (int, float)) and not isinstance(schema.get("minimum"), bool):
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < schema["minimum"]:
-            return False
-    if isinstance(schema.get("maximum"), (int, float)) and not isinstance(schema.get("maximum"), bool):
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value > schema["maximum"]:
-            return False
+    if (
+        isinstance(schema.get("minimum"), (int, float))
+        and not isinstance(schema.get("minimum"), bool)
+        and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < schema["minimum"])
+    ):
+        return False
+    if (
+        isinstance(schema.get("maximum"), (int, float))
+        and not isinstance(schema.get("maximum"), bool)
+        and (not isinstance(value, (int, float)) or isinstance(value, bool) or value > schema["maximum"])
+    ):
+        return False
     looks_object = "properties" in schema or "required" in schema or schema.get("additionalProperties") is False or schema.get("type") == "object"
     if looks_object:
         if not isinstance(value, dict):

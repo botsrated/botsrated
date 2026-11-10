@@ -106,7 +106,7 @@ A stopped payment raises the x402 abort error with text like:
 | Rule (`PaymentGuardPolicy(...)`) | Reason code | `POLICIES["warn"]` (default) | `POLICIES["carefulBuyer"]` / `POLICIES["strict"]` |
 |---|---|---|---|
 | `pay_to_mismatch`: the payTo is not among the payTos BotsRated's probes recorded for the host | `payto_not_observed` | warn | **block** |
-| `pay_to_invalid`: the payTo is not a 20-byte hex address | `payto_invalid` | warn | **block** |
+| `pay_to_invalid`: the payTo is not a 20-byte hex address on `eip155` or v1 `base`. A Solana payTo that is not a base58 32-byte public key is `payto_base58_format`, not this code | `payto_invalid` | warn | **block** |
 | `resource_host_mismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
 | `paid_url_unknown`: the URL being paid is unknown (no `wrap_get` / `guard.request(url)`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |
 | `price_above_observed`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |

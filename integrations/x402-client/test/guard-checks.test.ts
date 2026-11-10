@@ -108,11 +108,21 @@ describe("payto_base58_format", () => {
     const bad = { paymentRequired: pr(SELLER_URL, [req({ network: SOL, payTo: "not-a-key" })]), selectedRequirements: req({ network: SOL, payTo: "not-a-key" }) };
     expect(await g.hooks.beforePaymentCreation(bad)).toBeUndefined();
     expect(seen[0].reasons).toContainEqual(expect.objectContaining({ code: "payto_base58_format", effect: "warn" }));
+    expect(seen[0].reasons.map((r) => r.code)).not.toContain("payto_invalid");
     expect(seen[0].action).toBe("allow");
 
     const good = { paymentRequired: pr(SELLER_URL, [req({ network: SOL, payTo: SOL_KEY })]), selectedRequirements: req({ network: SOL, payTo: SOL_KEY }) };
     await g.hooks.beforePaymentCreation(good);
     expect(seen[1].reasons.map((r) => r.code)).not.toContain("payto_base58_format");
+    expect(seen[1].reasons.map((r) => r.code)).not.toContain("payto_invalid");
+    const facts = factsFrom(FOUND, "blockrun.ai", "preflight");
+    const invalidSolana = evaluatePayment(facts, req({ network: SOL, payTo: "not-a-key" }), SELLER_URL);
+    expect(invalidSolana.reasons.map((r) => r.code)).toContain("payto_base58_format");
+    expect(invalidSolana.reasons.map((r) => r.code)).not.toContain("payto_invalid");
+    const validSolana = evaluatePayment(facts, req({ network: SOL, payTo: SOL_KEY }), SELLER_URL);
+    expect(validSolana.reasons.map((r) => r.code)).not.toContain("payto_base58_format");
+    expect(validSolana.reasons.map((r) => r.code)).not.toContain("payto_invalid");
+    expect(evaluatePayment(facts, req({ payTo: "junk" }), SELLER_URL).reasons.map((r) => r.code)).toContain("payto_invalid");
 
     const base = createPaymentGuard({ hosted: false, policy: { payToBase58Format: "block" }, onDecision: (d) => seen.push(d) });
     expect(await base.hooks.beforePaymentCreation({ paymentRequired: pr(SELLER_URL), selectedRequirements: req({ payTo: "not-a-key" }) })).toBeUndefined();
@@ -257,5 +267,24 @@ describe("delivery_check", () => {
     const second = await guard.decide(SELLER_URL, req({ extra: { nonce: NONCE } }), SELLER_URL);
     expect(second.reasons).toContainEqual(expect.objectContaining({ code: "repeat_payment", effect: "warn" }));
     expect(second.action).toBe("allow");
+  });
+
+  it("does not run delivery_check when the pre-payment hook blocks", async () => {
+    const seen: Array<{ reasons: Array<{ code: string }> }> = [];
+    const guard = createPrePaymentGuard({
+      client: { unpaidFetch: () => async () => json(FOUND), unpaidTimeoutMs: () => 1000, host: "botsrated.com", preflight: async () => ({ found: true, body: FOUND }) } as never,
+      policy: { payToMismatch: "block" },
+      onDecision: (d) => seen.push(d),
+    });
+    const dead = "0x000000000000000000000000000000000000dEaD";
+    await guard.wrapFetch(async () => {
+      const out = await guard.beforePaymentCreation({
+        paymentRequired: pr(SELLER_URL, [req({ payTo: dead })]),
+        selectedRequirements: req({ payTo: dead }),
+      });
+      expect(out).toMatchObject({ abort: true });
+      return new Response("", { status: 200, headers: { "content-type": "application/json" } });
+    })(SELLER_URL);
+    expect(seen.some((d) => d.reasons.some((r) => r.code === "delivery_check"))).toBe(false);
   });
 });

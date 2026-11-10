@@ -17,8 +17,8 @@ from botsrated.client import (
     usd_to_atomic,
 )
 from botsrated.guard_checks import (
-    PAYTO_BASE58_FACT,
     DELIVERY_FACT,
+    PAYTO_BASE58_FACT,
     RepeatWindow,
     declared_output_schema,
     evaluate_delivery,
@@ -41,6 +41,9 @@ from botsrated.util import (
     clean_text,
     is_address,
     is_atomic_amount,
+    network_family,
+    pay_to_format_for,
+    pay_to_invalid_fact,
     same_site_host,
     try_host_of,
 )
@@ -200,25 +203,28 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
         observed = clean_text(facts.observed_network, 40) if facts.observed_network else None
         known = [x.lower() for x in facts.known_pay_tos if is_address(x)]
         listing = facts.listing_pay_to.lower() if is_address(facts.listing_pay_to) else None
-        if not is_address(raw_pay_to):
-            add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.pay_to_mismatch)
-        elif observed and observed != network:
-            add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
-        elif known and raw_pay_to.lower() not in known:
-            add(
-                "payto_not_observed",
-                f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed or network}.",
-                p.pay_to_mismatch,
-            )
-        elif not known and listing:
-            if raw_pay_to.lower() == listing:
-                add("payto_listing_only", f"the payTo matches {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.", "info")
-            else:
+        pay_to_format = pay_to_format_for(req.get("network"), raw_pay_to)
+        # A Solana format failure is payto_base58_format, not this hex rule.
+        if pay_to_format == "invalid" and network_family(req.get("network")) != "solana":
+            add("payto_invalid", pay_to_invalid_fact(req.get("network")), p.pay_to_mismatch)
+        elif is_address(raw_pay_to):
+            if observed and observed != network:
+                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
+            elif known and raw_pay_to.lower() not in known:
                 add(
                     "payto_not_observed",
-                    f"the payTo in this payment request differs from the payTo in {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.",
+                    f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed or network}.",
                     p.pay_to_mismatch,
                 )
+            elif not known and listing:
+                if raw_pay_to.lower() == listing:
+                    add("payto_listing_only", f"the payTo matches {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.", "info")
+                else:
+                    add(
+                        "payto_not_observed",
+                        f"the payTo in this payment request differs from the payTo in {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.",
+                        p.pay_to_mismatch,
+                    )
         if (
             facts.observed_amount
             and is_atomic_amount(str(facts.observed_amount))
@@ -313,14 +319,18 @@ class PrePaymentGuard:
         try:
             note = _DELIVERY.get()
             if note is not None:
-                note["paid"] = True
                 schema = declared_output_schema(payment_required, as_requirements(requirements))
                 if schema is not None:
                     note["schema"] = schema
             decision = self._apply_repeat(self._decide(resource_url, requirements, request_url), requirements, request_url or resource_url, payment_required)
         except Exception:  # noqa: BLE001
             decision = self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
-        return self._merge_remote(decision, requirements)
+        decision = self._merge_remote(decision, requirements)
+        # A block means no payment was created, so the wrapped response is not a delivery check.
+        note = _DELIVERY.get()
+        if note is not None:
+            note["paid"] = decision.action == "allow"
+        return decision
 
     def _apply_repeat(self, decision: Decision, requirements: Any, request_url: str | None, payment_required: Any) -> Decision:
         req = as_requirements(requirements)
@@ -505,6 +515,10 @@ class PrePaymentGuard:
                 d = Decision("block", d.host, [Reason("botsrated_payment_extensions", "BotsRated quotes must not carry payment extensions.", "block")])
             else:
                 pr.extensions = None
+        if d.action != "allow":
+            note = _DELIVERY.get()
+            if note is not None:
+                note["paid"] = False
         return d
 
     def _hook(self, context: Any, request_url: str | None) -> Any:
