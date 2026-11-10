@@ -646,6 +646,8 @@ export function scheduleDeliveryCheck(task: () => Promise<void>): void {
 
 export interface ServerReasonSplit {
   quoteFact?: string;
+  /** True when a quote_above_listing row, or the decision that contains only that row, says block. */
+  quoteBlocks: boolean;
   otherWarnOrBlock: boolean;
   hasReasons: boolean;
 }
@@ -653,10 +655,11 @@ export interface ServerReasonSplit {
 /** Pull quote_above_listing out of a policy-check body. Other warn/block reasons stay on the aggregate decision. */
 export function splitPolicyReasons(body: unknown): ServerReasonSplit {
   if (!body || typeof body !== "object" || !Array.isArray((body as { reasons?: unknown }).reasons)) {
-    return { otherWarnOrBlock: false, hasReasons: false };
+    return { quoteBlocks: false, otherWarnOrBlock: false, hasReasons: false };
   }
   const reasons = (body as { reasons: unknown[] }).reasons;
   let quoteFact: string | undefined;
+  let quoteBlocks = false;
   let otherWarnOrBlock = false;
   for (const item of reasons) {
     if (!item || typeof item !== "object") continue;
@@ -665,11 +668,12 @@ export function splitPolicyReasons(body: unknown): ServerReasonSplit {
     const effect = typeof row.effect === "string" ? row.effect.trim().toLowerCase() : "";
     if (rule === "quote_above_listing") {
       if (!quoteFact) quoteFact = cleanServerFact(row.fact);
+      if (effect === "block") quoteBlocks = true;
     } else if (effect === "warn" || effect === "block") {
       otherWarnOrBlock = true;
     }
   }
-  return { ...(quoteFact ? { quoteFact } : {}), otherWarnOrBlock, hasReasons: reasons.length > 0 };
+  return { ...(quoteFact ? { quoteFact } : {}), quoteBlocks, otherWarnOrBlock, hasReasons: reasons.length > 0 };
 }
 
 function cleanServerFact(fact: unknown): string {

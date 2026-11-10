@@ -150,9 +150,13 @@ describe("quote_above_listing", () => {
   });
 
   it("surfaces a server quote_above_listing reason instead of only remote_policy", async () => {
-    const only = interpretPolicyBody(200, { decision: "block", reasons: [{ rule: "quote_above_listing", effect: "block", fact: "quoted 2000 atomic units; listed 1000." }] }, "open", "blockrun.ai");
-    expect(only.code).toBeUndefined();
-    expect(only.quoteAboveListingFact).toContain("listed 1000");
+    const only = interpretPolicyBody(200, { decision: "block", reasons: [{ rule: "quote_above_listing", effect: "block", fact: "quoted 2000 atomic units; listed 1000." }] }, "closed", "blockrun.ai");
+    expect(only).toMatchObject({ decision: "block", effect: "block", code: "quote_above_listing" });
+    expect(only.fact).toContain("listed 1000");
+    expect(only.quoteAboveListingFact).toBeUndefined();
+    const warned = interpretPolicyBody(200, { decision: "warn", reasons: [{ rule: "quote_above_listing", effect: "warn", fact: "quoted 2000 atomic units; listed 1000." }] }, "open", "blockrun.ai");
+    expect(warned.code).toBeUndefined();
+    expect(warned.quoteAboveListingFact).toContain("listed 1000");
     const mixed = interpretPolicyBody(
       200,
       {
@@ -175,17 +179,30 @@ describe("quote_above_listing", () => {
       return json(FOUND);
     });
     const seen: GuardDecision[] = [];
-    const g = createPaymentGuard({ fetch: f, remotePolicy: { token: "policy-token-1", failMode: "open" }, onDecision: (d) => seen.push(d) });
+    const g = createPaymentGuard({ fetch: f, remotePolicy: { token: "policy-token-1", failMode: "closed" }, onDecision: (d) => seen.push(d) });
     let out: unknown;
     await g.wrapFetch(async () => {
       out = await g.hooks.beforePaymentCreation({ paymentRequired: pr(SELLER_URL), selectedRequirements: req() });
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     })(SELLER_URL);
-    expect(out).toBeUndefined();
-    expect(seen[0].action).toBe("allow");
+    expect(out).toMatchObject({ abort: true });
+    expect(seen[0].action).toBe("block");
     expect(seen[0].remote_decision).toBe("block");
-    expect(seen[0].reasons).toContainEqual(expect.objectContaining({ code: "quote_above_listing", effect: "warn" }));
+    expect(seen[0].reasons).toContainEqual(expect.objectContaining({ code: "quote_above_listing", effect: "block" }));
     expect(seen[0].reasons.map((r) => r.code)).not.toContain("remote_policy");
+
+    const quiet = createPaymentGuard({
+      fetch: f,
+      policy: { quoteAboveListing: "allow" },
+      remotePolicy: { token: "policy-token-1", failMode: "closed" },
+    });
+    await expect(
+      quiet.wrapFetch(async () => {
+        const stopped = await quiet.hooks.beforePaymentCreation({ paymentRequired: pr(SELLER_URL), selectedRequirements: req() });
+        expect(stopped).toMatchObject({ abort: true });
+        return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+      })(SELLER_URL),
+    ).resolves.toBeInstanceOf(Response);
 
     const stopping = createPaymentGuard({
       fetch: f,

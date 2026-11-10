@@ -292,6 +292,46 @@ def content_type_sane(header: Any) -> bool:
     return media.endswith("+json") and re.fullmatch(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+", media) is not None
 
 
+_STREAMING_TYPES = frozenset({"text/event-stream", "application/x-ndjson", "multipart/x-mixed-replace"})
+
+
+def is_streaming_content_type(header: Any) -> bool:
+    """True for responses the delivery check does not read."""
+    if not isinstance(header, str):
+        return False
+    return header.split(";", 1)[0].strip().lower() in _STREAMING_TYPES
+
+
+def read_buffered_body(result: Any) -> tuple[bytes, str | None, bool] | None:
+    """Body for a delivery check, only when it is already buffered.
+
+    A streaming content type is skipped. A requests response is read only when
+    ``_content_consumed`` is already true. An httpx response is read only when
+    ``is_stream_consumed`` is already true. This does not pull an unread stream.
+    """
+    headers = getattr(result, "headers", None)
+    content_type = headers.get("content-type") if hasattr(headers, "get") else None
+    if is_streaming_content_type(content_type):
+        return None
+    if hasattr(result, "_content_consumed"):
+        if getattr(result, "_content_consumed", None) is not True:
+            return None
+    elif hasattr(result, "is_stream_consumed") and getattr(result, "is_stream_consumed", None) is not True:
+        return None
+    try:
+        raw = result.content
+    except Exception:  # noqa: BLE001 - an unread stream must not raise out of the wrapper
+        return None
+    if raw is None:
+        text = getattr(result, "text", None)
+        raw = text.encode() if isinstance(text, str) else b""
+    if not isinstance(raw, (bytes, bytearray)):
+        raw = b""
+    truncated = len(raw) > 1_000_000
+    body = bytes(raw[:1_000_000] if truncated else raw)
+    return body, content_type if isinstance(content_type, str) else None, truncated
+
+
 def _type_name(value: Any) -> str:
     if value is None:
         return "null"
@@ -492,8 +532,9 @@ def evaluate_delivery(*, status: int, body: bytes | str, content_type: str | Non
 def split_policy_reasons(body: Any) -> dict[str, Any]:
     """Pull quote_above_listing out of a policy-check body. Other warn/block reasons stay on the aggregate."""
     if not isinstance(body, dict) or not isinstance(body.get("reasons"), list):
-        return {"quote_fact": None, "other_warn_or_block": False, "has_reasons": False}
+        return {"quote_fact": None, "quote_blocks": False, "other_warn_or_block": False, "has_reasons": False}
     quote_fact = None
+    quote_blocks = False
     other = False
     for item in body["reasons"]:
         if not isinstance(item, dict):
@@ -503,9 +544,11 @@ def split_policy_reasons(body: Any) -> dict[str, Any]:
         if rule == "quote_above_listing":
             if quote_fact is None:
                 quote_fact = _clean_server_fact(item.get("fact"))
+            if effect == "block":
+                quote_blocks = True
         elif effect in ("warn", "block"):
             other = True
-    return {"quote_fact": quote_fact, "other_warn_or_block": other, "has_reasons": len(body["reasons"]) > 0}
+    return {"quote_fact": quote_fact, "quote_blocks": quote_blocks, "other_warn_or_block": other, "has_reasons": len(body["reasons"]) > 0}
 
 
 def _clean_server_fact(fact: Any) -> str:

@@ -27,6 +27,7 @@ from botsrated.guard_checks import (
     payment_identifier_of,
     payto_base58_assessment,
     quote_above_listing_sentence,
+    read_buffered_body,
     repeat_fact,
     repeat_sighting,
 )
@@ -394,20 +395,11 @@ class PrePaymentGuard:
                 status = getattr(result, "status", None)
             if not isinstance(status, int):
                 return
-            try:
-                raw = result.content
-            except Exception:  # noqa: BLE001 - an unread stream must not raise out of the wrapper
+            loaded = read_buffered_body(result)
+            if loaded is None:
                 return
-            if raw is None:
-                text = getattr(result, "text", None)
-                raw = text.encode() if isinstance(text, str) else b""
-            if not isinstance(raw, (bytes, bytearray)):
-                raw = b""
-            truncated = len(raw) > 1_000_000
-            body = bytes(raw[:1_000_000] if truncated else raw)
-            headers = getattr(result, "headers", None)
-            content_type = headers.get("content-type") if hasattr(headers, "get") else None
-            check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
+            body, content_type, truncated = loaded
+            check = evaluate_delivery(status=status, body=body, content_type=content_type, schema=note.get("schema"), truncated=truncated)
             if check["effect"] != "warn" or self.on_decision is None:
                 return
             host = try_host_of(url)

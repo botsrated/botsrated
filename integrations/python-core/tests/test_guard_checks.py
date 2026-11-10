@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
 import httpx
@@ -191,7 +194,16 @@ def test_server_quote_above_listing_is_not_collapsed(found):
         "open",
         "blockrun.ai",
     )
-    assert only.code is None and "listed 1000" in only.quote_above_listing_fact
+    assert only.decision == "block" and only.effect == "block" and only.code == "quote_above_listing"
+    assert only.fact is not None and "listed 1000" in only.fact
+    assert only.quote_above_listing_fact is None
+    warned = interpret_policy_body(
+        200,
+        {"decision": "warn", "reasons": [{"rule": "quote_above_listing", "effect": "warn", "fact": "quoted 2000 atomic units; listed 1000."}]},
+        "open",
+        "blockrun.ai",
+    )
+    assert warned.code is None and warned.quote_above_listing_fact is not None and "listed 1000" in warned.quote_above_listing_fact
 
     def answer(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/v1/policy/check"):
@@ -199,13 +211,22 @@ def test_server_quote_above_listing_is_not_collapsed(found):
         return httpx.Response(200, json=found)
 
     seen = []
-    g, _ = guard_with(found, answer=answer, on_decision=seen.append, remote_policy={"token": "policy-token-1", "fail_mode": "open"})
+    g, _ = guard_with(found, answer=answer, on_decision=seen.append, remote_policy={"token": "policy-token-1", "fail_mode": "closed"})
     url = found["latest_probe"]["url"]
     with g.request(url):
-        assert g.before_payment_creation(ctx(url, req(found))) is None
-    assert seen[0].action == "allow" and seen[0].remote_decision == "block"
-    assert any(r.code == "quote_above_listing" and r.effect == "warn" for r in seen[0].reasons)
+        assert g.before_payment_creation(ctx(url, req(found))) is not None
+    assert seen[0].action == "block" and seen[0].remote_decision == "block"
+    assert any(r.code == "quote_above_listing" and r.effect == "block" for r in seen[0].reasons)
     assert "remote_policy" not in [r.code for r in seen[0].reasons]
+
+    quiet, _ = guard_with(
+        found,
+        answer=answer,
+        policy=PaymentGuardPolicy(quote_above_listing="allow"),
+        remote_policy={"token": "policy-token-1", "fail_mode": "closed"},
+    )
+    with quiet.request(url):
+        assert quiet.before_payment_creation(ctx(url, req(found))) is not None
 
     stopping, _ = guard_with(
         found,
@@ -449,3 +470,112 @@ def test_unread_streaming_response_does_not_raise(found):
         return Unread()
 
     assert g.wrap_get(paid_payment_get)(url).status_code == 200
+
+
+class _StreamHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            if self.path.startswith("/events"):
+                self.send_response(200)
+                self.send_header("content-type", "text/event-stream")
+                self.end_headers()
+                self.wfile.write(b"data: hi\n\n")
+                self.wfile.flush()
+                time.sleep(30)
+            elif self.path.startswith("/big"):
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                chunk = b"x" * 100_000
+                for _ in range(50):
+                    self.wfile.write(chunk)
+                self.wfile.write(b"xxxxxxxx")
+            else:
+                self.send_response(404)
+                self.end_headers()
+        except OSError:
+            return
+
+    def log_message(self, fmt, *args):
+        return
+
+
+def test_wrap_get_does_not_read_a_streamed_body(found):
+    requests = pytest.importorskip("requests")
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _StreamHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    events = f"http://127.0.0.1:{port}/events"
+    big = f"http://127.0.0.1:{port}/big"
+    url = found["latest_probe"]["url"]
+    payload = {
+        "x402Version": 2,
+        "payload": {"authorization": {"from": "0x" + "a" * 40, "nonce": NONCE, "validBefore": "9999999999"}},
+        "accepted": req(found),
+    }
+
+    class Client:
+        host = "botsrated.com"
+
+        def preflight(self, host):
+            return type("P", (), {"found": True, "body": found})()
+
+    pre = PrePaymentGuard(client=Client())  # type: ignore[arg-type]
+    payment, _ = guard_with(found, hosted=False)
+
+    def open_stream(target, **kwargs):
+        return requests.get(target, stream=True, timeout=2)
+
+    def assert_prompt(resp, *, events_body: bool):
+        assert resp.status_code == 200
+        assert resp._content_consumed is False
+        assert resp._content is False
+        if events_body:
+            assert "text/event-stream" in resp.headers.get("content-type", "")
+        resp.close()
+
+    try:
+        def pre_get(target, **kwargs):
+            pre.decide(url, req(found, extra={"nonce": NONCE, "name": "USD Coin", "version": "2"}), request_url=url)
+            return open_stream(target)
+
+        started = time.perf_counter()
+        assert_prompt(pre.wrap_get(pre_get)(events), events_body=True)
+        assert time.perf_counter() - started < 1
+        started = time.perf_counter()
+        assert_prompt(pre.wrap_get(pre_get)(big), events_body=False)
+        assert time.perf_counter() - started < 1
+
+        def pay_get(target, **kwargs):
+            with payment.request(target):
+                payment.before_payment_creation(ctx(url, req(found)))
+                payment.after_payment_creation({"payment_payload": payload, "selected_requirements": req(found)})
+            return open_stream(target)
+
+        started = time.perf_counter()
+        assert_prompt(payment.wrap_get(pay_get)(events), events_body=True)
+        assert time.perf_counter() - started < 1
+        started = time.perf_counter()
+        assert_prompt(payment.wrap_get(pay_get)(big), events_body=False)
+        assert time.perf_counter() - started < 1
+
+        async def pre_async(target, **kwargs):
+            pre.decide(url, req(found, extra={"nonce": NONCE, "name": "USD Coin", "version": "2"}), request_url=url)
+            return open_stream(target)
+
+        async def pay_async(target, **kwargs):
+            with payment.request(target):
+                payment.before_payment_creation(ctx(url, req(found)))
+                payment.after_payment_creation({"payment_payload": payload, "selected_requirements": req(found)})
+            return open_stream(target)
+
+        started = time.perf_counter()
+        assert_prompt(asyncio.run(pre.wrap_async_get(pre_async)(events)), events_body=True)
+        assert_prompt(asyncio.run(pre.wrap_async_get(pre_async)(big)), events_body=False)
+        assert_prompt(asyncio.run(payment.wrap_async_get(pay_async)(events)), events_body=True)
+        assert_prompt(asyncio.run(payment.wrap_async_get(pay_async)(big)), events_body=False)
+        assert time.perf_counter() - started < 2
+    finally:
+        server.shutdown()
+        server.server_close()

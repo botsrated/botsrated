@@ -575,8 +575,8 @@ export interface RemotePolicyEffect {
   not_a_botsrated_rating?: boolean;
   policy_version?: string;
   /**
-   * Set when the policy body names `quote_above_listing`. The guard applies the local `quoteAboveListing` effect.
-   * When this is the only warn or block reason, `code` stays unset so the aggregate is not collapsed to `remote_policy`.
+   * Set when a warn or pass names `quote_above_listing`. The guard applies the local `quoteAboveListing` effect.
+   * A server block on that reason is returned as `effect: "block"` and `code: "quote_above_listing"` instead, so a local allow cannot clear it.
    */
   quoteAboveListingFact?: string;
 }
@@ -684,6 +684,10 @@ export function interpretPolicyBody(status: number | null, body: unknown, failMo
   if (status !== null && status >= 200 && status < 300) {
     const decision = namedDecision(body);
     const onlyQuote = !!split.quoteFact && split.hasReasons && !split.otherWarnOrBlock;
+    // A server block stays a block. The specific code is kept so it is not rewritten as remote_policy, and the local setting cannot clear it.
+    if (onlyQuote && (decision === "block" || split.quoteBlocks)) {
+      return { decision: "block", effect: "block", code: "quote_above_listing", fact: split.quoteFact, ...framing };
+    }
     if (decision === "block" && !onlyQuote) return { decision, effect: "block", code: "remote_policy", fact: `your policy returned block for ${host}.`, ...quote, ...framing };
     if (decision === "warn" && !onlyQuote) return { decision, effect: "warn", code: "remote_policy", fact: `your policy returned warn for ${host}.`, ...quote, ...framing };
     if (decision === "block" || decision === "warn" || decision === "pass") return { decision, ...quote, ...framing };

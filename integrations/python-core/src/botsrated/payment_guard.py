@@ -52,6 +52,7 @@ from botsrated.guard_checks import (
     payment_identifier_of,
     payto_base58_assessment,
     quote_above_listing_sentence,
+    read_buffered_body,
     repeat_fact,
     repeat_sighting,
     split_policy_reasons,
@@ -327,8 +328,8 @@ class RemotePolicyEffect:
     decided_by: str | None = None
     not_a_botsrated_rating: bool | None = None
     policy_version: str | None = None
-    # Set when the body names quote_above_listing. The guard applies the local effect.
-    # When that is the only warn or block reason, code stays None so it is not collapsed into remote_policy.
+    # Set when a warn or pass names quote_above_listing. The guard applies the local effect.
+    # A server block on that reason is effect "block" and code "quote_above_listing", so a local allow cannot clear it.
     quote_above_listing_fact: str | None = None
 
 
@@ -394,6 +395,9 @@ def interpret_policy_body(status: int | None, body: Any, fail_mode: FailMode, ho
     if status is not None and 200 <= status < 300:
         decision = _named_decision(body)
         only_quote = bool(quote) and split["has_reasons"] and not split["other_warn_or_block"]
+        # A server block stays a block. The specific code is kept, and the local setting cannot clear it.
+        if only_quote and (decision == "block" or split["quote_blocks"]):
+            return RemotePolicyEffect("block", "block", "quote_above_listing", quote, decided_by, rating, version, None)
         if decision == "block" and not only_quote:
             return RemotePolicyEffect("block", "block", "remote_policy", f"your policy returned block for {host}.", decided_by, rating, version, quote)
         if decision == "warn" and not only_quote:
@@ -1266,24 +1270,11 @@ class PaymentGuard:
                 status = getattr(result, "status", None)
             if not isinstance(status, int):
                 return
-            try:
-                raw = result.content
-            except Exception:  # noqa: BLE001 - an unread stream must not raise out of the wrapper
+            loaded = read_buffered_body(result)
+            if loaded is None:
                 return
-            if raw is None:
-                text = getattr(result, "text", None)
-                raw = text.encode() if isinstance(text, str) else b""
-            if not isinstance(raw, (bytes, bytearray)):
-                raw = b""
-            truncated = len(raw) > 1_000_000
-            body = bytes(raw[:1_000_000] if truncated else raw)
-            headers = getattr(result, "headers", None)
-            content_type = None
-            if headers is not None:
-                getter = getattr(headers, "get", None)
-                if callable(getter):
-                    content_type = getter("content-type")
-            check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
+            body, content_type, truncated = loaded
+            check = evaluate_delivery(status=status, body=body, content_type=content_type, schema=note.get("schema"), truncated=truncated)
             if check["effect"] != "warn":
                 return
             self._emit(self._finish("payment_response", [GuardReason("delivery_check", "warn", delivery_fact(check))], try_host_of(url)))
