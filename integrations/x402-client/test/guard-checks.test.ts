@@ -473,6 +473,67 @@ describe("schema work budget and strict payTo rows", () => {
     expect(check.effect).toBe("warn");
   });
 
+  it("compares an object enum and an empty const without serializing a nested body", async () => {
+    const emptyEnum = { enum: Array.from({ length: 6_600 }, () => ({})) };
+    const emptyConst = { anyOf: Array.from({ length: 4_000 }, () => ({ const: {} })) };
+    const nestedString = JSON.stringify([["x".repeat(990_000)]]);
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 80_000; i++) wide[`k${i}`] = 1;
+    const nestedWide = JSON.stringify({ a: wide });
+    const nestedText = JSON.stringify({ a: { b: "x".repeat(990_000) } });
+    const cases = [
+      { schema: emptyEnum, body: nestedString },
+      { schema: emptyEnum, body: nestedWide },
+      { schema: emptyConst, body: nestedText },
+    ];
+    const payload = {
+      x402Version: 2,
+      payload: { authorization: { from: "0x" + "a".repeat(40), nonce: NONCE, validBefore: "9999999999" } },
+      accepted: req(),
+    };
+    const matched = evaluateDelivery({ status: 200, body: JSON.stringify({ ok: true }), contentType: "application/json", schema: { enum: [{ ok: true }] } });
+    expect(matched.checks.schema).toBe("pass");
+    const extra = evaluateDelivery({ status: 200, body: JSON.stringify({ ok: true, n: 1 }), contentType: "application/json", schema: { enum: [{ ok: true }] } });
+    expect(extra.checks.schema).toBe("fail");
+
+    for (const { schema, body } of cases) {
+      const seen: GuardDecision[] = [];
+      const g = createPaymentGuard({ hosted: false, onDecision: (d) => seen.push(d) });
+      const started = Date.now();
+      await g.wrapFetch(async () => {
+        await g.hooks.beforePaymentCreation({
+          paymentRequired: pr(SELLER_URL, [req()], { bazaar: { info: { output: { schema } } } }),
+          selectedRequirements: req(),
+        });
+        await g.hooks.afterPaymentCreation({ paymentPayload: payload });
+        return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+      })(SELLER_URL);
+      while (!seen.some((d) => d.reasons.some((r) => r.code === "delivery_check")) && Date.now() - started < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(Date.now() - started).toBeLessThan(500);
+      const fact = seen.flatMap((d) => d.reasons).find((r) => r.code === "delivery_check")?.fact ?? "";
+      expect(fact === "a 2xx is not a delivery. The declared JSON schema was too large to evaluate." || fact.includes("did not all match")).toBe(true);
+
+      const preSeen: Array<{ reasons: Array<{ code: string; detail?: string }> }> = [];
+      const pre = createPrePaymentGuard({
+        client: { unpaidFetch: () => async () => json(FOUND), unpaidTimeoutMs: () => 1000, host: "botsrated.com", preflight: async () => ({ found: true, body: FOUND }) } as never,
+        onDecision: (d) => preSeen.push(d),
+      });
+      const preStarted = Date.now();
+      await pre.wrapFetch(async () => {
+        await pre.decide(SELLER_URL, req(), SELLER_URL, pr(SELLER_URL, [req()], { bazaar: { info: { output: { schema } } } }));
+        return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+      })(SELLER_URL);
+      while (!preSeen.some((d) => d.reasons.some((r) => r.code === "delivery_check")) && Date.now() - preStarted < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(Date.now() - preStarted).toBeLessThan(500);
+      const preFact = preSeen.flatMap((d) => d.reasons).find((r) => r.code === "delivery_check")?.detail ?? "";
+      expect(preFact === "a 2xx is not a delivery. The declared JSON schema was too large to evaluate." || preFact.includes("did not all match")).toBe(true);
+    }
+  });
+
   it("keeps strict blocks for non-solana payTo and compares a valid Solana payTo", () => {
     const facts = factsFrom(FOUND, "blockrun.ai", "preflight");
     const strict = strictGuardPolicy;

@@ -291,15 +291,36 @@ function typeOk(spec: unknown, value: unknown): boolean {
   return names.some((name) => name === got || (name === "number" && got === "integer"));
 }
 
-/** Equal for schema const/enum. Primitives use ===. Objects are serialized only after the budget already paid for both sides. */
-function sameJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== typeof b || a === null || b === null || typeof a !== "object") return false;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
+/**
+ * Equal for schema const/enum. Walks the schema literal and stops at the first mismatch.
+ * The response value is never serialized: an empty object or array does not walk a nested body.
+ */
+function sameJson(literal: unknown, value: unknown, depth = 0): boolean {
+  if (literal === value) return true;
+  if (depth > 32 || typeof literal !== "object" || typeof value !== "object" || literal === null || value === null) return false;
+  const literalIsArray = Array.isArray(literal);
+  if (literalIsArray !== Array.isArray(value)) return false;
+  if (literalIsArray) {
+    const left = literal as unknown[];
+    const right = value as unknown[];
+    if (left.length !== right.length) return false;
+    for (let i = 0; i < left.length; i++) if (!sameJson(left[i], right[i], depth + 1)) return false;
+    return true;
   }
+  const left = literal as Record<string, unknown>;
+  const right = value as Record<string, unknown>;
+  const keys = Object.keys(left);
+  let seen = 0;
+  for (const key in right) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) continue;
+    seen += 1;
+    if (seen > keys.length) return false;
+  }
+  if (seen !== keys.length) return false;
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !sameJson(left[key], right[key], depth + 1)) return false;
+  }
+  return true;
 }
 
 /** Extra visits for a schema literal, roughly one per 64 serialized bytes. Numbers cost nothing extra. */
