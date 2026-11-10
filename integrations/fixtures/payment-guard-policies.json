@@ -7,7 +7,10 @@
     "resourceHostMismatch",
     "paidUrlUnknown",
     "notCovered",
-    "stale"
+    "stale",
+    "repeatPayment",
+    "payToBase58Format",
+    "quoteAboveListing"
   ],
   "pythonFields": {
     "payToMismatch": "pay_to_mismatch",
@@ -16,7 +19,10 @@
     "resourceHostMismatch": "resource_host_mismatch",
     "paidUrlUnknown": "paid_url_unknown",
     "notCovered": "not_covered",
-    "stale": "stale"
+    "stale": "stale",
+    "repeatPayment": "repeat_payment",
+    "payToBase58Format": "pay_to_base58_format",
+    "quoteAboveListing": "quote_above_listing"
   },
   "presets": {
     "warn": {
@@ -26,7 +32,10 @@
       "resourceHostMismatch": "warn",
       "paidUrlUnknown": "warn",
       "notCovered": "allow",
-      "stale": "allow"
+      "stale": "allow",
+      "repeatPayment": "warn",
+      "payToBase58Format": "warn",
+      "quoteAboveListing": "warn"
     },
     "strict": {
       "payToMismatch": "block",
@@ -35,7 +44,10 @@
       "resourceHostMismatch": "block",
       "paidUrlUnknown": "block",
       "notCovered": "allow",
-      "stale": "allow"
+      "stale": "allow",
+      "repeatPayment": "warn",
+      "payToBase58Format": "warn",
+      "quoteAboveListing": "warn"
     },
     "carefulBuyer": "strict"
   }

@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install "botsrated[x402]"` (PyPI 0.3.1).
+1. Install: `pip install "botsrated[x402]"` (this tree is 0.3.2; PyPI still serves 0.3.1 until a later publish).
 2. Attach to your x402 client (omit `preset` for advice only; omit `fail_mode` to stay open):
 ```python
 from botsrated import PaymentGuard
@@ -27,7 +27,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: published on PyPI as [`botsrated` 0.3.1](https://pypi.org/project/botsrated/)** (this release; includes `remote_policy`).
+**Status: source version 0.3.2 in this repo. Not published.** PyPI still serves [`botsrated` 0.3.1](https://pypi.org/project/botsrated/). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -110,6 +110,10 @@ A stopped payment raises the x402 abort error with text like:
 | `resource_host_mismatch`: the 402's `resource.url` names another host than the URL being paid (checked locally) | `resource_host_mismatch` | warn | **block** |
 | `paid_url_unknown`: the URL being paid is unknown (no `wrap_get` / `guard.request(url)`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |
 | `price_above_observed`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
+| `quote_above_listing`: same route, amount above the listed amount. A server policy reason with this code uses the same effect | `quote_above_listing` | warn | warn |
+| `repeat_payment`: the same payment identifier, or the same host, route, amount and nonce, repeats within 60 seconds. Local only. `replay_tested` stays false | `repeat_payment` | warn | warn |
+| `pay_to_base58_format`: a Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. The Base USDC rule is unchanged | `payto_base58_format` | warn | warn |
+| After payment, on `wrap_get` / `wrap_async_get`, once a payload was created: a 2xx is not a delivery unless the body is non-empty, the content type is one this check accepts (`application/json`, `application/problem+json`, `text/plain`, `text/json`, or a `+json` type), and a JSON schema the seller declared matches. This check does not block | `delivery_check` | warn | warn |
 | `not_covered`: BotsRated has no probe record for the host | `not_covered` | info | info |
 | `stale`: BotsRated's latest probe is older than 24 h | `data_stale` | info | info |
 | BotsRated unreachable (3 s timeout) | `botsrated_unreachable` | info (`fail_open=True`) | info unless `fail_open=False` |

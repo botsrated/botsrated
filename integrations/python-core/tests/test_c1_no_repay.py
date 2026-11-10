@@ -33,7 +33,7 @@ from botsrated.payment_guard import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-GUARD_MODULES = ["payment_guard.py", "onchain.py", "util.py"]
+GUARD_MODULES = ["payment_guard.py", "onchain.py", "util.py", "guard_checks.py"]
 FORBIDDEN = [
     ("create_payment_payload", re.compile(r"create_payment_payload|createPaymentPayload")),
     ("recovered", re.compile(r"recovered", re.IGNORECASE)),
@@ -45,7 +45,7 @@ FORBIDDEN = [
     ("retry pipeline", re.compile(r"retry\.mjs|runReplay|RETRY_CHECK")),
     ("dynamic code", re.compile(r"\beval\s*\(|\bexec\s*\(|__import__|importlib")),
 ]
-ALLOWED_IMPORTS = {"__future__", "asyncio", "inspect", "json", "math", "re", "secrets", "threading", "time", "collections.abc", "contextlib", "contextvars", "dataclasses", "datetime", "typing", "urllib.parse", "httpx", "botsrated.onchain", "botsrated.util", "x402"}
+ALLOWED_IMPORTS = {"__future__", "asyncio", "inspect", "json", "math", "re", "secrets", "threading", "time", "collections.abc", "contextlib", "contextvars", "dataclasses", "datetime", "typing", "urllib.parse", "httpx", "botsrated.onchain", "botsrated.util", "botsrated.guard_checks", "x402"}
 
 
 # -- adapters -----------------------------------------------------------------------------------------------------

@@ -7,6 +7,7 @@
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
+import { PAYTO_BASE58_FACT, RepeatWindow, declaredOutputSchema, deliveryFact, evaluateDelivery, listedAmountOf, nonceOf, paymentIdentifierOf, payToBase58Assessment, quoteAboveListingSentence, repeatFact, repeatSighting } from "./guard-checks.js";
 import { normalizeRemotePolicy, policyQuote, requestPolicyCheck, type RemotePolicyOptions } from "./payment-guard.js";
 import {
   BASE_MAINNET,
@@ -261,15 +262,17 @@ interface AsyncLocalStorageLike<T> {
   getStore(): T | undefined;
 }
 
-/** Per-async-context request URL when the runtime exposes AsyncLocalStorage synchronously (Node >= 20.16 / 22.3). */
-const requestUrlStore: AsyncLocalStorageLike<string> | undefined = (() => {
+/** One loader for AsyncLocalStorage (Node >= 20.16 / 22.3). A second call in this file is refused by the source scan. */
+const asyncLocalStorage = <T>(): AsyncLocalStorageLike<T> | undefined => {
   try {
     const mod = (globalThis as any).process?.getBuiltinModule?.("node:async_hooks");
-    return mod?.AsyncLocalStorage ? (new mod.AsyncLocalStorage() as AsyncLocalStorageLike<string>) : undefined;
+    return mod?.AsyncLocalStorage ? (new mod.AsyncLocalStorage() as AsyncLocalStorageLike<T>) : undefined;
   } catch {
     return undefined;
   }
-})();
+};
+/** Per-async-context request URL when the runtime exposes AsyncLocalStorage synchronously. */
+const requestUrlStore: AsyncLocalStorageLike<string> | undefined = asyncLocalStorage<string>();
 /** Fallback without AsyncLocalStorage: URLs of the {@link payingRequest} calls currently in flight. */
 const inFlightRequestUrls = new Map<string, number>();
 
@@ -555,6 +558,8 @@ export interface SellerFacts {
   observedNetwork?: string;
   probedUrl?: string;
   observedAmount?: string;
+  /** Listed atomic amount for the probed route, when the body included one. */
+  listedAmount?: string;
   valid402Rate?: number;
   recentProbes?: number;
   stale?: boolean;
@@ -578,6 +583,7 @@ export function factsFrom(body: Record<string, any>, host: string, source: "pref
     observedNetwork: probe.live_network ?? listing.network,
     probedUrl: probe.url ?? body.route_probed?.url,
     observedAmount: probe.live_amount ?? measured.last_quoted_amount_atomic,
+    listedAmount: listedAmountOf(body),
     valid402Rate: typeof rw.valid_402_rate === "number" ? rw.valid_402_rate : undefined,
     recentProbes: typeof rw.probes === "number" ? rw.probes : undefined,
     stale: body.freshness?.stale,
@@ -598,6 +604,18 @@ export interface GuardPolicy {
   payToMismatch?: "allow" | "warn" | "block";
   /** Same route, quoted amount above the last amount BotsRated observed. Default "warn". */
   priceAboveObserved?: "allow" | "warn" | "block";
+  /**
+   * Same payment identifier, or the same host, route, amount and nonce, within 60 seconds.
+   * Default "warn". `strictGuardPolicy` does not change it.
+   */
+  repeatPayment?: "allow" | "warn" | "block";
+  /**
+   * Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Default "warn".
+   * Does not change the Base USDC hard rule.
+   */
+  payToBase58Format?: "allow" | "warn" | "block";
+  /** Same route, quoted amount above the listed amount. Default "warn". `strictGuardPolicy` stays warn. */
+  quoteAboveListing?: "allow" | "warn" | "block";
   /** BotsRated data older than 24 h. Default "allow". */
   stale?: "allow" | "block";
   /** Block when the recent valid-402 rate is below this (only with >= 3 recent probes). Off by default. */
@@ -640,6 +658,9 @@ const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate" | "requireReq
   notCovered: "allow",
   payToMismatch: "warn",
   priceAboveObserved: "warn",
+  repeatPayment: "warn",
+  payToBase58Format: "warn",
+  quoteAboveListing: "warn",
   stale: "allow",
 };
 
@@ -694,11 +715,16 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
     if (facts.observedAmount && /^[0-9]+$/.test(facts.observedAmount) && /^[0-9]+$/.test(String(req?.amount)) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.observedAmount)) {
       add("price_above_observed", `the quoted amount (${req.amount} atomic units) is above the last amount BotsRated recorded on this route (${facts.observedAmount}).`, p.priceAboveObserved);
     }
+    if (facts.listedAmount && /^[0-9]+$/.test(facts.listedAmount) && /^[0-9]+$/.test(String(req?.amount)) && sameRoute(resourceUrl, facts.probedUrl) && BigInt(req.amount) > BigInt(facts.listedAmount)) {
+      add("quote_above_listing", quoteAboveListingSentence(String(req.amount), facts.listedAmount), p.quoteAboveListing);
+    }
     if (facts.stale) add("data_stale", `BotsRated's latest probe of ${host} is older than 24 hours.`, p.stale === "block" ? "block" : "info");
     if (p.minValid402Rate !== undefined && facts.valid402Rate !== undefined && (facts.recentProbes ?? 0) >= 3 && facts.valid402Rate < p.minValid402Rate) {
       add("low_valid_402_rate", `the recent valid-402 rate BotsRated measured (${facts.valid402Rate}) is below your minimum (${p.minValid402Rate}).`, "block");
     }
   }
+  const base58 = payToBase58Assessment(req?.network, req?.payTo);
+  if (base58.applies && base58.valid === false) add("payto_base58_format", PAYTO_BASE58_FACT, p.payToBase58Format);
   return { action: reasons.some((r) => r.effect === "block") ? "block" : "allow", host: facts.host, reasons, facts, disputeUrl: DISPUTE_URL };
 }
 
@@ -735,7 +761,7 @@ export interface PrePaymentGuard {
    * @param requestUrl The URL actually being requested and paid. When given, its host is looked up, and the payment
    *   is blocked (even with `failOpen`) if `resourceUrl` names a different host. Only host names go to BotsRated.
    */
-  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision>;
+  decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike): Promise<Decision>;
   /**
    * Register with `x402Client.onBeforePaymentCreation(guard.beforePaymentCreation)`. The URL being paid comes from
    * {@link payingRequest} / {@link PrePaymentGuard.wrapFetch}; without it the host is read from the 402's `resource.url`.
@@ -767,6 +793,8 @@ export function formatDecision(d: Decision): string {
 export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGuard {
   const client = options.client ?? new BotsRatedClient();
   const remote = options.remotePolicy ? normalizeRemotePolicy(options.remotePolicy) : undefined;
+  const repeats = new RepeatWindow();
+  const paidNotes = asyncLocalStorage<{ url?: string; schema?: Record<string, unknown>; paid: boolean; req?: PaymentRequirementsLike }>();
   let cachedPolicyVersion: string | undefined;
   const failOpen = options.failOpen ?? true;
   const openOrClosed = (code: string, detail: string, host?: string): Decision => ({
@@ -789,6 +817,13 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     });
     if (effect.policy_version) cachedPolicyVersion = effect.policy_version;
     else if (cachedPolicyVersion) effect = { ...effect, policy_version: cachedPolicyVersion };
+    if (effect.quoteAboveListingFact && !decision.reasons.some((r) => r.code === "quote_above_listing")) {
+      const quoteEffect = options.policy?.quoteAboveListing ?? "warn";
+      if (quoteEffect !== "allow") {
+        decision.reasons.push({ code: "quote_above_listing", detail: effect.quoteAboveListingFact, effect: quoteEffect === "block" ? "block" : "warn" });
+        if (quoteEffect === "block") decision.action = "block";
+      }
+    }
     if (effect.effect && effect.code && effect.fact) {
       decision.reasons.push({ code: effect.code, detail: effect.fact, effect: effect.effect });
       if (effect.effect === "block") decision.action = "block";
@@ -800,10 +835,34 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     return decision;
   }
 
-  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string): Promise<Decision> {
+  function applyRepeat(decision: Decision, req: PaymentRequirementsLike, requestUrl: string | undefined, paymentRequired?: PaymentRequiredLike): Decision {
+    const sighting = repeatSighting({
+      paymentId: paymentIdentifierOf(paymentRequired, req),
+      url: requestUrl,
+      amount: req?.amount,
+      nonce: nonceOf(req),
+    });
+    const hit = repeats.check(sighting, Date.now());
+    repeats.record(sighting, Date.now());
+    const effect = options.policy?.repeatPayment ?? "warn";
+    if (hit && effect !== "allow") {
+      decision.reasons.push({ code: "repeat_payment", detail: repeatFact(hit), effect: effect === "block" ? "block" : "warn" });
+      if (effect === "block") decision.action = "block";
+    }
+    return decision;
+  }
+
+  async function decide(resourceUrl: string | undefined, req: PaymentRequirementsLike, requestUrl?: string, paymentRequired?: PaymentRequiredLike): Promise<Decision> {
+    const note = paidNotes?.getStore();
+    if (note) {
+      note.paid = true;
+      note.req = req;
+      const schema = declaredOutputSchema(paymentRequired, req);
+      if (schema) note.schema = schema;
+    }
     let decision: Decision;
     try {
-      decision = await decideInner(resourceUrl, req, requestUrl);
+      decision = applyRepeat(await decideInner(resourceUrl, req, requestUrl), req, requestUrl ?? resourceUrl, paymentRequired);
     } catch {
       decision = openOrClosed("hook_error", "the pre-payment check could not evaluate this payment.");
     }
@@ -891,7 +950,7 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     let d: Decision =
       !requestUrl && options.policy?.requireRequestUrl
         ? { action: "block", reasons: [{ code: "no_request_url", detail: "the URL being paid is unknown; wrap the request with guard.wrapFetch or payingRequest.", effect: "block" }], disputeUrl: DISPUTE_URL }
-        : await decide(url, ctx.selectedRequirements, requestUrl);
+        : await decide(url, ctx.selectedRequirements, requestUrl, ctx.paymentRequired);
     const paidUrl = requestUrl ?? url;
     if (d.action === "allow" && paidUrl && tryHostOf(paidUrl) === client.host) {
       // A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an ERC-20
@@ -927,7 +986,40 @@ export function createPrePaymentGuard(options: GuardOptions = {}): PrePaymentGua
     beforePaymentCreation: (ctx) => hook(ctx, currentRequestUrl()),
     forRequest: (requestUrl) => (ctx) => hook(ctx, requestUrl),
     wrapFetch<F extends (input: any, init?: any) => Promise<Response>>(fetchWithPayment: F): F {
-      return ((input: any, init?: any) => payingRequest(requestUrlOf(input), () => fetchWithPayment(input, init))) as F;
+      return (async (input: any, init?: any) => {
+        const note = { url: requestUrlOf(input), paid: false as boolean, schema: undefined as Record<string, unknown> | undefined, req: undefined as PaymentRequirementsLike | undefined };
+        const run = () => payingRequest(note.url, () => fetchWithPayment(input, init));
+        const res = await (paidNotes ? paidNotes.run(note, run) : run());
+        if (note.paid && res instanceof Response) {
+          try {
+            let body: Uint8Array = new Uint8Array();
+            let truncated = false;
+            try {
+              const buf = await res.clone().arrayBuffer();
+              truncated = buf.byteLength > 1_000_000;
+              body = new Uint8Array(truncated ? buf.slice(0, 1_000_000) : buf);
+            } catch {
+              body = new Uint8Array();
+            }
+            const check = evaluateDelivery({ status: res.status, body, contentType: res.headers.get("content-type"), schema: note.schema, truncated });
+            if (check.effect === "warn") {
+              const host = tryHostOf(note.url);
+              options.onDecision?.(
+                {
+                  action: "allow",
+                  ...(host ? { host } : {}),
+                  reasons: [{ code: "delivery_check", detail: deliveryFact(), effect: "warn" }],
+                  disputeUrl: DISPUTE_URL,
+                },
+                note.req ?? { scheme: "exact", network: "", amount: "0", asset: "", payTo: "" },
+              );
+            }
+          } catch {
+            /* a delivery note never changes the response */
+          }
+        }
+        return res;
+      }) as F;
     },
     remotePolicyVersion(): string | undefined {
       return cachedPolicyVersion;
@@ -1000,7 +1092,7 @@ export function mcpPaymentApprover(guard: PrePaymentGuard, serverUrl: string, op
       }
     }
     for (const req of ctx.paymentRequired.accepts ?? []) {
-      const d = await guard.decide(resourceUrl, req, serverUrl);
+      const d = await guard.decide(resourceUrl, req, serverUrl, ctx.paymentRequired);
       if (note) d.reasons.push(note);
       options.onDecision?.(d, req);
       if (d.action === "block") return false;

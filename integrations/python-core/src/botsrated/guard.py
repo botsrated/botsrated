@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
@@ -14,6 +15,20 @@ from botsrated.client import (
     extensions_ok,
     paying_request,
     usd_to_atomic,
+)
+from botsrated.guard_checks import (
+    PAYTO_BASE58_FACT,
+    DELIVERY_FACT,
+    RepeatWindow,
+    declared_output_schema,
+    evaluate_delivery,
+    listed_amount_of,
+    nonce_of,
+    payment_identifier_of,
+    payto_base58_assessment,
+    quote_above_listing_sentence,
+    repeat_fact,
+    repeat_sighting,
 )
 from botsrated.payment_guard import (
     RemotePolicy,
@@ -31,6 +46,7 @@ from botsrated.util import (
 )
 
 MEASUREMENT_NOTE = "This is a measurement, not a finding about the seller."
+_DELIVERY: ContextVar[dict[str, Any] | None] = ContextVar("botsrated_prepay_delivery", default=None)
 
 T = TypeVar("T")
 
@@ -54,6 +70,7 @@ class SellerFacts:
     observed_network: str | None = None
     probed_url: str | None = None
     observed_amount: str | None = None
+    listed_amount: str | None = None
     valid_402_rate: float | None = None
     recent_probes: int | None = None
     stale: bool | None = None
@@ -95,6 +112,12 @@ class GuardPolicy:
     # (was "block"); use STRICT_GUARD_POLICY or pay_to_mismatch="block" to stop those payments.
     pay_to_mismatch: Literal["allow", "warn", "block"] = "warn"
     price_above_observed: Literal["allow", "warn", "block"] = "warn"
+    # Same payment identifier, or the same host, route, amount and nonce, within 60 seconds. strict does not change it.
+    repeat_payment: Literal["allow", "warn", "block"] = "warn"
+    # Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Does not change the Base USDC rule.
+    pay_to_base58_format: Literal["allow", "warn", "block"] = "warn"
+    # Same route, quoted amount above the listed amount. strict stays warn.
+    quote_above_listing: Literal["allow", "warn", "block"] = "warn"
     stale: Literal["allow", "block"] = "allow"
     min_valid_402_rate: float | None = None
     # Block an x402 hook payment when the request URL being paid is unknown (no ``paying_request`` /
@@ -126,6 +149,7 @@ def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "ch
         observed_network=probe.get("live_network") or listing.get("network"),
         probed_url=probe.get("url") or (body.get("route_probed") or {}).get("url"),
         observed_amount=probe.get("live_amount") or measured.get("last_quoted_amount_atomic"),
+        listed_amount=listed_amount_of(body),
         valid_402_rate=rw.get("valid_402_rate"),
         recent_probes=rw.get("probes"),
         stale=freshness.get("stale"),
@@ -207,6 +231,14 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                 f"the quoted amount ({amount} atomic units) is above the last amount BotsRated recorded on this route ({facts.observed_amount}).",
                 p.price_above_observed,
             )
+        if (
+            facts.listed_amount
+            and is_atomic_amount(str(facts.listed_amount))
+            and is_atomic_amount(amount)
+            and _same_route(resource_url, facts.probed_url)
+            and int(amount) > int(facts.listed_amount)
+        ):
+            add("quote_above_listing", quote_above_listing_sentence(amount, facts.listed_amount), p.quote_above_listing)
         if facts.stale:
             add("data_stale", f"BotsRated's latest probe of {host} is older than 24 hours.", "block" if p.stale == "block" else "info")
         if (
@@ -220,6 +252,9 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                 f"the recent valid-402 rate BotsRated measured ({facts.valid_402_rate}) is below your minimum ({p.min_valid_402_rate}).",
                 "block",
             )
+    base58 = payto_base58_assessment(req.get("network"), raw_pay_to)
+    if base58["applies"] and base58["valid"] is False:
+        add("payto_base58_format", PAYTO_BASE58_FACT, p.pay_to_base58_format)
     action: Literal["allow", "block"] = "block" if any(r.effect == "block" for r in reasons) else "allow"
     return Decision(action, facts.host, reasons, facts)
 
@@ -257,12 +292,13 @@ class PrePaymentGuard:
         self.on_decision = on_decision
         self.remote_policy = parse_remote_policy(remote_policy)
         self.remote_policy_version: str | None = None
+        self._repeats = RepeatWindow()
 
     def _open_or_closed(self, code: str, detail: str, host: str | None = None) -> Decision:
         eff: Effect = "info" if self.fail_open else "block"
         return Decision("allow" if self.fail_open else "block", host, [Reason(code, detail, eff)])
 
-    def decide(self, resource_url: str | None, requirements: Any, *, request_url: str | None = None) -> Decision:
+    def decide(self, resource_url: str | None, requirements: Any, *, request_url: str | None = None, payment_required: Any = None) -> Decision:
         """Decide on one payment. Never raises when ``fail_open`` is True.
 
         Args:
@@ -275,10 +311,62 @@ class PrePaymentGuard:
                 difference (a redirect between the two) is tolerated. Only host names are sent to BotsRated.
         """
         try:
-            decision = self._decide(resource_url, requirements, request_url)
+            note = _DELIVERY.get()
+            if note is not None:
+                note["paid"] = True
+                schema = declared_output_schema(payment_required, as_requirements(requirements))
+                if schema is not None:
+                    note["schema"] = schema
+            decision = self._apply_repeat(self._decide(resource_url, requirements, request_url), requirements, request_url or resource_url, payment_required)
         except Exception:  # noqa: BLE001
             decision = self._open_or_closed("hook_error", "the pre-payment check could not evaluate this payment.")
         return self._merge_remote(decision, requirements)
+
+    def _apply_repeat(self, decision: Decision, requirements: Any, request_url: str | None, payment_required: Any) -> Decision:
+        req = as_requirements(requirements)
+        sighting = repeat_sighting(
+            payment_id=payment_identifier_of(payment_required, req),
+            url=request_url,
+            amount=req.get("amount"),
+            nonce=nonce_of(req),
+        )
+        now = self._repeats.now()
+        hit = self._repeats.check(sighting, now)
+        self._repeats.record(sighting, now)
+        effect = self.policy.repeat_payment
+        if hit and effect != "allow":
+            decision.reasons.append(Reason("repeat_payment", repeat_fact(hit), "block" if effect == "block" else "warn"))
+            if effect == "block":
+                decision.action = "block"
+        return decision
+
+    def _note_delivery(self, result: Any, note: dict[str, Any], url: str) -> None:
+        if not note.get("paid"):
+            return
+        status = getattr(result, "status_code", None)
+        if status is None:
+            status = getattr(result, "status", None)
+        if not isinstance(status, int):
+            return
+        raw = getattr(result, "content", None)
+        if raw is None:
+            text = getattr(result, "text", None)
+            raw = text.encode() if isinstance(text, str) else b""
+        if not isinstance(raw, (bytes, bytearray)):
+            raw = b""
+        truncated = len(raw) > 1_000_000
+        body = bytes(raw[:1_000_000] if truncated else raw)
+        headers = getattr(result, "headers", None)
+        content_type = headers.get("content-type") if hasattr(headers, "get") else None
+        check = evaluate_delivery(status=status, body=body, content_type=content_type if isinstance(content_type, str) else None, schema=note.get("schema"), truncated=truncated)
+        if check["effect"] != "warn" or self.on_decision is None:
+            return
+        host = try_host_of(url)
+        decision = Decision("allow", host, [Reason("delivery_check", DELIVERY_FACT, "warn")])
+        try:
+            self.on_decision(decision)
+        except Exception:  # noqa: BLE001
+            return
 
     def _merge_remote(self, decision: Decision, requirements: Any) -> Decision:
         """POST /v1/policy/check when configured. A remote block wins. A missing decision follows fail_mode."""
@@ -293,6 +381,12 @@ class PrePaymentGuard:
         version = effect.policy_version or self.remote_policy_version
         if effect.policy_version:
             self.remote_policy_version = effect.policy_version
+        if effect.quote_above_listing_fact and not any(r.code == "quote_above_listing" for r in decision.reasons):
+            quote_effect = self.policy.quote_above_listing
+            if quote_effect != "allow":
+                decision.reasons.append(Reason("quote_above_listing", effect.quote_above_listing_fact, "block" if quote_effect == "block" else "warn"))
+                if quote_effect == "block":
+                    decision.action = "block"
         if effect.effect and effect.code and effect.fact:
             decision.reasons.append(Reason(effect.code, effect.fact, effect.effect))
             if effect.effect == "block":
@@ -366,8 +460,15 @@ class PrePaymentGuard:
         """Wrap a paying GET (e.g. ``x402_requests(client).get``) so :meth:`x402_hook` knows the URL being paid."""
 
         def guarded_get(url: Any, *args: Any, **kwargs: Any) -> T:
-            with paying_request(str(url)):
-                return get(url, *args, **kwargs)
+            note: dict[str, Any] = {"paid": False, "schema": None}
+            token = _DELIVERY.set(note)
+            try:
+                with paying_request(str(url)):
+                    result = get(url, *args, **kwargs)
+            finally:
+                _DELIVERY.reset(token)
+            self._note_delivery(result, note, str(url))
+            return result
 
         return guarded_get
 
@@ -375,8 +476,15 @@ class PrePaymentGuard:
         """Async version of :meth:`wrap_get`, e.g. for an x402 ``httpx.AsyncClient``'s ``get``."""
 
         async def guarded_get(url: Any, *args: Any, **kwargs: Any) -> T:
-            with paying_request(str(url)):
-                return await get(url, *args, **kwargs)
+            note: dict[str, Any] = {"paid": False, "schema": None}
+            token = _DELIVERY.set(note)
+            try:
+                with paying_request(str(url)):
+                    result = await get(url, *args, **kwargs)
+            finally:
+                _DELIVERY.reset(token)
+            self._note_delivery(result, note, str(url))
+            return result
 
         return guarded_get
 
@@ -388,7 +496,7 @@ class PrePaymentGuard:
         if not request_url and self.policy.require_request_url:
             d = Decision("block", None, [Reason("no_request_url", "the URL being paid is unknown; wrap the request with paying_request(url).", "block")])
         else:
-            d = self.decide(url, context.selected_requirements, request_url=request_url)
+            d = self.decide(url, context.selected_requirements, request_url=request_url, payment_required=pr)
         paid_url = request_url or url
         if paid_url and d.action == "allow" and try_host_of(paid_url) == self.client.host:
             # A BotsRated payment is a one-shot EIP-3009 transfer: refuse payment extensions (e.g. an

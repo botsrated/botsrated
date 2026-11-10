@@ -6,7 +6,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 # Sent on hosted BotsRated calls. No install id, wallet or other user identifier.
 USER_AGENT = f"botsrated-python/{VERSION}"
 BOTSRATED_BASE_URL = "https://botsrated.com"
@@ -110,3 +110,60 @@ def host_and_path(url: Any) -> tuple[str, str] | None:
 def same_site_host(a: str, b: str) -> bool:
     """True when two normalized hosts are equal or differ only by a leading ``www.`` (an apex <-> www redirect)."""
     return a == b or a == f"www.{b}" or b == f"www.{a}"
+
+
+# A v1 name is not rewritten to a CAIP-2 id: ``base`` and ``eip155:8453`` stay different network strings.
+_EVM_V1_NETWORKS = frozenset({
+    "base",
+    "base-sepolia",
+    "avalanche",
+    "avalanche-fuji",
+    "iotex",
+    "sei",
+    "sei-testnet",
+    "polygon",
+    "polygon-amoy",
+    "peaq",
+})
+_SOLANA_V1_NETWORKS = frozenset({"solana", "solana-devnet", "solana-testnet"})
+_BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def network_family(network: Any) -> str | None:
+    """``eip155`` or ``solana`` when the network string is a known family. Anything else is unknown."""
+    if not isinstance(network, str):
+        return None
+    raw = network.strip()
+    if not raw or len(raw) > 80:
+        return None
+    lower = raw.lower()
+    if lower.startswith("eip155:"):
+        return "eip155" if lower[len("eip155:") :].isdigit() else None
+    if lower.startswith("solana:"):
+        ref = raw[raw.index(":") + 1 :]
+        return "solana" if 0 < len(ref) <= 64 and not re.search(r"[\s/]", ref) else None
+    if lower in _EVM_V1_NETWORKS:
+        return "eip155"
+    if lower in _SOLANA_V1_NETWORKS:
+        return "solana"
+    return None
+
+
+def is_base58_pubkey(value: Any) -> bool:
+    """Solana public key: base58, decodes to 32 bytes. A 64-byte secret key does not match. Case is kept."""
+    if not isinstance(value, str) or re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", value) is None:
+        return False
+    n = 0
+    for char in value:
+        i = _BASE58_ALPHABET.find(char)
+        if i < 0:
+            return False
+        n = n * 58 + i
+    length = 0
+    while n > 0:
+        length += 1
+        n //= 256
+    zeros = 0
+    while zeros < len(value) and value[zeros] == "1":
+        zeros += 1
+    return zeros + length == 32

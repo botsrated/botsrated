@@ -1,0 +1,383 @@
+/**
+ * Local Guard checks that ship inside the installed client.
+ *
+ * These match the live Guard page (https://botsrated.com/tools/payment-guard):
+ * repeat_payment, delivery_check, payto_base58_format, and quote_above_listing.
+ * Each warns by default. None of them calls the seller, and none resends a payment.
+ * replay_tested stays false: this module does not resend a settled payment.
+ */
+import { cleanText, hostAndPath, isAtomicAmount, isBase58Pubkey, isBytes32, networkFamily, tryHostOf } from "./util.js";
+
+/** The repeat check never resends a settled payment, so this stays false. */
+export const REPLAY_TESTED = false;
+/** How long a repeated payment identifier or tuple stays a repeat. */
+export const REPEAT_WINDOW_MS = 60_000;
+export const QUOTE_ABOVE_LISTING_FACT = "the quoted amount is above the listed amount.";
+
+const BANNED_FACT =
+  /\b(safe|unsafe|suspicious|scam|scams|fraud|fraudulent|trusted|untrusted|prevent\w*|guarantee\w*|compliant|secure|insured)\b|trust score|verified seller/i;
+
+/** Content types the delivery check accepts. A parameter such as charset is ignored. `+json` types are accepted too. */
+export const DELIVERY_CONTENT_TYPES = new Set(["application/json", "application/problem+json", "text/plain", "text/json"]);
+
+export type RepeatHit = "payment_identifier" | "tuple" | "both";
+
+export interface RepeatSighting {
+  paymentId?: string;
+  host?: string;
+  route?: string;
+  amount?: string;
+  nonce?: string;
+}
+
+/** In-process 60-second window. No network. A third identical sighting stays a warning when the caller left the effect at warn. */
+export class RepeatWindow {
+  private ids = new Map<string, number>();
+  private tuples = new Map<string, number>();
+
+  constructor(private readonly windowMs = REPEAT_WINDOW_MS, private readonly max = 256) {}
+
+  /** A different sighting of the same id or the same host, route, amount and nonce inside the window. */
+  check(sighting: RepeatSighting, now: number): RepeatHit | undefined {
+    this.prune(now);
+    const idHit = !!sighting.paymentId && this.fresh(this.ids.get(sighting.paymentId), now);
+    const key = tupleKey(sighting);
+    const tupleHit = !!key && this.fresh(this.tuples.get(key), now);
+    if (idHit && tupleHit) return "both";
+    if (idHit) return "payment_identifier";
+    if (tupleHit) return "tuple";
+    return undefined;
+  }
+
+  /** Remember this sighting. Does not itself decide a repeat. */
+  record(sighting: RepeatSighting, now: number): void {
+    this.prune(now);
+    if (sighting.paymentId) this.ids.set(sighting.paymentId, now);
+    const key = tupleKey(sighting);
+    if (key) this.tuples.set(key, now);
+    this.cap(this.ids);
+    this.cap(this.tuples);
+  }
+
+  private fresh(at: number | undefined, now: number): boolean {
+    return at !== undefined && now - at < this.windowMs && now >= at;
+  }
+
+  private prune(now: number): void {
+    for (const [k, at] of this.ids) if (now - at >= this.windowMs) this.ids.delete(k);
+    for (const [k, at] of this.tuples) if (now - at >= this.windowMs) this.tuples.delete(k);
+  }
+
+  private cap(map: Map<string, number>): void {
+    while (map.size > this.max) {
+      const oldest = [...map.entries()].sort((a, b) => a[1] - b[1])[0];
+      if (!oldest) return;
+      map.delete(oldest[0]);
+    }
+  }
+}
+
+export function repeatFact(hit: RepeatHit): string {
+  const which =
+    hit === "payment_identifier"
+      ? "the same payment identifier repeated within 60 seconds"
+      : hit === "tuple"
+        ? "the same host, route, amount and nonce repeated within 60 seconds"
+        : "the same payment identifier, or the same host, route, amount and nonce, repeated within 60 seconds";
+  return `${which}. replay_tested is false.`;
+}
+
+function paymentIdOk(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 8 && value.length <= 128 && /^[A-Za-z0-9._:-]+$/.test(value);
+}
+
+function nonceOk(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  // These helpers are type predicates on `unknown`. Calling them directly would narrow a string to `never`.
+  const bytes32 = (v: string) => isBytes32(v);
+  const base58 = (v: string) => isBase58Pubkey(v);
+  if (bytes32(text)) return text.toLowerCase();
+  if (base58(text)) return text;
+  if (text.length >= 16 && text.length <= 128 && /^[A-Za-z0-9._:-]+$/.test(text)) return text;
+  return undefined;
+}
+
+function readPaymentId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const ext = (value as { extensions?: unknown }).extensions;
+  const info = ext && typeof ext === "object" ? (ext as Record<string, unknown>)["payment-identifier"] : undefined;
+  const id = info && typeof info === "object" ? (info as { info?: { id?: unknown } }).info?.id : undefined;
+  return paymentIdOk(id) ? id : undefined;
+}
+
+/** Payment identifier from the 402 extension, the requirements, or an already built payload. */
+export function paymentIdentifierOf(...sources: unknown[]): string | undefined {
+  for (const source of sources) {
+    const direct = readPaymentId(source);
+    if (direct) return direct;
+    if (!source || typeof source !== "object") continue;
+    const extra = (source as { extra?: unknown }).extra;
+    if (extra && typeof extra === "object") {
+      const bag = extra as Record<string, unknown>;
+      for (const key of ["paymentIdentifier", "payment_identifier", "payment-identifier"]) {
+        if (paymentIdOk(bag[key])) return bag[key];
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Nonce from an authorization or from requirement extra. Query strings are not read. */
+export function nonceOf(...sources: unknown[]): string | undefined {
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const auth = (source as { payload?: { authorization?: { nonce?: unknown } } }).payload?.authorization?.nonce;
+    const fromAuth = nonceOk(auth);
+    if (fromAuth) return fromAuth;
+    const direct = nonceOk((source as { nonce?: unknown }).nonce);
+    if (direct) return direct;
+    const extra = (source as { extra?: { nonce?: unknown } }).extra?.nonce;
+    const fromExtra = nonceOk(extra);
+    if (fromExtra) return fromExtra;
+  }
+  return undefined;
+}
+
+export function repeatSighting(parts: { paymentId?: string; url?: string; amount?: unknown; nonce?: string; host?: string }): RepeatSighting {
+  const route = parts.url ? hostAndPath(parts.url) : undefined;
+  const amount = typeof parts.amount === "bigint" ? parts.amount.toString() : typeof parts.amount === "number" && Number.isSafeInteger(parts.amount) ? String(parts.amount) : parts.amount;
+  const host = parts.host ?? route?.host ?? tryHostOf(parts.url);
+  return {
+    ...(parts.paymentId ? { paymentId: parts.paymentId } : {}),
+    ...(host ? { host } : {}),
+    ...(route?.path ? { route: route.path } : {}),
+    ...(isAtomicAmount(amount) ? { amount: String(amount) } : {}),
+    ...(parts.nonce ? { nonce: parts.nonce } : {}),
+  };
+}
+
+function tupleKey(sighting: RepeatSighting): string | undefined {
+  if (!sighting.host || !sighting.route || !sighting.amount || !sighting.nonce) return undefined;
+  return `${sighting.host}\n${sighting.route}\n${sighting.amount}\n${sighting.nonce}`;
+}
+
+export interface PayToBase58Assessment {
+  applies: boolean;
+  valid: boolean | null;
+  code: "payto_base58_format";
+}
+
+/**
+ * Solana payTo format. A Base (eip155) payTo is not judged: applies is false and valid is null.
+ * A Solana payTo must be a base58 32-byte public key.
+ */
+export function payToBase58Assessment(network: unknown, payTo: unknown): PayToBase58Assessment {
+  if (networkFamily(network) !== "solana") return { applies: false, valid: null, code: "payto_base58_format" };
+  return { applies: true, valid: isBase58Pubkey(payTo), code: "payto_base58_format" };
+}
+
+export const PAYTO_BASE58_FACT = "the payTo in this payment request is not a base58 32-byte public key.";
+
+export function quoteAboveListingSentence(amount: string, listed: string): string {
+  return `the quoted amount (${amount} atomic units) is above the listed amount (${listed}).`;
+}
+
+/** Listed atomic amount from a preflight or check body. Probe listed_amount wins, then listing.amount_atomic. */
+export function listedAmountOf(body: { latest_probe?: { listed_amount?: unknown }; listing?: { amount_atomic?: unknown } } | null | undefined): string | undefined {
+  const probe = body?.latest_probe?.listed_amount;
+  if (isAtomicAmount(probe)) return probe;
+  const listing = body?.listing?.amount_atomic;
+  return isAtomicAmount(listing) ? listing : undefined;
+}
+
+const SCHEMA_KEYS = new Set(["$schema", "type", "properties", "required", "items", "enum", "const", "anyOf", "oneOf", "allOf"]);
+
+function isJsonSchema(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).some((key) => SCHEMA_KEYS.has(key));
+}
+
+/** JSON schema the seller declared for the paid response. The payment-identifier extension schema is not this. */
+export function declaredOutputSchema(...sources: unknown[]): Record<string, unknown> | undefined {
+  const found: unknown[] = [];
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+    const bag = source as Record<string, any>;
+    found.push(
+      bag.extensions?.bazaar?.info?.output?.schema,
+      bag.extensions?.bazaar?.info?.output?.jsonSchema,
+      bag.resource?.schema,
+      bag.outputSchema,
+      bag.output_schema,
+      bag.extra?.outputSchema,
+      bag.extra?.output_schema,
+    );
+  }
+  for (const item of found) {
+    if (!isJsonSchema(item)) continue;
+    try {
+      if (JSON.stringify(item).length > 65_536) return undefined;
+    } catch {
+      return undefined;
+    }
+    return item;
+  }
+  return undefined;
+}
+
+export type SchemaStatus = "not_declared" | "pass" | "fail";
+
+export interface DeliveryCheck {
+  code: "delivery_check";
+  rule: "a 2xx is not a delivery";
+  blocks_by_default: false;
+  checks: {
+    http_2xx: boolean;
+    body_non_empty: boolean;
+    content_type_sane: boolean;
+    schema: SchemaStatus;
+  };
+  outcome: "delivered" | "not_a_delivery";
+  effect: "allow" | "warn";
+}
+
+export function contentTypeSane(header: string | null | undefined): boolean {
+  if (typeof header !== "string") return false;
+  const media = header.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (!media || media.length > 120 || /\s/.test(media)) return false;
+  if (DELIVERY_CONTENT_TYPES.has(media)) return true;
+  return media.endsWith("+json") && /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(media);
+}
+
+function typeName(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  return typeof value;
+}
+
+function typeOk(spec: unknown, value: unknown): boolean {
+  const names = Array.isArray(spec) ? spec : [spec];
+  const got = typeName(value);
+  return names.some((name) => name === got || (name === "number" && got === "integer"));
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** A small JSON Schema check for the keywords sellers declare (type, properties, required, items, enum, const, anyOf/oneOf/allOf). */
+export function schemaMatches(schema: unknown, value: unknown, depth = 0): boolean {
+  if (depth > 12 || !schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+  const s = schema as Record<string, unknown>;
+  if (Array.isArray(s.allOf) && !s.allOf.every((part) => schemaMatches(part, value, depth + 1))) return false;
+  if (Array.isArray(s.anyOf) && !s.anyOf.some((part) => schemaMatches(part, value, depth + 1))) return false;
+  if (Array.isArray(s.oneOf)) {
+    const hits = s.oneOf.filter((part) => schemaMatches(part, value, depth + 1));
+    if (hits.length !== 1) return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(s, "const") && !sameJson(s.const, value)) return false;
+  if (Array.isArray(s.enum) && !s.enum.some((item) => sameJson(item, value))) return false;
+  if (s.type !== undefined && !typeOk(s.type, value)) return false;
+  if (typeof s.minLength === "number" && (typeof value !== "string" || value.length < s.minLength)) return false;
+  if (typeof s.maxLength === "number" && (typeof value !== "string" || value.length > s.maxLength)) return false;
+  if (typeof s.minimum === "number" && (typeof value !== "number" || value < s.minimum)) return false;
+  if (typeof s.maximum === "number" && (typeof value !== "number" || value > s.maximum)) return false;
+  const looksObject = s.properties !== undefined || s.required !== undefined || s.additionalProperties === false || s.type === "object";
+  if (looksObject) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const obj = value as Record<string, unknown>;
+    if (Array.isArray(s.required)) {
+      for (const key of s.required) if (typeof key !== "string" || !Object.prototype.hasOwnProperty.call(obj, key)) return false;
+    }
+    if (s.properties && typeof s.properties === "object" && !Array.isArray(s.properties)) {
+      for (const [key, sub] of Object.entries(s.properties as Record<string, unknown>)) {
+        if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+        if (Object.prototype.hasOwnProperty.call(obj, key) && !schemaMatches(sub, obj[key], depth + 1)) return false;
+      }
+      if (s.additionalProperties === false) {
+        const allowed = new Set(Object.keys(s.properties as object));
+        if (Object.keys(obj).some((key) => !allowed.has(key))) return false;
+      }
+    }
+  }
+  if (s.items !== undefined || s.type === "array") {
+    if (!Array.isArray(value)) return false;
+    if (s.items && typeof s.items === "object" && !Array.isArray(s.items)) {
+      if (!value.every((item) => schemaMatches(s.items, item, depth + 1))) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * A 2xx is not a delivery. Warns unless the body is non-empty, the content type is one this check accepts,
+ * and a JSON schema the seller declared matches. The effect is warn or allow. This check does not block.
+ */
+export function evaluateDelivery(input: { status: number; body: Uint8Array | string; contentType?: string | null; schema?: unknown; truncated?: boolean }): DeliveryCheck {
+  const bytes = typeof input.body === "string" ? new TextEncoder().encode(input.body) : input.body;
+  const http2xx = Number.isInteger(input.status) && input.status >= 200 && input.status < 300;
+  const bodyNonEmpty = bytes.byteLength > 0;
+  const typeSane = contentTypeSane(input.contentType);
+  let schema: SchemaStatus = "not_declared";
+  if (input.schema !== undefined && input.schema !== null) {
+    schema = "fail";
+    if (!input.truncated && isJsonSchema(input.schema)) {
+      const text = typeof input.body === "string" ? input.body : new TextDecoder().decode(bytes);
+      try {
+        schema = schemaMatches(input.schema, JSON.parse(text)) ? "pass" : "fail";
+      } catch {
+        schema = "fail";
+      }
+    }
+  }
+  const delivered = http2xx && bodyNonEmpty && typeSane && schema === "pass";
+  return {
+    code: "delivery_check",
+    rule: "a 2xx is not a delivery",
+    blocks_by_default: false,
+    checks: { http_2xx: http2xx, body_non_empty: bodyNonEmpty, content_type_sane: typeSane, schema },
+    outcome: delivered ? "delivered" : "not_a_delivery",
+    effect: delivered ? "allow" : "warn",
+  };
+}
+
+export function deliveryFact(): string {
+  return "a 2xx is not a delivery. The body, content type, or declared JSON schema did not all match.";
+}
+
+export interface ServerReasonSplit {
+  quoteFact?: string;
+  otherWarnOrBlock: boolean;
+  hasReasons: boolean;
+}
+
+/** Pull quote_above_listing out of a policy-check body. Other warn/block reasons stay on the aggregate decision. */
+export function splitPolicyReasons(body: unknown): ServerReasonSplit {
+  if (!body || typeof body !== "object" || !Array.isArray((body as { reasons?: unknown }).reasons)) {
+    return { otherWarnOrBlock: false, hasReasons: false };
+  }
+  const reasons = (body as { reasons: unknown[] }).reasons;
+  let quoteFact: string | undefined;
+  let otherWarnOrBlock = false;
+  for (const item of reasons) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as { rule?: unknown; code?: unknown; effect?: unknown; fact?: unknown };
+    const rule = typeof row.rule === "string" ? row.rule : typeof row.code === "string" ? row.code : "";
+    const effect = typeof row.effect === "string" ? row.effect.trim().toLowerCase() : "";
+    if (rule === "quote_above_listing") {
+      if (!quoteFact) quoteFact = cleanServerFact(row.fact);
+    } else if (effect === "warn" || effect === "block") {
+      otherWarnOrBlock = true;
+    }
+  }
+  return { ...(quoteFact ? { quoteFact } : {}), otherWarnOrBlock, hasReasons: reasons.length > 0 };
+}
+
+function cleanServerFact(fact: unknown): string {
+  if (typeof fact !== "string") return QUOTE_ABOVE_LISTING_FACT;
+  const cleaned = cleanText(fact, 240);
+  if (!cleaned || cleaned.length < 8 || BANNED_FACT.test(cleaned)) return QUOTE_ABOVE_LISTING_FACT;
+  return cleaned;
+}
