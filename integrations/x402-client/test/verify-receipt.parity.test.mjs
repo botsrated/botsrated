@@ -25,6 +25,31 @@ function load(rel) {
   return JSON.parse(fs.readFileSync(path.join(root, rel), "utf8"));
 }
 
+// npm 10 prints a JSON array of pack manifests. npm 12 (pinned in the publish
+// workflow) prints one object keyed by package name. Slicing from the first "["
+// parses only the nested files array and then dies on the comma after it.
+function isPackManifest(value) {
+  return Boolean(value)
+    && typeof value === "object"
+    && typeof value.filename === "string"
+    && Array.isArray(value.files);
+}
+
+function packManifest(stdout) {
+  const start = stdout.search(/[\[{]/);
+  if (start < 0) {
+    throw new Error(`npm pack --json produced no JSON\n${stdout}`);
+  }
+  const parsed = JSON.parse(stdout.slice(start));
+  if (isPackManifest(parsed)) return parsed;
+  const items = Array.isArray(parsed) ? parsed : Object.values(parsed);
+  const meta = items.find(isPackManifest);
+  if (!meta) {
+    throw new Error(`npm pack --json did not include a pack manifest\n${stdout}`);
+  }
+  return meta;
+}
+
 const BANNED = /\b(verified|trusted|scam|grade|ranking)\b|\bsafe\b/i;
 
 test("package export packs the offline verifier", () => {
@@ -135,6 +160,23 @@ test("the check does not call fetch", async () => {
   }
 });
 
+test("npm pack --json manifest is read from an array or a package-keyed object", () => {
+  const manifest = {
+    filename: "botsrated-x402-preflight-0.3.2.tgz",
+    files: [
+      { path: "verify-receipt.mjs" },
+      { path: "vendor/verify-core.mjs" },
+    ],
+  };
+  const fromArray = packManifest(`\n${JSON.stringify([manifest], null, 2)}\n`);
+  const fromObject = packManifest(`${JSON.stringify({ "@botsrated/x402-preflight": manifest }, null, 2)}\n`);
+  assert.equal(fromArray.filename, manifest.filename);
+  assert.deepEqual(fromArray.files.map((file) => file.path), ["verify-receipt.mjs", "vendor/verify-core.mjs"]);
+  assert.equal(fromObject.filename, manifest.filename);
+  assert.deepEqual(fromObject.files.map((file) => file.path), ["verify-receipt.mjs", "vendor/verify-core.mjs"]);
+  assert.throws(() => packManifest("not json"), /no JSON/);
+});
+
 test("a packed install resolves verifyReceipt with no monorepo path", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "x402-verify-pack-"));
   try {
@@ -143,7 +185,7 @@ test("a packed install resolves verifyReceipt with no monorepo path", () => {
       encoding: "utf8",
     });
     assert.equal(out.status, 0, out.stderr || out.stdout);
-    const meta = JSON.parse(out.stdout.slice(out.stdout.indexOf("[")))[0];
+    const meta = packManifest(out.stdout);
     const paths = meta.files.map((file) => file.path);
     for (const rel of [
       "verify-receipt.mjs",
