@@ -291,11 +291,36 @@ function typeOk(spec: unknown, value: unknown): boolean {
   return names.some((name) => name === got || (name === "number" && got === "integer"));
 }
 
+/** Own-key counts already charged. A later comparison does not start another key walk. */
+const responseKeyCounts = new WeakMap<object, number>();
+
+/**
+ * Count a response object's own keys once and charge that count.
+ * Starting a key walk on a large object is expensive, so it happens only the first time.
+ */
+function chargedKeyCount(work: SchemaWork, value: object): number | undefined {
+  const cached = responseKeyCounts.get(value);
+  if (cached !== undefined) return cached;
+  let n = 0;
+  for (const key in value) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    n += 1;
+    if (n > work.left) {
+      takeWork(work, n);
+      return undefined;
+    }
+  }
+  if (!takeWork(work, n)) return undefined;
+  responseKeyCounts.set(value, n);
+  return n;
+}
+
 /**
  * Equal for schema const/enum. Walks the schema literal and stops at the first mismatch.
- * The response value is never serialized: an empty object or array does not walk a nested body.
+ * The response value is never serialized. Each response object's keys are counted once and charged.
  */
-function sameJson(literal: unknown, value: unknown, depth = 0): boolean {
+function sameJson(literal: unknown, value: unknown, work: SchemaWork, depth = 0): boolean {
+  if (work.exhausted) return false;
   if (literal === value) return true;
   if (depth > 32 || typeof literal !== "object" || typeof value !== "object" || literal === null || value === null) return false;
   const literalIsArray = Array.isArray(literal);
@@ -304,23 +329,19 @@ function sameJson(literal: unknown, value: unknown, depth = 0): boolean {
     const left = literal as unknown[];
     const right = value as unknown[];
     if (left.length !== right.length) return false;
-    for (let i = 0; i < left.length; i++) if (!sameJson(left[i], right[i], depth + 1)) return false;
-    return true;
+    for (let i = 0; i < left.length; i++) if (!sameJson(left[i], right[i], work, depth + 1)) return false;
+    return !work.exhausted;
   }
   const left = literal as Record<string, unknown>;
   const right = value as Record<string, unknown>;
+  const counted = chargedKeyCount(work, right);
+  if (counted === undefined) return false;
   const keys = Object.keys(left);
-  let seen = 0;
-  for (const key in right) {
-    if (!Object.prototype.hasOwnProperty.call(right, key)) continue;
-    seen += 1;
-    if (seen > keys.length) return false;
-  }
-  if (seen !== keys.length) return false;
+  if (counted !== keys.length) return false;
   for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(right, key) || !sameJson(left[key], right[key], depth + 1)) return false;
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !sameJson(left[key], right[key], work, depth + 1)) return false;
   }
-  return true;
+  return !work.exhausted;
 }
 
 /** Extra visits for a schema literal, roughly one per 64 serialized bytes. Numbers cost nothing extra. */
@@ -411,7 +432,7 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
   if (Object.prototype.hasOwnProperty.call(s, "const")) {
     // Charge the response value as well as the literal. A number literal is tiny; the body may not be.
     if (!takeWork(work, 1 + compareSizeCost(s.const) + instanceCost(work, value))) return false;
-    if (!sameJson(s.const, value)) return false;
+    if (!sameJson(s.const, value, work)) return false;
   }
   if (Array.isArray(s.enum)) {
     // Charge the length up front. Math.min(len, 1) was always 1, so a long enum was free.
@@ -419,8 +440,9 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
     const valueCost = instanceCost(work, value);
     let found = false;
     for (const item of s.enum) {
+      if (work.exhausted) return false;
       if (!takeWork(work, valueCost + compareSizeCost(item))) return false;
-      if (sameJson(item, value)) {
+      if (sameJson(item, value, work)) {
         found = true;
         break;
       }
