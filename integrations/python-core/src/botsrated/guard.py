@@ -43,6 +43,7 @@ from botsrated.util import (
     is_atomic_amount,
     is_base58_pubkey,
     network_family,
+    same_observed_network,
     same_site_host,
     try_host_of,
 )
@@ -211,18 +212,17 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
         if family == "solana" and is_base58_pubkey(raw_pay_to):
             known_sol = [x for x in facts.known_pay_tos if is_base58_pubkey(x)]
             listing_sol = facts.listing_pay_to if is_base58_pubkey(facts.listing_pay_to) else None
-            if observed and observed != network:
+            no_base58 = not known_sol and not listing_sol
+            if observed and not same_observed_network(observed, network):
                 add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
-            elif not observed and (facts.known_pay_tos or facts.listing_pay_to):
-                add("network_not_observed", f"the payTo addresses BotsRated's probes recorded for {host} are eip155 addresses, not {network} addresses.", "info")
-            elif facts.known_pay_tos and raw_pay_to not in known_sol:
+            elif known_sol and raw_pay_to not in known_sol:
                 add(
                     "payto_not_observed",
                     f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed or network}.",
                     p.pay_to_mismatch,
                 )
-            elif not facts.known_pay_tos and facts.listing_pay_to:
-                if listing_sol and raw_pay_to == listing_sol:
+            elif listing_sol and not known_sol:
+                if raw_pay_to == listing_sol:
                     add("payto_listing_only", f"the payTo matches {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.", "info")
                 else:
                     add(
@@ -230,10 +230,19 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                         f"the payTo in this payment request differs from the payTo in {host}'s directory listing; BotsRated's probes have not recorded a payTo for {host} yet.",
                         p.pay_to_mismatch,
                     )
+            elif no_base58 and (facts.known_pay_tos or facts.listing_pay_to):
+                if not observed:
+                    add("network_not_observed", f"the payTo addresses BotsRated's probes recorded for {host} are eip155 addresses, not {network} addresses.", "info")
+                else:
+                    add(
+                        "payto_not_observed",
+                        f"the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for {host} on {observed}.",
+                        p.pay_to_mismatch,
+                    )
         elif family != "solana" and not is_address(raw_pay_to):
             add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.pay_to_mismatch)
         elif is_address(raw_pay_to):
-            if observed and observed != network:
+            if observed and not same_observed_network(observed, network):
                 add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
             elif known and raw_pay_to.lower() not in known:
                 add(

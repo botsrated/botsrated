@@ -72,7 +72,11 @@ describe("x402 v1 network names are known families", () => {
     expect(payToFormatFor("base", X.SOL_PAY)).toBe("invalid");
     expect(isBase58Pubkey(X.SECRET)).toBe(false);
     const f = guardFactsFrom(body, "seller.example");
-    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).toContain("network_not_observed");
+    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).not.toContain("network_not_observed");
+    expect(codes(f, { payTo: X.SOL_PAY, network: "solana" })).not.toContain("payto_not_observed");
+    expect(codes(f, { payTo: X.SOL_OTHER, network: "solana" })).toContain("payto_not_observed");
+    expect(codes(f, { payTo: X.EVM, network: "base" })).not.toContain("network_not_observed");
+    expect(codes(f, { payTo: "0x000000000000000000000000000000000000dEaD", network: "base" })).toContain("payto_not_observed");
     const v1 = guardFactsFrom(
       { ...body, quotes_by_network: { solana: { payTo: X.SOL_PAY, amount_atomic: "10000", payto_pattern: "single_address" } } },
       "seller.example",

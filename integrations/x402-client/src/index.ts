@@ -23,6 +23,7 @@ import {
   isBase58Pubkey,
   networkFamily,
   payToInvalidFact,
+  sameObservedNetwork,
   sameSiteHost,
   tryHostOf,
 } from "./util.js";
@@ -702,18 +703,17 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
     if (family === "solana" && isBase58Pubkey(rawPayTo)) {
       const knownSol = facts.knownPayTos.filter((p) => isBase58Pubkey(p));
       const listingSol = facts.listingPayTo && isBase58Pubkey(facts.listingPayTo) ? facts.listingPayTo : undefined;
-      if (observedNetwork && observedNetwork !== network) {
+      const noBase58 = knownSol.length === 0 && !listingSol;
+      if (observedNetwork && !sameObservedNetwork(observedNetwork, network)) {
         add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
-      } else if (!observedNetwork && (facts.knownPayTos.length > 0 || facts.listingPayTo)) {
-        add("network_not_observed", `the payTo addresses BotsRated's probes recorded for ${host} are eip155 addresses, not ${network} addresses.`, "info");
-      } else if (facts.knownPayTos.length > 0 && !knownSol.includes(rawPayTo)) {
+      } else if (knownSol.length > 0 && !knownSol.includes(rawPayTo)) {
         add(
           "payto_not_observed",
           `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork ?? network}.`,
           p.payToMismatch,
         );
-      } else if (facts.knownPayTos.length === 0 && facts.listingPayTo) {
-        if (listingSol && rawPayTo === listingSol) {
+      } else if (listingSol && knownSol.length === 0) {
+        if (rawPayTo === listingSol) {
           add("payto_listing_only", `the payTo matches ${host}'s directory listing; BotsRated's probes have not recorded a payTo for ${host} yet.`, "info");
         } else {
           add(
@@ -722,11 +722,21 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
             p.payToMismatch,
           );
         }
+      } else if (noBase58 && (facts.knownPayTos.length > 0 || facts.listingPayTo)) {
+        if (!observedNetwork) {
+          add("network_not_observed", `the payTo addresses BotsRated's probes recorded for ${host} are eip155 addresses, not ${network} addresses.`, "info");
+        } else {
+          add(
+            "payto_not_observed",
+            `the payTo in this payment request is not among the payTo addresses BotsRated's probes recorded for ${host} on ${observedNetwork}.`,
+            p.payToMismatch,
+          );
+        }
       }
     } else if (family !== "solana" && !isAddress(rawPayTo)) {
       add("payto_invalid", payToInvalidFact(req?.network), p.payToMismatch);
     } else if (isAddress(req?.payTo)) {
-      if (observedNetwork && observedNetwork !== network) {
+      if (observedNetwork && !sameObservedNetwork(observedNetwork, network)) {
         add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
       } else if (known.length > 0 && !known.includes(req.payTo.toLowerCase())) {
         add(

@@ -231,6 +231,8 @@ export type SchemaStatus = "not_declared" | "pass" | "fail" | "not_evaluated";
 export const SCHEMA_WORK_BUDGET = 20_000;
 /** Bytes read from a response body for the delivery check. The reader stops here; it does not buffer the rest first. */
 export const DELIVERY_READ_CAP = 1_000_000;
+/** How long the background read may wait, in total, before it releases the stream. */
+export const DELIVERY_READ_DEADLINE_MS = 5_000;
 
 export interface SchemaWork {
   left: number;
@@ -290,6 +292,28 @@ function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Extra visits for one comparison, roughly one per 64 serialized bytes. Strings use their length. */
+function compareSizeCost(value: unknown): number {
+  if (typeof value === "string") return Math.ceil(value.length / 64);
+  if (value == null || typeof value === "number" || typeof value === "boolean") return 0;
+  try {
+    return Math.ceil(JSON.stringify(value).length / 64);
+  } catch {
+    return 1;
+  }
+}
+
+const allowedKeys = new WeakMap<object, Set<string>>();
+
+function allowedKeySet(properties: object): Set<string> {
+  let set = allowedKeys.get(properties);
+  if (!set) {
+    set = new Set(Object.keys(properties));
+    allowedKeys.set(properties, set);
+  }
+  return set;
+}
+
 /** A small JSON Schema check. Stops when {@link SCHEMA_WORK_BUDGET} is used up so a seller schema cannot tie up the process. */
 export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: SchemaWork = schemaWork()): boolean {
   if (!takeWork(work)) return false;
@@ -318,10 +342,23 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
     }
     if (hits !== 1) return false;
   }
-  if (Object.prototype.hasOwnProperty.call(s, "const") && !sameJson(s.const, value)) return false;
+  if (Object.prototype.hasOwnProperty.call(s, "const")) {
+    if (!takeWork(work, 1 + compareSizeCost(s.const))) return false;
+    if (!sameJson(s.const, value)) return false;
+  }
   if (Array.isArray(s.enum)) {
-    if (!takeWork(work, Math.min(s.enum.length, 1))) return false;
-    if (!s.enum.some((item) => sameJson(item, value))) return false;
+    // Charge the length up front. Math.min(len, 1) was always 1, so a long enum was free.
+    if (!takeWork(work, s.enum.length)) return false;
+    let found = false;
+    for (const item of s.enum) {
+      const extra = compareSizeCost(item);
+      if (extra > 0 && !takeWork(work, extra)) return false;
+      if (sameJson(item, value)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
   }
   if (s.type !== undefined && !typeOk(s.type, value)) return false;
   if (typeof s.minLength === "number" && (typeof value !== "string" || value.length < s.minLength)) return false;
@@ -333,16 +370,28 @@ export function schemaMatches(schema: unknown, value: unknown, depth = 0, work: 
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const obj = value as Record<string, unknown>;
     if (Array.isArray(s.required)) {
+      if (!takeWork(work, s.required.length)) return false;
       for (const key of s.required) if (typeof key !== "string" || !Object.prototype.hasOwnProperty.call(obj, key)) return false;
     }
     if (s.properties && typeof s.properties === "object" && !Array.isArray(s.properties)) {
-      for (const [key, sub] of Object.entries(s.properties as Record<string, unknown>)) {
-        if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+      const entries = Object.entries(s.properties as Record<string, unknown>).filter(
+        ([key]) => key !== "__proto__" && key !== "constructor" && key !== "prototype",
+      );
+      if (!takeWork(work, entries.length)) return false;
+      for (const [key, sub] of entries) {
         if (Object.prototype.hasOwnProperty.call(obj, key) && !schemaMatches(sub, obj[key], depth + 1, work)) return false;
       }
       if (s.additionalProperties === false) {
-        const allowed = new Set(Object.keys(s.properties as object));
-        if (Object.keys(obj).some((key) => !allowed.has(key))) return false;
+        const allowed = allowedKeySet(s.properties as object);
+        for (const key of Object.keys(obj)) {
+          if (!takeWork(work, 1)) return false;
+          if (!allowed.has(key)) return false;
+        }
+      }
+    } else if (s.additionalProperties === false) {
+      for (const _key of Object.keys(obj)) {
+        if (!takeWork(work, 1)) return false;
+        return false;
       }
     }
   }
@@ -390,6 +439,9 @@ export function evaluateDelivery(input: { status: number; body: Uint8Array | str
 }
 
 export function deliveryFact(check?: DeliveryCheck): string {
+  if (check?.checks.schema === "not_evaluated") {
+    return "a 2xx is not a delivery. The declared JSON schema was too large to evaluate.";
+  }
   if (!check || check.checks.schema !== "not_declared") {
     return "a 2xx is not a delivery. The body, content type, or declared JSON schema did not all match.";
   }
@@ -407,36 +459,79 @@ export function isStreamingContentType(header: string | null | undefined): boole
   return STREAMING_TYPES.has(media);
 }
 
-/** Read at most {@link DELIVERY_READ_CAP} bytes, then cancel. Does not buffer the unread remainder. */
+function readOrDeadline(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  ms: number,
+): Promise<{ done: boolean; value?: Uint8Array; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ done: true, timedOut: true });
+    }, ms);
+    reader.read().then(
+      (chunk) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ done: chunk.done, value: chunk.value, timedOut: false });
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ done: true, timedOut: false });
+      },
+    );
+  });
+}
+
+/** Read at most {@link DELIVERY_READ_CAP} bytes, and for at most {@link DELIVERY_READ_DEADLINE_MS}. Does not await cancel. */
 export async function readDeliveryBody(res: Response): Promise<{ body: Uint8Array; truncated: boolean; skipped: boolean }> {
+  const empty = { body: new Uint8Array(), truncated: false, skipped: true as boolean };
   const contentType = res.headers.get("content-type");
-  if (isStreamingContentType(contentType)) return { body: new Uint8Array(), truncated: false, skipped: true };
-  const reader = res.clone().body?.getReader();
+  if (isStreamingContentType(contentType)) return empty;
+  if (!res.body || res.body.locked) return empty;
+  let clone: Response;
+  try {
+    clone = res.clone();
+  } catch {
+    return empty;
+  }
+  const reader = clone.body?.getReader();
   if (!reader) return { body: new Uint8Array(), truncated: false, skipped: false };
   const chunks: Uint8Array[] = [];
   let total = 0;
   let truncated = false;
+  const started = Date.now();
   try {
     while (total < DELIVERY_READ_CAP) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value || value.byteLength === 0) continue;
+      const remaining = DELIVERY_READ_DEADLINE_MS - (Date.now() - started);
+      if (remaining <= 0) {
+        truncated = true;
+        break;
+      }
+      const chunk = await readOrDeadline(reader, remaining);
+      if (chunk.timedOut) {
+        truncated = true;
+        break;
+      }
+      if (chunk.done) break;
+      if (!chunk.value || chunk.value.byteLength === 0) continue;
       const room = DELIVERY_READ_CAP - total;
-      if (value.byteLength > room) {
-        chunks.push(value.subarray(0, room));
+      if (chunk.value.byteLength > room) {
+        chunks.push(chunk.value.subarray(0, room));
         total += room;
         truncated = true;
         break;
       }
-      chunks.push(value);
-      total += value.byteLength;
+      chunks.push(chunk.value);
+      total += chunk.value.byteLength;
     }
   } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      /* the caller still owns the original body */
-    }
+    // Do not await. The caller's cancel waits until this branch cancels, and awaiting it can wait on the caller.
+    reader.cancel().catch(() => undefined);
   }
   const body = new Uint8Array(total);
   let offset = 0;

@@ -132,6 +132,26 @@ export function networkFamily(network: unknown): NetworkFamily | undefined {
   return undefined;
 }
 
+/**
+ * Documented x402 v1 names for one chain. The strings stay as written on quotes and receipts.
+ * Comparison treats each pair as the same network. Other v1 names stay distinct.
+ */
+const NETWORK_ALIASES: Record<string, string> = {
+  base: BASE_MAINNET,
+  solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+};
+
+/** CAIP-2 id for a documented v1 alias. Any other network string is returned unchanged. */
+export function canonicalNetwork(network: string): string {
+  const trimmed = network.trim();
+  return NETWORK_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+}
+
+/** True when two network strings are equal or are the documented v1/CAIP-2 pair for the same chain. */
+export function sameObservedNetwork(a: string, b: string): boolean {
+  return canonicalNetwork(a) === canonicalNetwork(b);
+}
+
 /** Network string for a fact sentence. Capped. Not a translation of v1 names into CAIP-2. */
 export function networkLabel(network: unknown): string {
   if (typeof network !== "string") return "this network";

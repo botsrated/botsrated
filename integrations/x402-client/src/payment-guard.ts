@@ -46,9 +46,11 @@ import {
   isBase58Pubkey,
   isBytes32,
   isTxHash,
+  canonicalNetwork,
   networkFamily,
   networkLabel,
   normalizePayTo,
+  sameObservedNetwork,
   payToFormatFor,
   payToInvalidFact,
   sameSiteHost,
@@ -64,6 +66,7 @@ export {
   RepeatWindow,
   declaredOutputSchema,
   deliveryFact,
+  DELIVERY_READ_DEADLINE_MS,
   evaluateDelivery,
   payToBase58Assessment,
   quoteAboveListingSentence,
@@ -459,6 +462,15 @@ function noFactsNote(reasons: GuardReason[]): string {
  * format is not. This does not override `network_or_asset_not: true` (Base USDC only) on Desk. That hard rule is
  * not in this package, and a Solana quote remains outside what this package will settle.
  */
+function quoteRecord<T>(quotes: Record<string, T>, network: string): T | undefined {
+  if (Object.prototype.hasOwnProperty.call(quotes, network)) return quotes[network];
+  const want = canonicalNetwork(network);
+  for (const [key, value] of Object.entries(quotes)) {
+    if (canonicalNetwork(key) === want) return value;
+  }
+  return undefined;
+}
+
 export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount?: unknown; network?: unknown }, paidUrl: string | undefined, policy: PaymentGuardPolicy): GuardReason[] {
   const p = { ...policies.warn, ...policy };
   const out: GuardReason[] = [];
@@ -466,7 +478,7 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
     out.push({ code, effect, ...(rule ? { rule } : {}), fact });
   };
   const network = typeof req.network === "string" ? cleanText(req.network, 40) : "";
-  const perNet = network && facts0.quotesByNetwork ? facts0.quotesByNetwork[network] : undefined;
+  const perNet = network && facts0.quotesByNetwork ? quoteRecord(facts0.quotesByNetwork, network) : undefined;
   const facts: GuardFacts = perNet
     ? { ...facts0, knownPayTos: perNet.payTo ? [perNet.payTo] : [], observedNetwork: network, observedAmount: perNet.amount, listingPayTo: undefined }
     : facts0;
@@ -480,7 +492,7 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
   const quoteFamily = networkFamily(network);
   const knownFamily = facts.observedNetwork ? networkFamily(facts.observedNetwork) : "eip155";
   const hasKnown = facts.knownPayTos.length > 0 || !!facts.listingPayTo;
-  if (facts.observedNetwork && network && facts.observedNetwork !== network) {
+  if (facts.observedNetwork && network && !sameObservedNetwork(facts.observedNetwork, network)) {
     add("network_not_observed", undefined, "info", `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${networkLabel(network)}.`);
   } else if (!facts.observedNetwork && hasKnown && quoteFamily !== undefined && quoteFamily !== knownFamily) {
     add("network_not_observed", undefined, "info", `the payTo addresses BotsRated's probes recorded for ${facts.host} are eip155 addresses, not ${networkLabel(network)} addresses.`);

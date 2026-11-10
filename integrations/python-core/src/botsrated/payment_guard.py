@@ -78,6 +78,7 @@ from botsrated.util import (
     network_label,
     pay_to_format_for,
     pay_to_invalid_fact,
+    same_observed_network,
     same_site_host,
     try_host_of,
 )
@@ -554,7 +555,7 @@ def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: Pa
         out.append(GuardReason("not_covered", _effect(policy.not_covered, "info"), f"BotsRated has no probe record for {facts.host}.", "notCovered"))
         return out
     if pay_to:
-        if facts.observed_network and network and facts.observed_network != network:
+        if facts.observed_network and network and not same_observed_network(facts.observed_network, network):
             out.append(GuardReason("network_not_observed", "info", f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network}."))
         elif facts.known_pay_tos and pay_to not in facts.known_pay_tos:
             on = facts.observed_network or network or "this network"

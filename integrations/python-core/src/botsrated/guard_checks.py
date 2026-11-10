@@ -34,6 +34,8 @@ DELIVERY_FACT = "a 2xx is not a delivery. The body, content type, or declared JS
 def delivery_fact(check: dict[str, Any] | None = None) -> str:
     """Fact sentence. Does not say a schema failed to match when the seller declared none."""
     checks = (check or {}).get("checks") if isinstance(check, dict) else None
+    if isinstance(checks, dict) and checks.get("schema") == "not_evaluated":
+        return "a 2xx is not a delivery. The declared JSON schema was too large to evaluate."
     if not isinstance(checks, dict) or checks.get("schema") != "not_declared":
         return DELIVERY_FACT
     if not checks.get("body_non_empty"):
@@ -323,6 +325,28 @@ def _take_work(work: dict[str, Any], n: int = 1) -> bool:
     return True
 
 
+def _compare_size_cost(value: Any) -> int:
+    """Extra visits for one comparison, roughly one per 64 serialized bytes."""
+    if isinstance(value, str):
+        return (len(value) + 63) // 64
+    if value is None or isinstance(value, (int, float, bool)):
+        return 0
+    try:
+        return (len(json.dumps(value)) + 63) // 64
+    except (TypeError, ValueError):
+        return 1
+
+
+def _allowed_keys(work: dict[str, Any], properties: dict[str, Any]) -> set[str]:
+    cache = work.setdefault("_allowed", {})
+    key = id(properties)
+    found = cache.get(key)
+    if found is None:
+        found = set(properties)
+        cache[key] = found
+    return found
+
+
 def schema_matches(schema: Any, value: Any, depth: int = 0, work: dict[str, Any] | None = None) -> bool:
     """JSON Schema keywords sellers declare. Stops after SCHEMA_WORK_BUDGET visits."""
     budget = work if work is not None else {"left": SCHEMA_WORK_BUDGET, "exhausted": False}
@@ -355,10 +379,25 @@ def schema_matches(schema: Any, value: Any, depth: int = 0, work: dict[str, Any]
                 return False
         if hits != 1:
             return False
-    if "const" in schema and schema["const"] != value:
-        return False
-    if isinstance(schema.get("enum"), list) and value not in schema["enum"]:
-        return False
+    if "const" in schema:
+        if not _take_work(budget, 1 + _compare_size_cost(schema["const"])):
+            return False
+        if schema["const"] != value:
+            return False
+    if isinstance(schema.get("enum"), list):
+        choices = schema["enum"]
+        if not _take_work(budget, len(choices)):
+            return False
+        found = False
+        for item in choices:
+            extra = _compare_size_cost(item)
+            if extra > 0 and not _take_work(budget, extra):
+                return False
+            if item == value:
+                found = True
+                break
+        if not found:
+            return False
     if "type" in schema and not _type_ok(schema["type"], value):
         return False
     if isinstance(schema.get("minLength"), int) and (not isinstance(value, str) or len(value) < schema["minLength"]):
@@ -382,17 +421,31 @@ def schema_matches(schema: Any, value: Any, depth: int = 0, work: dict[str, Any]
         if not isinstance(value, dict):
             return False
         if isinstance(schema.get("required"), list):
-            for key in schema["required"]:
+            required = schema["required"]
+            if not _take_work(budget, len(required)):
+                return False
+            for key in required:
                 if not isinstance(key, str) or key not in value:
                     return False
         properties = schema.get("properties")
         if isinstance(properties, dict):
-            for key, sub in properties.items():
-                if key in ("__proto__", "constructor", "prototype"):
-                    continue
+            entries = [(key, sub) for key, sub in properties.items() if key not in ("__proto__", "constructor", "prototype")]
+            if not _take_work(budget, len(entries)):
+                return False
+            for key, sub in entries:
                 if key in value and not schema_matches(sub, value[key], depth + 1, budget):
                     return False
-            if schema.get("additionalProperties") is False and any(key not in properties for key in value):
+            if schema.get("additionalProperties") is False:
+                allowed = _allowed_keys(budget, properties)
+                for key in value:
+                    if not _take_work(budget, 1):
+                        return False
+                    if key not in allowed:
+                        return False
+        elif schema.get("additionalProperties") is False:
+            for _key in value:
+                if not _take_work(budget, 1):
+                    return False
                 return False
     if "items" in schema or schema.get("type") == "array":
         if not isinstance(value, list):

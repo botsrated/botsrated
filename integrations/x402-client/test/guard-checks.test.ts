@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BASE_USDC } from "../src/util.js";
 import { createPrePaymentGuard, evaluatePayment, factsFrom, mcpPaymentApprover, strictGuardPolicy } from "../src/index.js";
 import {
+  DELIVERY_READ_DEADLINE_MS,
   REPLAY_TESTED,
   createPaymentGuard,
   deliveryFact,
@@ -341,6 +342,57 @@ describe("delivery_check", () => {
     ]);
     expect(preRaced).toBe("returned");
   });
+
+  it("releases a stalled application/json body when the caller cancels", async () => {
+    const payload = {
+      x402Version: 2,
+      payload: { authorization: { from: "0x" + "a".repeat(40), nonce: NONCE, validBefore: "9999999999" } },
+      accepted: req(),
+    };
+    const stalled = () => {
+      let sourceCanceled = false;
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+        },
+        cancel() {
+          sourceCanceled = true;
+        },
+      });
+      return {
+        sourceCanceled: () => sourceCanceled,
+        response: () => new Response(stream, { headers: { "content-type": "application/json" } }),
+      };
+    };
+    const first = stalled();
+    const g = createPaymentGuard({ hosted: false });
+    const res = await g.wrapFetch(async () => {
+      await g.hooks.beforePaymentCreation({ paymentRequired: pr(SELLER_URL), selectedRequirements: req() });
+      await g.hooks.afterPaymentCreation({ paymentPayload: payload });
+      return first.response();
+    })(SELLER_URL);
+    const reader = res.body!.getReader();
+    await reader.read();
+    const started = Date.now();
+    await reader.cancel();
+    expect(Date.now() - started).toBeLessThan(DELIVERY_READ_DEADLINE_MS + 1_500);
+    expect(first.sourceCanceled()).toBe(true);
+
+    const second = stalled();
+    const pre = createPrePaymentGuard({
+      client: { unpaidFetch: () => async () => json(FOUND), unpaidTimeoutMs: () => 1000, host: "botsrated.com", preflight: async () => ({ found: true, body: FOUND }) } as never,
+    });
+    const preRes = await pre.wrapFetch(async () => {
+      await pre.decide(SELLER_URL, req(), SELLER_URL);
+      return second.response();
+    })(SELLER_URL);
+    const preReader = preRes.body!.getReader();
+    await preReader.read();
+    const preStarted = Date.now();
+    await preReader.cancel();
+    expect(Date.now() - preStarted).toBeLessThan(DELIVERY_READ_DEADLINE_MS + 1_500);
+    expect(second.sourceCanceled()).toBe(true);
+  }, 15_000);
 });
 
 describe("schema work budget and strict payTo rows", () => {
@@ -352,6 +404,26 @@ describe("schema work budget and strict payTo rows", () => {
     expect(Date.now() - started).toBeLessThan(500);
     expect(check.checks.schema).toBe("not_evaluated");
     expect(check.effect).toBe("warn");
+    expect(deliveryFact(check)).toBe("a 2xx is not a delivery. The declared JSON schema was too large to evaluate.");
+  });
+
+  it("stops a wide properties schema, additionalProperties, and a long enum", () => {
+    const properties = Object.fromEntries(Array.from({ length: 6000 }, (_, i) => [`p${i}`, {}]));
+    const items = Array.from({ length: 10 }, () => ({}));
+    const body = JSON.stringify(items);
+    const shapes = [
+      { type: "array", items: { type: "object", properties } },
+      { type: "array", items: { type: "object", properties, additionalProperties: false } },
+      { type: "array", items: { enum: [...Array.from({ length: 20999 }, () => 0), 1] } },
+    ];
+    const enumBody = JSON.stringify([1]);
+    for (const [i, schema] of shapes.entries()) {
+      const started = Date.now();
+      const check = evaluateDelivery({ status: 200, body: i === 2 ? enumBody : body, contentType: "application/json", schema });
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(check.checks.schema).toBe("not_evaluated");
+      expect(check.effect).toBe("warn");
+    }
   });
 
   it("keeps strict blocks for non-solana payTo and compares a valid Solana payTo", () => {
@@ -410,5 +482,55 @@ describe("schema work budget and strict payTo rows", () => {
     expect(seen.flatMap((d) => d.reasons).map((r) => r.code)).not.toContain("repeat_payment");
     const later = await guard.decide(SELLER_URL, req({ amount: "1000" }), SELLER_URL, paymentRequired);
     expect(later.reasons.map((r) => r.code)).toContain("repeat_payment");
+  });
+
+  it("compares a Solana payTo when the observed network is missing or only a v1 alias", () => {
+    const facts = factsFrom(FOUND, "blockrun.ai", "preflight");
+    const strict = strictGuardPolicy;
+    const otherSol = "So11111111111111111111111111111111111111112";
+    const missing = evaluatePayment(
+      { ...facts, observedNetwork: undefined, knownPayTos: [SOL_KEY] },
+      req({ network: SOL, payTo: otherSol }),
+      SELLER_URL,
+      strict,
+    );
+    expect(missing.action).toBe("block");
+    expect(missing.reasons.map((r) => r.code)).toContain("payto_not_observed");
+    expect(missing.reasons.map((r) => r.detail).join(" ")).not.toContain("eip155 addresses");
+    const matched = evaluatePayment(
+      { ...facts, observedNetwork: undefined, knownPayTos: [SOL_KEY] },
+      req({ network: SOL, payTo: SOL_KEY }),
+      SELLER_URL,
+      strict,
+    );
+    expect(matched.reasons.map((r) => r.code)).not.toContain("payto_not_observed");
+    expect(matched.reasons.map((r) => r.code)).not.toContain("network_not_observed");
+    const hexOnly = evaluatePayment(
+      { ...facts, observedNetwork: undefined, knownPayTos: [facts.knownPayTos[0]], listingPayTo: undefined },
+      req({ network: SOL, payTo: SOL_KEY }),
+      SELLER_URL,
+      strict,
+    );
+    expect(hexOnly.reasons.some((r) => r.code === "network_not_observed" && r.detail.includes("eip155 addresses"))).toBe(true);
+    const alias = evaluatePayment(
+      { ...facts, observedNetwork: SOL, knownPayTos: [SOL_KEY] },
+      req({ network: "solana", payTo: otherSol }),
+      SELLER_URL,
+      strict,
+    );
+    expect(alias.action).toBe("block");
+    expect(alias.reasons.map((r) => r.code)).toContain("payto_not_observed");
+    expect(alias.reasons.map((r) => r.code)).not.toContain("network_not_observed");
+    const devnet = evaluatePayment(
+      { ...facts, observedNetwork: "solana-devnet", knownPayTos: [SOL_KEY] },
+      req({ network: SOL, payTo: otherSol }),
+      SELLER_URL,
+      strict,
+    );
+    expect(devnet.reasons.map((r) => r.code)).toContain("network_not_observed");
+    const baseAlias = evaluatePayment(facts, req({ network: "base", payTo: "0x000000000000000000000000000000000000dEaD" }), SELLER_URL, strict);
+    expect(baseAlias.action).toBe("block");
+    expect(baseAlias.reasons.map((r) => r.code)).toContain("payto_not_observed");
+    expect(baseAlias.reasons.map((r) => r.code)).not.toContain("network_not_observed");
   });
 });

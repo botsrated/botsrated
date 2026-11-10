@@ -329,6 +329,24 @@ def test_schema_work_budget_stops_a_huge_seller_schema():
     assert time.perf_counter() - started < 0.5
     assert check["checks"]["schema"] == "not_evaluated"
     assert check["effect"] == "warn"
+    assert delivery_fact(check) == "a 2xx is not a delivery. The declared JSON schema was too large to evaluate."
+
+
+def test_schema_budget_covers_properties_additional_and_enum():
+    properties = {f"p{i}": {} for i in range(6000)}
+    body = json.dumps([{} for _ in range(10)]).encode()
+    shapes = [
+        {"type": "array", "items": {"type": "object", "properties": properties}},
+        {"type": "array", "items": {"type": "object", "properties": properties, "additionalProperties": False}},
+        {"type": "array", "items": {"enum": [0] * 20999 + [1]}},
+    ]
+    enum_body = json.dumps([1]).encode()
+    for index, schema in enumerate(shapes):
+        started = time.perf_counter()
+        check = evaluate_delivery(status=200, body=enum_body if index == 2 else body, content_type="application/json", schema=schema)
+        assert time.perf_counter() - started < 0.5
+        assert check["checks"]["schema"] == "not_evaluated"
+        assert check["effect"] == "warn"
 
 
 def test_strict_payto_rows_keep_non_solana_blocks_and_compare_solana(found):
@@ -365,6 +383,29 @@ def test_strict_payto_rows_keep_non_solana_blocks_and_compare_solana(found):
     _action, unseen = codes(SOL, SOL_KEY)
     assert "network_not_observed" in unseen
     assert "payto_invalid" not in unseen
+
+    other = "So11111111111111111111111111111111111111112"
+    missing = dataclasses.replace(facts, observed_network=None, known_pay_tos=[SOL_KEY])
+    swapped = evaluate_payment(missing, req(found, network=SOL, payTo=other), url, STRICT_GUARD_POLICY)
+    assert swapped.action == "block"
+    assert "payto_not_observed" in [r.code for r in swapped.reasons]
+    assert not any("eip155 addresses" in r.detail for r in swapped.reasons)
+    matched_missing = evaluate_payment(missing, req(found, network=SOL, payTo=SOL_KEY), url, STRICT_GUARD_POLICY)
+    matched_codes = [r.code for r in matched_missing.reasons]
+    assert "payto_not_observed" not in matched_codes and "network_not_observed" not in matched_codes
+    hex_only = dataclasses.replace(facts, observed_network=None, known_pay_tos=list(facts.known_pay_tos), listing_pay_to=None)
+    hex_decision = evaluate_payment(hex_only, req(found, network=SOL, payTo=SOL_KEY), url, STRICT_GUARD_POLICY)
+    assert any(r.code == "network_not_observed" and "eip155 addresses" in r.detail for r in hex_decision.reasons)
+    alias = dataclasses.replace(facts, observed_network=SOL, known_pay_tos=[SOL_KEY])
+    alias_decision = evaluate_payment(alias, req(found, network="solana", payTo=other), url, STRICT_GUARD_POLICY)
+    alias_codes = [r.code for r in alias_decision.reasons]
+    assert alias_decision.action == "block" and "payto_not_observed" in alias_codes and "network_not_observed" not in alias_codes
+    devnet = dataclasses.replace(facts, observed_network="solana-devnet", known_pay_tos=[SOL_KEY])
+    devnet_codes = [r.code for r in evaluate_payment(devnet, req(found, network=SOL, payTo=other), url, STRICT_GUARD_POLICY).reasons]
+    assert "network_not_observed" in devnet_codes
+    base_alias = evaluate_payment(facts, req(found, network="base", payTo="0x000000000000000000000000000000000000dEaD"), url, STRICT_GUARD_POLICY)
+    base_codes = [r.code for r in base_alias.reasons]
+    assert base_alias.action == "block" and "payto_not_observed" in base_codes and "network_not_observed" not in base_codes
 
 
 def test_unread_streaming_response_does_not_raise(found):

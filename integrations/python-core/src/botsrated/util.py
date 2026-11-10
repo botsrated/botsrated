@@ -174,6 +174,25 @@ def pay_to_invalid_fact(network: Any) -> str:
     return "the payTo in this payment request is not a 20-byte hex address."
 
 
+# Documented x402 v1 names for one chain. Quotes and receipts keep the original string.
+# Comparison treats each pair as the same network. Other v1 names stay distinct.
+_NETWORK_ALIASES = {
+    "base": BASE_MAINNET,
+    "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+}
+
+
+def canonical_network(network: str) -> str:
+    """CAIP-2 id for a documented v1 alias. Any other network string is returned unchanged."""
+    trimmed = network.strip()
+    return _NETWORK_ALIASES.get(trimmed.lower(), trimmed)
+
+
+def same_observed_network(a: str, b: str) -> bool:
+    """True when two network strings are equal or are the documented v1/CAIP-2 pair for the same chain."""
+    return canonical_network(a) == canonical_network(b)
+
+
 def network_label(network: Any) -> str:
     """Network string for a fact sentence. Capped. Not a translation of v1 names into CAIP-2."""
     if not isinstance(network, str):
