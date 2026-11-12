@@ -27,7 +27,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.3.2 is published on PyPI** as [`botsrated`](https://pypi.org/project/botsrated/) (10 November 2026, 1:19 PM CT). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: 0.3.3 is published on PyPI** as [`botsrated`](https://pypi.org/project/botsrated/) (12 November 2026, 5:55 AM CT; docs-only follow-up to 0.3.2). 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 

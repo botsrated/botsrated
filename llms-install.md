@@ -32,7 +32,7 @@ Copy-paste the core attach in TypeScript / JS, Python, or curl (preflight facts;
 
 ### LIVE wedges (one-click)
 
-- [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.5). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
+- [LangChain](integrations/langchain/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langchain) — Free. No key for local attach. `pip install langchain-botsrated` (PyPI 0.1.6). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
 - [OpenAI Agents](integrations/openai-agents/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#openai-agents) — Free. No key for local attach. `pip install botsrated-openai-agents` (PyPI 0.1.1, `attach_payment_guard`).
 - [LangGraph](integrations/langgraph/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#langgraph) — Free. No key for local attach. `pip install langgraph-botsrated` (PyPI 0.1.1, `attach_payment_guard`).
 - [Llama Stack](integrations/llama-stack/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llama-stack) — Free. No key for local attach. `pip install llama-stack-botsrated` (PyPI 0.1.1, `attach_payment_guard`).
@@ -41,8 +41,8 @@ Copy-paste the core attach in TypeScript / JS, Python, or curl (preflight facts;
 
 ### Published pair-with (one-click)
 
-- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — Free. No key for local attach. `pip install llama-index-tools-botsrated` (PyPI 0.1.5). This package does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
-- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — Free. No key for local attach. `pip install agent-framework-botsrated` (PyPI 0.1.5). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
+- [LlamaIndex](integrations/llamaindex/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#llamaindex) — Free. No key for local attach. `pip install llama-index-tools-botsrated` (PyPI 0.1.6). This package does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
+- [Microsoft Agent Framework](integrations/microsoft-agent-framework/README.md#one-click-attach) · [Live docs](https://botsrated.com/docs/guard#microsoft-agent-framework) — Free. No key for local attach. `pip install agent-framework-botsrated` (PyPI 0.1.6). Omit `token` and the guard reads `BOTSRATED_TOKEN`.
 
 ### Other pair-with packages
 
@@ -69,7 +69,7 @@ The canon for this path is `docs/guard/default-middleware.md` (hook → measured
 
 Core JS, Python, and curl paste: [`docs/guard/copy-paste-attach.md`](docs/guard/copy-paste-attach.md). Curl does not attach. The stack attach below stays the pair-with call.
 
-Versions below were measured on 2026-10-31 against PyPI and the npm registry.
+Versions below were measured on 2026-11-12 against PyPI and the npm registry.
 
 ### Choose stack → install → attach
 
@@ -158,7 +158,7 @@ Note: the npm package README on the registry may still say "publishing soon". Tr
 
 #### LangChain (Python)
 
-Install (PyPI measured 0.1.5 — Published on PyPI):
+Install (PyPI measured 0.1.6 — Published on PyPI):
 
 ```bash
 pip install langchain-botsrated
@@ -177,7 +177,7 @@ Note: omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`. Explicit 
 
 #### LlamaIndex (Python)
 
-Install (PyPI measured 0.1.5 — Published on PyPI):
+Install (PyPI measured 0.1.6 — Published on PyPI):
 
 ```bash
 pip install llama-index-tools-botsrated
@@ -196,7 +196,7 @@ Note: this package does not read `BOTSRATED_TOKEN`. Pass `token=` when you use D
 
 #### Microsoft Agent Framework (Python)
 
-Install (PyPI measured 0.1.5 — Published on PyPI):
+Install (PyPI measured 0.1.6 — Published on PyPI):
 
 ```bash
 pip install agent-framework-botsrated
@@ -260,7 +260,7 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 1. Prefer the named pair-with package for the stack in Choose stack. Do not invent package names.
 2. Installing does not attach — always call `attach_payment_guard` / `attachPaymentGuard`.
 3. Omit preset and fail_mode unless the user asked for carefulBuyer or closed. `carefulBuyer` has the same stops as `policies.strict`. Presets are `warn`, `carefulBuyer`, and `dry-run-only`.
-4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read that variable when `token` is omitted. `llama-index-tools-botsrated` 0.1.5 does not; pass `token=` on that package when you use Desk policy.
+4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read that variable when `token` is omitted. `llama-index-tools-botsrated` 0.1.6 does not; pass `token=` on that package when you use Desk policy.
 5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
 7. The attach step is not optional in pay code you write. Do not ship a scaffold that can send a paid request before the attach call runs. This rule is about the code you write. It is not a claim to the user that attach is required to try BotsRated.

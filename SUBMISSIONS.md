@@ -2,7 +2,7 @@
 
 Draft text for catalog listings. Nothing in this file is submitted to an external catalog.
 
-Guard is 0.3.2: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) on npm (published 10 November 2026, 1:30 PM CT) and [`botsrated`](https://pypi.org/project/botsrated/) on PyPI (published 10 November 2026, 1:19 PM CT). Free tier: 25 checks + 3 reports per IP per UTC day. The 3 free reports apply to HTTP `GET /v1/report/{host}` only. MCP `report` and `best` are paid from the first call. `check` is $0.01 (the first 25 per client IP per UTC day are free on the MCP `check` tool and on HTTP `GET /v1/check`, one shared quota). `report` is $0.002. `best` is $0.01 and has no free quota. `/v1/find` spends one check from the same daily quota. `preflight` stays free, no key, rate limits.
+Guard is 0.3.3: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) on npm (published 12 November 2026, 5:45 AM CT) and [`botsrated`](https://pypi.org/project/botsrated/) on PyPI (published 12 November 2026, 5:55 AM CT). Free tier: 25 checks + 3 reports per IP per UTC day. The 3 free reports apply to HTTP `GET /v1/report/{host}` only. MCP `report` and `best` are paid from the first call. `check` is $0.01 (the first 25 per client IP per UTC day are free on the MCP `check` tool and on HTTP `GET /v1/check`, one shared quota). `report` is $0.002. `best` is $0.01 and has no free quota. `/v1/find` spends one check from the same daily quota. `preflight` stays free, no key, rate limits.
 
 BotsRated measures paid AI-agent services with signed receipts. Paid BotPulse plans are retired; the feed stays free. These measurements do not claim coverage of every delivery outcome.
 
@@ -22,4 +22,4 @@ These pull requests are not edited here. They still describe an older free quota
 - https://github.com/vercel/ai/pull/23894
 - https://github.com/x402-foundation/x402/pull/3913
 
-Current published package versions: `@botsrated/ai-sdk` 0.1.3 on npm (the repo `package.json` is 0.1.4, which is not on npm). `langchain-botsrated`, `llama-index-tools-botsrated`, and `agent-framework-botsrated` are 0.1.5 on PyPI. `botsrated-openai-agents`, `langgraph-botsrated`, `llama-stack-botsrated`, `google-adk-botsrated`, and `crewai-botsrated` are 0.1.1 on PyPI. `botsrated` and `@botsrated/x402-preflight` are 0.3.2. `pydantic-ai-botsrated` and `@botsrated/mastra` are not on a registry.
+Current published package versions: `@botsrated/ai-sdk` 0.1.3 on npm (the repo `package.json` is 0.1.4, which is not on npm). `langchain-botsrated`, `llama-index-tools-botsrated`, and `agent-framework-botsrated` are 0.1.6 on PyPI. `botsrated-openai-agents`, `langgraph-botsrated`, `llama-stack-botsrated`, `google-adk-botsrated`, and `crewai-botsrated` are 0.1.1 on PyPI. `botsrated` and `@botsrated/x402-preflight` are 0.3.3. `pydantic-ai-botsrated` and `@botsrated/mastra` are not on a registry.
