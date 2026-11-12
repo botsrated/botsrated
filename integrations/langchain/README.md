@@ -29,7 +29,7 @@ Live docs: [botsrated.com/docs/guard#langchain](https://botsrated.com/docs/guard
 
 ## Default install
 
-Free. No key for local attach. Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.5; dependency `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Paid checks are not required to attach. Optional `BOTSRATED_TOKEN` for Desk remote policy (omit `token` and the guard reads the env).
+Free. No key for local attach. Pairs with LangChain. The guard is not a runtime. Published: `pip install langchain-botsrated` (PyPI 0.1.6; dependency `botsrated>=0.3.1,<0.4`). Installing does not attach a guard. Paid checks are not required to attach. Optional `BOTSRATED_TOKEN` for Desk remote policy (omit `token` and the guard reads the env).
 
 ```python
 # Free. No key for local attach. Not a runtime.
@@ -41,7 +41,7 @@ guard = attach_payment_guard(x402_client)
 
 ## Install in 3 steps
 
-1. Free. No key for local attach. Install: `pip install langchain-botsrated` (PyPI 0.1.5, includes `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
+1. Free. No key for local attach. Install: `pip install langchain-botsrated` (PyPI 0.1.6, includes `attach_payment_guard`). Depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from langchain_botsrated import attach_payment_guard
@@ -56,10 +56,10 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 LangChain tools for [BotsRated](https://botsrated.com). Use them as a pre-payment check before
 an agent pays an x402 seller.
 
-**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.5** (this release; includes `attach_payment_guard`).
+**Status: published on PyPI: [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.6** (this release; includes `attach_payment_guard`).
 Depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.1,<0.4` (source:
 [`integrations/python-core`](https://github.com/botsrated/botsrated/tree/main/integrations/python-core)).
-PyPI 0.1.5 matches that pin. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`.
+PyPI 0.1.6 matches that pin. Omit `token` and `attach_payment_guard` reads `BOTSRATED_TOKEN`.
 
 ```bash
 pip install langchain-botsrated

@@ -54,7 +54,7 @@ const BANNED = /\b(verified|trusted|scam|grade|ranking)\b|\bsafe\b/i;
 
 test("package export packs the offline verifier", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(here, "../package.json"), "utf8"));
-  assert.equal(pkg.version, "0.3.2");
+  assert.equal(pkg.version, "0.3.3");
   assert.equal(pkg.exports["./verify-receipt"].import, "./verify-receipt.mjs");
   assert.equal(pkg.exports["./verify-receipt"].types, "./verify-receipt.d.ts");
   for (const file of ["verify-receipt.mjs", "verify-receipt.d.ts", "vendor/verify-core.mjs", "vendor/verify-node.mjs"]) {

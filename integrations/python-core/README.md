@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install "botsrated[x402]"` (0.3.2 is on PyPI).
+1. Install: `pip install "botsrated[x402]"` (0.3.3 is on PyPI).
 2. Attach to your x402 client (omit `preset` for advice only; omit `fail_mode` to stay open):
 ```python
 from botsrated import PaymentGuard
