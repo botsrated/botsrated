@@ -17,7 +17,7 @@ This repository documents the **remote** MCP server (nothing to install or run f
 Guard pairs with the x402 client your agent already pays with. It does not replace your agent runtime. Free. No key for local attach. It compares each payment request with BotsRated measurements and warns or blocks by your own rules. Facts and receipt links, not grades. Guard does not hold funds.
 
 - **Coding agents (Cursor, Claude Code, Cline, Codex):** follow [`llms-install.md` → When scaffolding x402 pay](llms-install.md#when-scaffolding-x402-pay-coding-agents). The same recipe ships as a Cursor rule ([`.cursor/rules/botsrated-guard-attach.mdc`](.cursor/rules/botsrated-guard-attach.mdc)) and an agent skill ([`docs/agent-skills/botsrated-guard-attach/SKILL.md`](docs/agent-skills/botsrated-guard-attach/SKILL.md)). If a copy drifts, `llms-install.md` wins. Attaching Guard before the first paid request is a required step of that recipe, not an option.
-- **Routers and wallets:** call Guard before pay with [`llms-install.md` → Router or wallet: call Guard before pay](llms-install.md#router-or-wallet-call-guard-before-pay) (`POST /v1/guard/check` or MCP `guard_check`, spec in [`docs/guard/guard-check.md`](docs/guard/guard-check.md)). The live route stays dark unless `FEATURE_GUARD_CHECK=true`. Optional, read-only, does not pay.
+- **Routers and wallets:** call Guard before pay with [`llms-install.md` → Router or wallet: call Guard before pay](llms-install.md#router-or-wallet-call-guard-before-pay) (`POST /v1/guard/check` or MCP `guard_check`, spec in [`docs/guard/guard-check.md`](docs/guard/guard-check.md)). This route and the MCP `guard_check` tool are not live on botsrated.com yet. Optional, read-only, does not pay.
 - **How attaches are counted:** outside Guard attaches that come back week over week, excluding internal calls. Not npm or PyPI downloads. See [`llms-install.md` → How we count outside attaches](llms-install.md#how-we-count-outside-attaches). No public figure yet.
 - **Default path:** hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff. Canon: [`docs/guard/default-middleware.md`](docs/guard/default-middleware.md).
 - **Per stack:** [integrations/README.md](integrations/README.md) · live docs https://botsrated.com/docs/guard
@@ -53,7 +53,7 @@ Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra
 | `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
-| `check` | $0.001 (x402, USDC on Base); first 25 per client IP per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `check` | $0.01 (x402, USDC on Base); first 25 per client IP per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
 | `report` | $0.002 (x402); first 3 per client IP per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
 
@@ -100,15 +100,16 @@ Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48)
 
 One x402 USDC payment on Base buys one 30-day period. There is no balance and no auto-renewal. Cancelling stops delivery. The dataset stays free.
 
-Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email. $19 / month by card + tax, or $29 / 30 days USDC. Tools you rely on (for example OpenAI, Anthropic, Gemini, Pinecone, Supabase) use those same 50 slots. No separate plan.
+Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email. $19 / month by card + tax, or $19 / 30 days USDC. Tools you rely on (for example OpenAI, Anthropic, Gemini, Pinecone, Supabase) use those same 50 slots. No separate plan.
 
 | Plan | Price per 30 days | What you get |
 |---|---|---|
 | `alerts-free` | $0 | Watch 1 seller. Daily digest: one email per UTC day when its facts change. Slack, Discord, and webhook need a paid plan (`paid_channel_required`). Up to 3 free alerts per client IP, 1,000 in total |
-| `alerts-50` | $29 | Up to 50 sellers or tools; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
-| `data-starter` | $49 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (60 requests/min) |
-| `data-pro` | $199 | Same, 600 requests/min, plus the change-event export (`GET /v1/export/changes.ndjson?host=`) |
-| custom | $499+ per 30 days | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
+| `alerts-50` (Pro) | $19 | Up to 50 sellers or tools; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
+| `desk-pro` (Desk Pro; API name `data-pro`) | $199 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (600 requests/min), the change-event export (`GET /v1/export/changes.ndjson?host=`), and the team workspace |
+| Data licensing | No public price | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
+
+`data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Desk Team $99/month, Desk Pro $199/month, Pilot $149 for 6 weeks (paid once). Current prices: https://botsrated.com/pricing
 
 Paid BotPulse plans are retired; the feed stays free. Plans already bought keep working until their 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json. Alerts on tools use Pro's 50 slots.
 
