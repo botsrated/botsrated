@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/x402-preflight` (0.3.2 is on npm).
+1. Install: `npm install @botsrated/x402-preflight` (0.3.3 is on npm).
 2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";

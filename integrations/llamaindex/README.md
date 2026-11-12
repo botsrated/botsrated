@@ -31,7 +31,7 @@ Live docs: [botsrated.com/docs/guard#llamaindex](https://botsrated.com/docs/guar
 
 ## Install in 3 steps
 
-1. Free. No key for local attach. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.5, includes `attach_payment_guard`). It depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
+1. Free. No key for local attach. Install: `pip install llama-index-tools-botsrated` (PyPI 0.1.6, includes `attach_payment_guard`). It depends on `botsrated>=0.3.1,<0.4`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```python
 from llama_index.tools.botsrated import attach_payment_guard
@@ -46,7 +46,7 @@ Omit `fail_mode` and the guard stays open. `"closed"` stops the payment when Bot
 A LlamaIndex tool spec for [BotsRated](https://botsrated.com). Use it as a pre-payment check
 before an agent pays an x402 seller.
 
-**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.5** (this release; includes `attach_payment_guard`).
+**Status: published on PyPI: [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.6** (this release; includes `attach_payment_guard`).
 It depends on [`botsrated`](https://pypi.org/project/botsrated/) `>=0.3.1,<0.4`. This package does not read `BOTSRATED_TOKEN`; pass `token=` when you use Desk policy.
 LlamaIndex no longer accepts new integration packages in its monorepo, so this package is published on its own.
 
