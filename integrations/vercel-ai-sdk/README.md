@@ -4,7 +4,7 @@
 
 > Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)). The default path these attaches follow is [`docs/guard/default-middleware.md`](https://github.com/botsrated/botsrated/blob/main/docs/guard/default-middleware.md).
 
-Free. No key for local attach. Pairs with the Vercel AI SDK. Not a generation runtime. Paid checks are not required to attach. Published on npm as `@botsrated/ai-sdk` 0.1.3 (`attachPaymentGuard`).
+Free. No key for local attach. Pairs with the Vercel AI SDK. Not a generation runtime. Paid checks are not required to attach. Published on npm as `@botsrated/ai-sdk` 0.1.3 (`attachPaymentGuard`). The in-repo `package.json` version is 0.1.4, which is not on npm.
 
 ```bash
 npm install @botsrated/ai-sdk
@@ -77,7 +77,7 @@ const result = await generateText({ model, tools: { ...botsratedTools(), paidToo
 [AI SDK](https://ai-sdk.dev) tools for [BotsRated](https://botsrated.com). Use them as a
 pre-payment check before an agent pays an x402 seller.
 
-**Status: published on npm as [`@botsrated/ai-sdk` 0.1.3](https://www.npmjs.com/package/@botsrated/ai-sdk)** (this release; includes `attachPaymentGuard`). It depends on
+**Status: published on npm as [`@botsrated/ai-sdk` 0.1.3](https://www.npmjs.com/package/@botsrated/ai-sdk)** (includes `attachPaymentGuard`). The in-repo `package.json` version is 0.1.4, which is not on npm. It depends on
 [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.3.0`. Docs: https://botsrated.com/docs/ai-sdk
 
 ```bash
@@ -110,7 +110,7 @@ import { BotsRatedClient, botsratedTools } from "@botsrated/ai-sdk";
 const x402 = new x402Client();
 registerExactEvmScheme(x402, { signer }); // your signer, e.g. a viem account
 const client = new BotsRatedClient({ paid: { budgetUsd: 0.02, x402Client: x402 } });
-const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.001 each after 25 free checks per client IP per UTC day, stops at $0.02) }
+const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.01 each after 25 free checks per client IP per UTC day, stops at $0.02) }
 ```
 
 The client validates BotsRated's 402 and signs only a copy rebuilt from allowlisted fields: a one-shot

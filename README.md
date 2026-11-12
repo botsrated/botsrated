@@ -2,9 +2,9 @@
 
 **Signed checks of paid AI services, before your agent pays.**
 
-BotsRated measures paid AI-agent services with signed receipts. BotPulse is a separate digest and alerts product; these measurements do not claim coverage of every delivery outcome.
+BotsRated measures paid AI-agent services with signed receipts. Paid BotPulse plans are retired; the feed stays free. These measurements do not claim coverage of every delivery outcome.
 
-BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent services on Base:
+BotsRated publishes timestamped, receipt-backed measurements of paid x402 agent services on Base and Solana:
 - unpaid probes: status, whether the 402 challenge is valid, latency, quoted vs listed price, and payTo;
 - paid test-buys, each with its on-chain tx hash.
 
@@ -47,15 +47,23 @@ Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra
 | Contact | botsrated@gmail.com |
 
 ## Tools
+
+Live MCP `tools/list` at `https://botsrated.com/mcp` has 12 tools:
+
 | Tool | Price | What it returns |
 |---|---|---|
-| `preflight` | free, no key, rate limits | Facts bundle for an x402 seller (host or URL): latest unpaid probe, freshness, directory listing, receipt link. Measurements and a receipt link. See below |
+| `preflight` | free, no key, rate limits | Facts bundle for an x402 seller or remote MCP server (host or URL): latest unpaid probe, freshness, directory listing, receipt link. Measurements and a receipt link. See below |
+| `check_mcp_setup` | free | Check the MCP servers in a config or a list of hosts (up to 50 hosts or an mcp.json). Same report as `POST /v1/dependency-watch/report` |
+| `watch_free` | free | Email when a covered host's measured facts change (1 host, at most once per UTC day, 30 days, up to 3 active watches per client). Same watch as `POST /v1/alerts/subscribe` |
+| `what_changed` | free | Measured changes for a free watch. Pass the handle from `watch_free` |
 | `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
-| `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran |
+| `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran. Live counts: `GET https://botsrated.com/v1/coverage` |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
-| `check` | $0.01 (x402, USDC on Base); first 25 per client IP per UTC day free | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
-| `report` | $0.002 (x402); first 3 per client IP per UTC day free | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
-| `best` | $0.01 (x402) | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
+| `check` | $0.01 (x402, USDC on Base); first 25 per client IP per UTC day free on this tool and on HTTP `GET /v1/check` (one shared quota) | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `report` | $0.002 (x402); paid on MCP from the first call. The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}` | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
+| `best` | $0.01 (x402); paid on MCP from the first call; no free quota | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
+| `seller_self_check` | free | Stored measurements for a host anyone can read: listing versus quoted price and recent unpaid probes |
+| `seller_announce` | free (verified owner) | Verified owner posts a planned price and/or payTo |
 
 ## Facts bundle (`preflight` and `check`)
 
@@ -82,7 +90,7 @@ The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller
 
 Paid MCP tools: an unpaid call returns an x402 v2 PaymentRequired tool error (isError, structuredContent with accepts); an x402-aware MCP client (e.g. `@x402/mcp`) retries with the payment in `_meta["x402/payment"]`. The same data is on the HTTP routes, payable by any x402 client (e.g. `@x402/fetch`, Coinbase Agentic Wallet). All three paid routes are also listed in the Coinbase x402 Bazaar.
 
-Free daily quota: the first 25 checks and 3 reports per client IP (IPv6 per /48) per UTC day are answered without payment; after that the normal x402 402 applies. `/v1/find` spends one check from that same quota. `/v1/best` has no free quota. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
+Free daily quota: the first 25 checks per client IP (IPv6 per /48) per UTC day are free on the MCP `check` tool and on HTTP `GET /v1/check` (one shared quota). The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}`. MCP `report` and `best` are paid from the first call. `/v1/find` spends one check from the shared check quota. `/v1/best` has no free quota. After the free quota the normal x402 402 applies. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
 ## Free HTTP endpoints and pages
 
@@ -146,7 +154,7 @@ Report security issues privately: see [SECURITY.md](SECURITY.md) (botsrated@gmai
 - A seller can send a reply about a measurement for free: https://botsrated.com/disputes (`POST /v1/dispute`). The measurement is re-checked and the reply is published next to the data. A measurement is a signed record, not a finding about the seller.
 - Dataset signature: https://botsrated.com/dataset.sig.json. Key set: https://botsrated.com/.well-known/botsrated-key
 - Receipt format v0.2.1 (draft; `mcp_probe` receipts for remote MCP servers; v0.2.1 updates reference schedules and MCP retention) and verifier: [`spec/SPEC.md`](spec/SPEC.md). `node spec/verify.mjs '<receipt.json|url>'` needs `verify.mjs`, `verify-core.mjs`, and `verify-node.mjs` in one directory. `verify.mjs` alone does not run.
-- Free: preflight, then the receipt link, then the signature check. x402 preflight puts it on `latest_probe.receipt_url`. MCP preflight puts it on `servers[].latest_receipt_url` (keep `?mcp=&day=&s=`). CLI, single quotes: `node spec/verify.mjs '<receipt_url>'`. The pasted URL is a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s` only. A matching signature checks that record only. It is not a rating of the seller. The same check is importable as `verifyReceipt` from `@botsrated/x402-preflight/verify-receipt` (Node, offline; status `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`). A copy with `withheld_fields` or `withheld_note` is `redacted copy`: not offline-verifiable, and not `signature invalid`. Check the stored record with `GET /v1/verify`. `spec/receipt-page.mjs` is that same check for `Accept: text/html`. It is not on the live host until Pages returns it (`Content-Security-Policy` header, and `/spec/verify-browser.mjs` plus `/spec/verify-core.mjs`). [`spec/courthouse/`](spec/courthouse/README.md) is the same check as a folder you serve yourself.
+- Free: preflight, then the receipt link, then the signature check. x402 preflight puts it on `latest_probe.receipt_url`. MCP preflight puts it on `servers[].latest_receipt_url` (keep `?mcp=&day=&s=`). CLI, single quotes: `node spec/verify.mjs '<receipt_url>'`. The pasted URL is a 20-hex id plus allowlisted `host`, `mcp`, `day`, and `s` only. A matching signature checks that record only. It is not a rating of the seller. The same check is importable as `verifyReceipt` from `@botsrated/x402-preflight/verify-receipt` (Node, offline; status `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`). A copy with `withheld_fields` or `withheld_note` is `redacted copy`: not offline-verifiable, and not `signature invalid`. Check the stored record with `GET /v1/verify`. `spec/receipt-page.mjs` is that same check for `Accept: text/html`. It is live on the host (`Content-Security-Policy` header, and `/spec/verify-browser.mjs` plus `/spec/verify-core.mjs`). [`spec/courthouse/`](spec/courthouse/README.md) is the same check as a folder you serve yourself.
 
 ## Signing keys (Ed25519)
 Raw 32-byte public keys, base64. Fingerprint = sha256 of the raw key bytes. A signature is valid for an object whose own timestamp

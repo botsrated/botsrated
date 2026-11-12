@@ -168,8 +168,8 @@ agent = Agent(client=chat_client, tools=[botsrated_check_payment_tool(), pay_x40
 
 ## Hosted MCP server (no package needed)
 
-BotsRated also runs a remote MCP server (streamable HTTP, no auth). Its free tools are `preflight`, `coverage`,
-`sample` and `history`:
+BotsRated also runs a remote MCP server (streamable HTTP, no auth). Its free tools include `preflight`, `coverage`,
+and `sample` (the live `tools/list` also has `check_mcp_setup`, `watch_free`, `what_changed`, `find`, `seller_self_check`, and `seller_announce`):
 
 ```python
 from agent_framework import MCPStreamableHTTPTool
@@ -177,14 +177,13 @@ from agent_framework import MCPStreamableHTTPTool
 botsrated_mcp = MCPStreamableHTTPTool(
     name="botsrated",
     url="https://botsrated.com/mcp",
-    allowed_tools=["preflight", "coverage", "sample", "history"],
+    allowed_tools=["preflight", "coverage", "sample"],
 )
 async with botsrated_mcp:
     result = await Agent(client=chat_client, tools=[botsrated_mcp]).run("Is blockrun.ai a known x402 seller?")
 ```
 
-The paid lookups (`check` $0.001, `report` $0.002, `best` $0.01 USDC on Base; the first 25 checks and 3 reports per
-client IP per UTC day are free) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard.
+The paid lookups (`check` $0.01, `report` $0.002, `best` $0.01 USDC on Base) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard. `check` shares the first 25 free calls per client IP per UTC day with HTTP `GET /v1/check`. MCP `report` and `best` are paid from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`.
 
 ## Run the example and tests
 

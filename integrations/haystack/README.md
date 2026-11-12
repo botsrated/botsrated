@@ -1,7 +1,7 @@
 # BotsRated for Haystack
 
-[BotsRated](https://botsrated.com) checks an x402 seller before your agent pays it. It probes about
-4,800 x402 seller hosts on Base, and the remote MCP servers in the Official MCP Registry, without paying them,
+[BotsRated](https://botsrated.com) checks an x402 seller before your agent pays it. It probes the x402 seller hosts
+BotsRated currently covers on Base and Solana (live count: [GET /v1/coverage](https://botsrated.com/v1/coverage)), and the remote MCP servers in the Official MCP Registry, without paying them,
 and records each probe (HTTP status, valid 402 challenge, latency, quoted price and payTo) as a signed
 receipt. It also makes real paid test-buys and publishes their transaction links.
 
@@ -38,9 +38,8 @@ print(result["last_message"].text)
 botsrated.close()
 ```
 
-Free tools: `preflight`, `coverage`, `sample`, `history`. The server also lists `check`, `report` and `best`,
-which are paid x402 routes ($0.001, $0.002 and $0.01 USDC on Base; the first 25 checks and 3 reports per
-client IP per UTC day are free). Leave them out of `tool_names` unless your agent can pay x402.
+Free tools: `preflight`, `check_mcp_setup`, `watch_free`, `what_changed`, `find`, `coverage`, `sample`, `seller_self_check`, and `seller_announce`. The server also lists `check`, `report` and `best`,
+which are paid x402 routes (`check` $0.01, `report` $0.002, `best` $0.01 USDC on Base). `check` shares the first 25 free calls per client IP per UTC day with HTTP `GET /v1/check`. MCP `report` and `best` are paid from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`. Leave the paid tools out of `tool_names` unless your agent can pay x402.
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 

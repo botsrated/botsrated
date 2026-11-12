@@ -63,7 +63,7 @@ from botsrated import BotsRatedClient
 # x402_client: an x402.x402ClientSync with your signer; it only signs BotsRated's quote rebuilt from
 # allowlisted fields (no Permit2, no payment extensions).
 tools = BotsRatedToolSpec(BotsRatedClient(budget_usd="0.02", x402_client=x402_client)).to_tool_list()
-# ["preflight", "paid_check"]: paid_check costs $0.001 (first 25 per client IP per UTC day free, charged: false) and stops at the budget
+# ["preflight", "paid_check"]: paid_check costs $0.01 (first 25 per client IP per UTC day free, charged: false) and stops at the budget
 ```
 
 ## Default install

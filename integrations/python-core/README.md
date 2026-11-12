@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install "botsrated[x402]"` (this tree is 0.3.2; PyPI still serves 0.3.1 until a later publish).
+1. Install: `pip install "botsrated[x402]"` (0.3.2 is on PyPI).
 2. Attach to your x402 client (omit `preset` for advice only; omit `fail_mode` to stay open):
 ```python
 from botsrated import PaymentGuard
@@ -27,7 +27,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: source version 0.3.2 in this repo. Not published.** PyPI still serves [`botsrated` 0.3.1](https://pypi.org/project/botsrated/). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: 0.3.2 is published on PyPI** as [`botsrated`](https://pypi.org/project/botsrated/) (10 November 2026, 1:19 PM CT). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -351,8 +351,8 @@ botsrated = BotsRatedClient(budget_usd="0.05", x402_client=client)   # signs onl
 guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
-botsrated.check("seller.example")     # $0.001 (first 25 per client IP per UTC day free)
-botsrated.report("seller.example")    # $0.002 (first 3 per client IP per UTC day free)
+botsrated.check("seller.example")     # $0.01 (first 25 per client IP per UTC day free, shared with MCP check)
+botsrated.report("seller.example")    # $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 botsrated.best("web search")          # $0.01
 ```
 
