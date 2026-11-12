@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/x402-preflight` (this tree is 0.3.2; the npm registry still serves 0.3.1 until a later publish).
+1. Install: `npm install @botsrated/x402-preflight` (0.3.2 is on npm).
 2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
@@ -56,7 +56,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: source version 0.3.2 in this repo. Not published.** The npm registry still serves [`@botsrated/x402-preflight` 0.3.1](https://www.npmjs.com/package/@botsrated/x402-preflight). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: 0.3.2 is published on npm** as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (10 November 2026, 1:30 PM CT). 0.3.2 adds `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -76,7 +76,7 @@ of the x402 client you pass in.
 You set the thresholds. The guard compares the payment with facts BotsRated measured and, when the preflight included
 one, a receipt link.
 
-Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). Wallets, routers, and MCP clients call the same check offline: `import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt"`. The package includes the verifier. Status is `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`. A copy with `withheld_fields` or `withheld_note` is `redacted copy`: not offline-verifiable. Check the stored record with `GET /v1/verify`. A match is this record only. It is not a rating of the seller. The call does not fetch. The receipt page uses that same check. It is not on the live host until Pages returns it.
+Free preflight returns a receipt link (`latest_probe.receipt_url`, or `servers[].latest_receipt_url` for an MCP host, including `?mcp=&day=&s=`). Check that signature with `node spec/verify.mjs '<receipt_url>'` from a checkout of `spec/` (`verify.mjs` plus `verify-core.mjs` and `verify-node.mjs`). Wallets, routers, and MCP clients call the same check offline: `import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt"`. The package includes the verifier. Status is `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`. A copy with `withheld_fields` or `withheld_note` is `redacted copy`: not offline-verifiable. Check the stored record with `GET /v1/verify`. A match is this record only. It is not a rating of the seller. The call does not fetch. The receipt page uses that same check. It is live on the host (`Content-Security-Policy`, `/spec/verify-browser.mjs`, and `/spec/verify-core.mjs`).
 
 ```js
 import { verifyReceipt } from "@botsrated/x402-preflight/verify-receipt";
@@ -424,8 +424,8 @@ const botsrated = new BotsRatedClient({
 const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 0.25 });
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
-await botsrated.check("seller.example");            // $0.001 (first 25 per client IP per UTC day free)
-await botsrated.report("seller.example");           // $0.002 (first 3 per client IP per UTC day free)
+await botsrated.check("seller.example");            // $0.01 (first 25 per client IP per UTC day free, shared with MCP check)
+await botsrated.report("seller.example");           // $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 
@@ -453,7 +453,7 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
 - When the guard is registered, it refuses any payment to botsrated.com that the client has not
   reserved or that carries payment extensions, and strips extensions before the scheme signs.
 - `paidCheckAtOrAboveUsd` runs a check only for seller payments at or above that amount: free within
-  the daily quota, then a $0.001 paid check if the client is paid-enabled (skipped otherwise).
+  the daily quota, then a $0.01 paid check if the client is paid-enabled (skipped otherwise).
   If the budget is used up, the guard falls back to the free preflight.
 
 ## Test
