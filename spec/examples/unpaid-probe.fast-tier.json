@@ -1,0 +1,80 @@
+{
+  "kind": "unpaid_probe",
+  "ts": "2026-11-10T14:59:31Z",
+  "host": "03s9tr085tfe5agke0tpqng34o.ingress.quanglong.org",
+  "url": "https://03s9tr085tfe5agke0tpqng34o.ingress.quanglong.org/x402/ta",
+  "method": "GET",
+  "status": 402,
+  "latency_ms": 471,
+  "error": null,
+  "req_sha256": "cbe6e4b0ca035ae1b3c264c340be38c2a2f1539eda72a1007cda19319c0c2f23",
+  "resp_sha256": "c2080da16d50a4bc16c011caade5d0368425ca9688e8d7a822ea1f8ffd3d0b22",
+  "total_header_bytes": 4290,
+  "prober_ua": "BotsRated-probe/0.3 (unpaid check; no payment sent; +https://botsrated.com/disputes)",
+  "prober": "botsrated-prober (Cloudflare cron)",
+  "probe_version": "0.3",
+  "scope": "primary",
+  "listed_amount": "20000",
+  "listed_payTo": null,
+  "network": "eip155:8453",
+  "x402_version": 2,
+  "payment_required_header_bytes": 3952,
+  "valid_402": true,
+  "live_amount": "20000",
+  "live_payTo": "0x0EBB943298cF4bBdBE4673217212a089D3F5ee7E",
+  "live_asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "live_network": "eip155:8453",
+  "quotes": [
+    {
+      "network": "eip155:8453",
+      "chain": "eip155",
+      "scheme": "exact",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "asset_label": "USDC",
+      "amount": "20000",
+      "price_usd": 0.02,
+      "payTo": "0x0EBB943298cF4bBdBE4673217212a089D3F5ee7E",
+      "payto_shape": "evm",
+      "testnet": false
+    }
+  ],
+  "chain": {
+    "v": 1,
+    "namespace": "eip155",
+    "network": "eip155:8453",
+    "networks": [
+      "eip155:8453"
+    ]
+  },
+  "checks": {
+    "terms_consistent": true,
+    "terms_issues": [],
+    "options": 1,
+    "base_usdc": true,
+    "solana_usdc": false,
+    "payto_stable": true,
+    "price_matches_listing": true,
+    "payto_matches_listing": null
+  },
+  "resource_description": "TradingView technical-analysis snapshot for crypto — per-timeframe buy/sell/neutral ratings (1h, 4h, 1d, 1w), RSI, ATR and ATR%, 24h change, volume, 52-week range, plus a swing-weighted composite bias and trend-alignment tag (bull_stack / bear_stack / conflicted / mixed). Pass ?symbols=BTC,ETH,SOL …",
+  "extensions_advertised": [
+    "bazaar"
+  ],
+  "payment_identifier": {
+    "advertised": false,
+    "required": false
+  },
+  "id": "b56e905c2a1db40627ac",
+  "tier": "fast_2",
+  "confirms": {
+    "ts": "2026-11-10T14:59:26Z",
+    "note": "change seen on two checks in a row before it counts"
+  },
+  "sig": {
+    "alg": "ed25519",
+    "key_id": "botsrated-prober-1",
+    "signed": "canonical JSON of this receipt without the sig field (keys sorted, no whitespace)",
+    "sig_b64": "bQfpzr3zlKcOv2LhYwMxxb18hauV6UXmk7faOHXjFumrC3eqa98dmlKK/HkEl6AAscXEAOg805lI7ZY44i70BA=="
+  },
+  "payment": "none (unpaid probe; no payment header was sent)"
+}
