@@ -544,3 +544,25 @@ test("courthouse unsigned receipt asks for the snapshot and the page keeps Soft 
   const boothSrc = fs.readFileSync(path.join(root, "spec/courthouse/verify-booth.mjs"), "utf8");
   assert.equal(/\b(safe|trusted|verified|scam|risky|ranking)\b/i.test(boothSrc), false);
 });
+
+test("fast-tier receipt: id without tier and confirms passes, signature still covers them", async () => {
+  const file = "spec/examples/unpaid-probe.fast-tier.json";
+  const ran = cli([file, "--keys", "spec/examples/keys.json"]);
+  assert.equal(ran.status, 0, ran.stderr || ran.stdout);
+  assert.match(ran.stdout, /PASS  id b56e905c2a1db40627ac \(sha256\(canonical JSON without tier and confirms\), fast-tier rule\)/);
+  assert.match(ran.stdout, /\nVALID\n$/);
+  const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+  for (const change of [(r) => { r.tier = "fast_s"; }, (r) => { r.confirms.ts = "2026-11-10T00:00:00Z"; }, (r) => { delete r.confirms; }, (r) => { r.status = 200; }]) {
+    const t = JSON.parse(JSON.stringify(raw));
+    change(t);
+    const res = await verifyReceipt(t, keys, nodeDeps());
+    assert.equal(res.valid, false);
+  }
+});
+
+test("fast-tier fallback does not apply without tier or confirms", async () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.fast-tier.json"), "utf8"));
+  const { tier, confirms, ...rest } = raw;
+  const res = await verifyReceipt(rest, keys, nodeDeps());
+  assert.equal(res.valid, false);
+});

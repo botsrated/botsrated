@@ -138,6 +138,7 @@ States are observations from one vantage point, not judgements: `auth_required` 
 | Receipt | Rule |
 |---|---|
 | `unpaid_probe` with `probe_version`, and `mcp_probe` (v0.2) | first 20 hex of `sha256(canon(receipt without id and sig))` |
+| fast-tier `unpaid_probe` (has `tier` or `confirms`) made before 2026-11-12 | the first rule, or, if that does not match, first 20 hex of `sha256(canon(receipt without id, sig, tier and confirms))`. The reference prober added `tier` and `confirms` after computing the id. Both fields are still covered by the signature (§4.3). Receipts made after the prober fix match the first rule. |
 | `paid_test_buy` | first 20 hex of `sha256("paid|" + tx_hash)` |
 | legacy `unpaid_probe` (no `probe_version`; made before 2026-10-23 12:45 UTC by the box prober) | first 20 hex of `sha256(python json.dumps(receipt without id, sort_keys=True))`, with default separators `", "`/`": "` and ASCII escaping |
 

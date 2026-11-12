@@ -126,9 +126,19 @@ export async function verifyReceipt(raw, keyset, deps) {
   }
   const r = stripPresentation(unwrapReceipt(raw));
   const { id, sig, ...body } = r;
-  const rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
-  const want = r.kind === "paid_test_buy" ? (await sha256("paid|" + r.tx_hash)).slice(0, 20)
+  let rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
+  let want = r.kind === "paid_test_buy" ? (await sha256("paid|" + r.tx_hash)).slice(0, 20)
     : r.probe_version ? (await sha256(canon(body))).slice(0, 20) : (await sha256(pyDumps(body))).slice(0, 20);
+  // SPEC 4.2: on fast-tier unpaid probes made before the prober fix, `tier` and `confirms` were
+  // added after the id was computed. The id then covers the rest; the signature still covers every field.
+  if (want !== id && r.kind === "unpaid_probe" && r.probe_version && (body.tier !== undefined || body.confirms !== undefined)) {
+    const { tier, confirms, ...early } = body;
+    const alt = (await sha256(canon(early))).slice(0, 20);
+    if (alt === id) {
+      want = alt;
+      rule = "sha256(canonical JSON without tier and confirms), fast-tier rule";
+    }
+  }
   say(want === id, `id ${id} (${rule})`, "id_mismatch");
   lines.push(`INFO  receipt sha256 (canonical JSON, compare with EAS receiptSha256): 0x${await sha256(canon(r))}`);
 
