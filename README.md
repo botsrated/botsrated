@@ -48,7 +48,7 @@ Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra
 
 ## Tools
 
-Live MCP `tools/list` at `https://botsrated.com/mcp` has 12 tools:
+Live MCP `tools/list` at `https://botsrated.com/mcp` has 13 tools:
 
 | Tool | Price | What it returns |
 |---|---|---|
@@ -59,6 +59,7 @@ Live MCP `tools/list` at `https://botsrated.com/mcp` has 12 tools:
 | `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran. Live counts: `GET https://botsrated.com/v1/coverage` |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
+| `history` | free | Signed daily aggregates for one host (counts, latency, quoted amounts, 402 checks, receipt ids), newest first. Payee addresses are keyed HMAC-SHA256 hashes, not raw payTo. Raw archive NDJSON parts are not published. HTTP: `GET https://botsrated.com/v1/history?host=` |
 | `check` | $0.01 (x402, USDC on Base); first 25 per client IP per UTC day free on this tool and on HTTP `GET /v1/check` (one shared quota) | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
 | `report` | $0.002 (x402); paid on MCP from the first call. The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}` | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402); paid on MCP from the first call; no free quota | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
