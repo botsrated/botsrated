@@ -4,6 +4,45 @@
 export const canon = (v) => v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]`
   : `{${Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
 
+// RFC 8785 JCS for strings, booleans, null and integer numbers that JSON represents exactly.
+// Floating-point numbers and other types return { error }.
+export function jcs(v) {
+  if (v === null) return { text: "null" };
+  const t = typeof v;
+  if (t === "boolean") return { text: v ? "true" : "false" };
+  if (t === "string") return { text: JSON.stringify(v) };
+  if (t === "number") {
+    if (!Number.isSafeInteger(v)) return { error: "non-integer number" };
+    return { text: JSON.stringify(v) };
+  }
+  if (t !== "object") return { error: "unsupported type" };
+  if (Array.isArray(v)) {
+    const parts = [];
+    for (const el of v) {
+      const p = jcs(el);
+      if (p.error) return p;
+      parts.push(p.text);
+    }
+    return { text: `[${parts.join(",")}]` };
+  }
+  const parts = [];
+  for (const k of Object.keys(v).filter((key) => v[key] !== undefined).sort()) {
+    const p = jcs(v[k]);
+    if (p.error) return p;
+    parts.push(`${JSON.stringify(k)}:${p.text}`);
+  }
+  return { text: `{${parts.join(",")}}` };
+}
+
+export function hasNonIntegerNumber(v) {
+  if (typeof v === "number") return !Number.isSafeInteger(v);
+  if (v && typeof v === "object") {
+    if (Array.isArray(v)) return v.some(hasNonIntegerNumber);
+    return Object.values(v).some(hasNonIntegerNumber);
+  }
+  return false;
+}
+
 // Legacy ids (box prober, no probe_version): Python json.dumps(sort_keys=True) with default separators and ASCII escaping.
 const ascii = (s) => JSON.stringify(s).replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 export const pyDumps = (v) => v === null ? "null" : typeof v === "string" ? ascii(v) : typeof v !== "object" ? JSON.stringify(v)
@@ -100,6 +139,16 @@ function statusOf(ok, errors) {
   return ok ? "signature valid" : "signature invalid";
 }
 
+function keyListAsOf(keyset) {
+  if (!keyset || typeof keyset !== "object") return null;
+  const v = keyset.as_of || keyset.issued || keyset.rotated_at || keyset.dataset_rotated_at || keyset.generated_at || keyset.updated_at;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function hasAnchorField(r) {
+  return !!(r && (r.anchor || r.eas || r.attestation || r.attestation_uid));
+}
+
 // deps: { sha256(string|bytes) -> hex, ed25519(pubB64, message, sigB64) -> bool, loadSnapshot()? -> { bytes, sig } }
 export async function verifyReceipt(raw, keyset, deps) {
   const lines = [];
@@ -125,13 +174,35 @@ export async function verifyReceipt(raw, keyset, deps) {
     };
   }
   const r = stripPresentation(unwrapReceipt(raw));
+  const asOf = keyListAsOf(keyset);
+  if (asOf) lines.push(`INFO  key list as of ${asOf}`);
+  const recordVersion = r.record_version;
+  const isV2 = recordVersion === 2;
+  if (recordVersion !== undefined && recordVersion !== 1 && recordVersion !== 2) {
+    say(false, `unknown record_version ${recordVersion}`, "unknown_record_version");
+    return {
+      ok, valid: ok, status: statusOf(ok, errors), lines, errors,
+      id: typeof r.id === "string" ? r.id : null, key_id: r.sig && r.sig.key_id || null,
+      kind: r.kind || null, ts: r.ts || null, host: r.host || null,
+    };
+  }
+  if (isV2) {
+    if (hasNonIntegerNumber(r)) say(false, "v2 signed body must not include floating-point numbers", "v2_float");
+    if (Object.prototype.hasOwnProperty.call(r, "paid_usd") || Object.prototype.hasOwnProperty.call(r, "price_usd")) {
+      say(false, "v2 signed body must not include paid_usd or price_usd; use atomic strings", "v2_float_field");
+    }
+  }
   const { id, sig, ...body } = r;
   let rule = r.kind === "paid_test_buy" ? "sha256('paid|'+tx_hash)" : r.probe_version ? "sha256(canonical JSON)" : "legacy rule";
   let want = r.kind === "paid_test_buy" ? (await sha256("paid|" + r.tx_hash)).slice(0, 20)
     : r.probe_version ? (await sha256(canon(body))).slice(0, 20) : (await sha256(pyDumps(body))).slice(0, 20);
-  // SPEC 4.2: on fast-tier unpaid probes made before the prober fix, `tier` and `confirms` were
-  // added after the id was computed. The id then covers the rest; the signature still covers every field.
-  if (want !== id && r.kind === "unpaid_probe" && r.probe_version && (body.tier !== undefined || body.confirms !== undefined)) {
+  if (isV2) {
+    const enc = jcs(body);
+    rule = "sha256(RFC 8785 JCS)";
+    want = enc.text ? (await sha256(enc.text)).slice(0, 20) : "invalid";
+  } else if (want !== id && r.kind === "unpaid_probe" && r.probe_version && (body.tier !== undefined || body.confirms !== undefined)) {
+    // SPEC 4.2: on fast-tier unpaid probes made before the prober fix, `tier` and `confirms` were
+    // added after the id was computed. The id then covers the rest; the signature still covers every field.
     const { tier, confirms, ...early } = body;
     const alt = (await sha256(canon(early))).slice(0, 20);
     if (alt === id) {
@@ -140,7 +211,12 @@ export async function verifyReceipt(raw, keyset, deps) {
     }
   }
   say(want === id, `id ${id} (${rule})`, "id_mismatch");
-  lines.push(`INFO  receipt sha256 (canonical JSON, compare with EAS receiptSha256): 0x${await sha256(canon(r))}`);
+  if (isV2) {
+    const enc = jcs(r);
+    if (enc.text) lines.push(`INFO  receipt sha256 (RFC 8785 JCS, compare with EAS receiptSha256): 0x${await sha256(enc.text)}`);
+  } else {
+    lines.push(`INFO  receipt sha256 (canonical JSON, compare with EAS receiptSha256): 0x${await sha256(canon(r))}`);
+  }
 
   const list = (keyset && keyset.keys) || [];
   const keys = Object.fromEntries(list.map((k) => [k.key_id, k.public_key_b64]));
@@ -148,6 +224,10 @@ export async function verifyReceipt(raw, keyset, deps) {
   const inWindow = (kid, ts) => {
     const k = kmeta[kid];
     if (!k) return false;
+    if (String(k.status || "").toLowerCase() === "revoked") {
+      say(false, `key ${kid} is revoked`, "key_revoked");
+      return false;
+    }
     const t = Date.parse(ts);
     const windowOk = (!k.valid_from || t >= Date.parse(k.valid_from)) && (!k.valid_until || t < Date.parse(k.valid_until));
     say(windowOk, `key ${kid} (${k.status || "active"}) valid for ${ts}` + (k.valid_from || k.valid_until ? ` [${k.valid_from || "-"}, ${k.valid_until || "-"})` : ""), "key_window");
@@ -156,10 +236,18 @@ export async function verifyReceipt(raw, keyset, deps) {
 
   const keyId = sig?.key_id || null;
   if (sig) {
-    const msg = canon({ ...r, sig: undefined });
+    let msg = null;
+    if (isV2) {
+      const enc = jcs({ ...r, sig: undefined });
+      if (!enc.text) say(false, "v2 signature message is not RFC 8785 JCS", "v2_canon");
+      else msg = enc.text;
+    } else {
+      msg = canon({ ...r, sig: undefined });
+    }
     const known = !!keys[sig.key_id];
-    const sigOk = known ? await deps.ed25519(keys[sig.key_id], msg, sig.sig_b64) : false;
+    const sigOk = known && msg ? await deps.ed25519(keys[sig.key_id], msg, sig.sig_b64) : false;
     say(known && sigOk, `ed25519 receipt signature, key ${sig.key_id}`, known ? "signature_mismatch" : "key_unknown");
+    if (known && sigOk) lines.push(`INFO  signed by BotsRated key ${sig.key_id}`);
     inWindow(sig.key_id, r.ts || r.generated_at);
   } else if (deps.loadSnapshot) {
     const snap = await deps.loadSnapshot();
@@ -176,6 +264,9 @@ export async function verifyReceipt(raw, keyset, deps) {
     if (r.kind === "paid_test_buy") lines.push("WARN  v0.1 snapshots list paid ids only; the id binds tx_hash, not the other fields. Compare the sha256 above with an EAS receiptSha256 if one exists.");
   } else {
     say(false, "no per-receipt signature", "no_signature");
+  }
+  if (hasAnchorField(r)) {
+    lines.push("INFO  anchor field present; this checker does not fetch the chain. Compare the receipt sha256 with the on-chain attestation if you need that check.");
   }
 
   return {
