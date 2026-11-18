@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { checkBooth, DATASET_SIG_URL, DATASET_URL, KEYS_URL, mountBooth, parseBoothInput, receiptBoothUrl, signatureStatus as boothStatus, softGuardOn } from "./courthouse/verify-booth.mjs";
 import { prefersHtml, quoteShellArg, receiptCliUrl, renderReceiptPage, signatureStatus, verifyResultJson } from "./receipt-page.mjs";
 import { ed25519WebCryptoAvailable } from "./verify-browser.mjs";
-import { verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
+import { canon, jcs, hasNonIntegerNumber, verifyReceipt, webcryptoDeps } from "./verify-core.mjs";
 import { nodeDeps } from "./verify-node.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -565,4 +565,105 @@ test("fast-tier fallback does not apply without tier or confirms", async () => {
   const { tier, confirms, ...rest } = raw;
   const res = await verifyReceipt(rest, keys, nodeDeps());
   assert.equal(res.valid, false);
+});
+
+
+function b64(buf) {
+  return Buffer.from(buf).toString("base64");
+}
+
+async function ephemeralEd25519() {
+  const kp = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+  return {
+    public_key_b64: b64(raw),
+    async sign(message) {
+      const bytes = typeof message === "string" ? new TextEncoder().encode(message) : message;
+      return b64(await crypto.subtle.sign({ name: "Ed25519" }, kp.privateKey, bytes));
+    },
+  };
+}
+
+test("jcs matches canon for strings, booleans, null and integers, and rejects floats", () => {
+  const samples = [null, true, false, 0, 1, -3, "ok", "", { b: 1, a: "x" }, [1, "a", false, null], { nest: { z: 2, a: [0] } }];
+  for (const v of samples) {
+    const out = jcs(v);
+    assert.equal(out.error, undefined, JSON.stringify(v));
+    assert.equal(out.text, canon(v));
+  }
+  assert.equal(jcs(0.007).error, "non-integer number");
+  assert.equal(hasNonIntegerNumber({ paid_usd: 0.007 }), true);
+  assert.equal(hasNonIntegerNumber({ paid_amount_atomic: "7000", block: 123 }), false);
+});
+
+test("v2 paid receipt verifies; v1 examples still pass; floats and unknown versions fail", async () => {
+  const signer = await ephemeralEd25519();
+  const kid = "botsrated-test-paid-2";
+  const keyset = {
+    as_of: "2026-11-18T16:26:00Z",
+    keys: [{
+      key_id: kid,
+      alg: "ed25519",
+      public_key_b64: signer.public_key_b64,
+      status: "active",
+      valid_from: "2026-11-18T16:26:00Z",
+      valid_until: null,
+    }],
+  };
+  const unsigned = {
+    kind: "paid_test_buy",
+    record_version: 2,
+    ts: "2026-11-18T16:30:00Z",
+    host: "self-test.invalid",
+    url: "https://self-test.invalid/pay",
+    method: "GET",
+    network: "eip155:8453",
+    asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    payTo: "0x0000000000000000000000000000000000000001",
+    quoted_amount_atomic: "7000",
+    paid_amount_atomic: "7000",
+    charged_as_quoted: true,
+    tx_hash: "0x" + "11".repeat(32),
+    delivered: true,
+    non_empty: true,
+    schema_valid: true,
+    looks_correct: true,
+    round: "signer-self-test",
+  };
+  const id = (await nodeDeps().sha256(jcs(unsigned).text)).slice(0, 20);
+  const withId = { ...unsigned, id };
+  const sig_b64 = await signer.sign(jcs(withId).text);
+  const signed = { ...withId, sig: { alg: "ed25519", key_id: kid, sig_b64, signed: "RFC 8785 JCS of this receipt without the sig field" } };
+
+  const good = await verifyReceipt(signed, keyset, nodeDeps());
+  assert.equal(good.ok, true, good.lines.join("\n"));
+  assert.equal(good.status, "signature valid");
+  assert.match(good.lines.join("\n"), /PASS  id .*sha256\(RFC 8785 JCS\)/);
+  assert.match(good.lines.join("\n"), /INFO  signed by BotsRated key botsrated-test-paid-2/);
+  assert.match(good.lines.join("\n"), /INFO  key list as of 2026-11-18T16:26:00Z/);
+
+  const withFloat = { ...signed, paid_usd: 0.007 };
+  const badFloat = await verifyReceipt(withFloat, keyset, nodeDeps());
+  assert.equal(badFloat.ok, false);
+  assert.ok(badFloat.errors.includes("v2_float") || badFloat.errors.includes("v2_float_field"));
+
+  const unknown = await verifyReceipt({ ...signed, record_version: 3 }, keyset, nodeDeps());
+  assert.equal(unknown.ok, false);
+  assert.ok(unknown.errors.includes("unknown_record_version"));
+
+  const revokedSet = {
+    keys: [{ ...keyset.keys[0], status: "revoked" }],
+  };
+  const revoked = await verifyReceipt(signed, revokedSet, nodeDeps());
+  assert.equal(revoked.ok, false);
+  assert.ok(revoked.errors.includes("key_revoked"));
+
+  // Existing signed v1 examples still pass, and must not grow a v2 error.
+  for (const file of ["spec/examples/unpaid-probe.signed.json", "spec/examples/mcp-probe.signed.json", "spec/examples/mcp-probe.payment.json"]) {
+    const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+    const res = await verifyReceipt(raw, keys, nodeDeps());
+    assert.equal(res.ok, true, file + "\n" + res.lines.join("\n"));
+    assert.equal(res.errors.includes("unknown_record_version"), false);
+    assert.equal(res.errors.includes("v2_float"), false);
+  }
 });
