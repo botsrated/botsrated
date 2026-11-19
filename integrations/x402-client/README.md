@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/x402-preflight` (0.3.3 is on npm).
+1. Install: `npm install @botsrated/x402-preflight` (0.3.4 is on npm).
 2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
@@ -56,7 +56,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: 0.3.3 is published on npm** as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (12 November 2026, 5:45 AM CT; docs-only follow-up to 0.3.2). 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: 0.3.4 is published on npm** as [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) (19 November 2026; docs-only follow-up to 0.3.3 so the published README names this version). 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
