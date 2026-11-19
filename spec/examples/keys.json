@@ -4,7 +4,7 @@
     "key_id": "botsrated-prod-1",
     "alg": "ed25519",
     "public_key_b64": "oTK25Dq3wU2+apPYddiv4T+8is2s3hL1k6ozjMAbEWQ=",
-    "environment": "beta-mainnet",
+    "environment": "mainnet",
     "current": {
         "dataset_snapshot": "botsrated-prod-1",
         "paid_receipts": "botsrated-prod-1",

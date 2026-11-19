@@ -1,7 +1,7 @@
 {
-  "beta": true,
+  "beta": false,
   "service": "BotsRated",
-  "environment": "beta-mainnet",
+  "environment": "mainnet",
   "version": "0.2.0-beta",
   "served_at": "2026-10-23T13:48:12.719Z",
   "data": {
