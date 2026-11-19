@@ -19,7 +19,7 @@ import { botsratedTools } from '@botsrated/ai-sdk';
 const { text } = await generateText({
   model: 'openai/gpt-5-mini',
   prompt:
-    'Before paying https://blockrun.ai/api/v1/chat/completions, check the seller with BotsRated.',
+    'Before paying https://api.agentweather.io/v1/models/report, check the seller with BotsRated.',
   tools: botsratedTools(),
   stopWhen: stepCountIs(3),
 });

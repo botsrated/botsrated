@@ -33,7 +33,7 @@ agent = Agent(
     ),
 )
 result = agent.run(messages=[ChatMessage.from_user(
-    "What measurements does BotsRated have for https://blockrun.ai/api/v1/chat/completions?")])
+    "What measurements does BotsRated have for https://api.agentweather.io/v1/models/report?")])
 print(result["last_message"].text)
 botsrated.close()
 ```
