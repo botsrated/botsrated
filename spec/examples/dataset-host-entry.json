@@ -1,7 +1,7 @@
 {
   "_note": "Excerpt: the api.exa.ai entry of the signed snapshot https://botsrated.com/dataset.json (sha256 83107d566b05c2188d2b3b4b211f714fcc1d16fa4762cee905c3d1e80f90a40c, generated_at 2026-10-24T02:54:12Z). The signature covers the full file, not this excerpt. Paid test-buy fields appear only once a host has 3 paid test-buys on 3 different UTC days.",
   "snapshot_header": {
-    "beta": true,
+    "beta": false,
     "canonical_url": "https://botsrated.com",
     "generated_at": "2026-10-24T02:54:12Z",
     "hosts_count": 4857,

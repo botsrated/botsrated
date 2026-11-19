@@ -1,7 +1,7 @@
 {
   "signer": "BotsRated",
   "key_id": "botsrated-staging-1",
-  "environment": "beta-mainnet",
+  "environment": "mainnet",
   "key_url": "https://botsrated.com/.well-known/botsrated-key",
   "alg": "ed25519",
   "public_key_b64": "OfGrLtyJYCC1K9jjhvq0Zduwgqq68DvzR1StOo5ZpO0=",

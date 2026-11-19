@@ -1,5 +1,5 @@
 {
-  "beta": true,
+  "beta": false,
   "receipt": {
     "error": null,
     "host": "api.exa.ai",
