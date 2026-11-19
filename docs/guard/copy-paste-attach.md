@@ -51,7 +51,7 @@ Curl does not attach. There is no attach API on this path.
 Free preflight (no key). `url` is the seller host name. The request sends only that name.
 
 ```bash
-curl -sS "https://botsrated.com/v1/preflight?url=blockrun.ai"
+curl -sS "https://botsrated.com/v1/preflight?url=api.agentweather.io"
 ```
 
 Body: `found`, `host`, latest unpaid probe (`status`, `valid_402`, `latency_ms`, `live_amount`, `live_payTo`, `live_network`), `freshness`, directory `listing`, `latest_probe.receipt_url` (signed receipt).

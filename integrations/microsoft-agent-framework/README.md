@@ -180,7 +180,7 @@ botsrated_mcp = MCPStreamableHTTPTool(
     allowed_tools=["preflight", "coverage", "sample"],
 )
 async with botsrated_mcp:
-    result = await Agent(client=chat_client, tools=[botsrated_mcp]).run("Is blockrun.ai a known x402 seller?")
+    result = await Agent(client=chat_client, tools=[botsrated_mcp]).run("Is api.agentweather.io a known x402 seller?")
 ```
 
 The paid lookups (`check` $0.01, `report` $0.002, `best` $0.01 USDC on Base) are not used by this package unless you pass a paid-enabled `BotsRatedClient` to the guard. `check` shares the first 25 free calls per client IP per UTC day with HTTP `GET /v1/check`. MCP `report` and `best` are paid from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`.
@@ -195,6 +195,6 @@ pytest -m live                  # real free BotsRated preflight + hosted MCP ser
 ```
 
 `examples/quickstart.py` uses a scripted chat client instead of a model, so it runs without an API key. One payment
-call uses an unknown `payTo` and is blocked; the other uses the `payTo` BotsRated observed for blockrun.ai and runs.
+call uses an unknown `payTo` and is blocked; the other uses the `payTo` BotsRated observed for api.agentweather.io and runs.
 
 BotsRated results are measurements, not endorsements. MIT licensed.

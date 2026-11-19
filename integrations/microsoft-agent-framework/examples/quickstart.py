@@ -27,7 +27,7 @@ from botsrated import BotsRatedClient
 
 from agent_framework_botsrated import DECISION_METADATA_KEY, BotsRatedPaymentMiddleware
 
-SELLER = "https://blockrun.ai/api/v1/chat/completions"
+SELLER = "https://api.agentweather.io/v1/models/report"
 UNKNOWN_PAY_TO = "0x000000000000000000000000000000000000dEaD"
 
 
@@ -68,7 +68,7 @@ async def main() -> None:
     middleware.guard.on_decision = decisions.append
     agent = Agent(client=model, tools=[pay_x402], middleware=[middleware])
 
-    response = await agent.run("Buy one completion from blockrun.ai.")
+    response = await agent.run("Check api.agentweather.io before paying.")
     for message in response.messages:
         for content in message.contents:
             if content.type == "function_result":
