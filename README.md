@@ -119,7 +119,7 @@ Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email.
 | `desk-pro` (Desk Pro; API name `data-pro`) | $199 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (600 requests/min), the change-event export (`GET /v1/export/changes.ndjson?host=`), and the team workspace |
 | Data licensing | No public price | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
 
-`data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Desk Team $99/month, Desk Pro $199/month, Pilot $149 for 6 weeks (paid once). Current prices: https://botsrated.com/pricing
+`data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Pro $19/month (https://botsrated.com/billing/start), Desk Team $99/month, Desk Pro $199/month; prepaid credit packs at https://botsrated.com/credits ($10 for 1,000 checks, $25 for 2,500); Signed-History Snapshot $199 (paid once) and Commercial Feed $499/month (https://botsrated.com/data-license). Pilot is no longer sold to new buyers; a Pilot already paid for keeps working through its term. Current prices: https://botsrated.com/pricing
 
 Paid BotPulse plans are retired; the feed stays free. Plans already bought keep working until their 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json. Alerts on tools use Pro's 50 slots.
 
