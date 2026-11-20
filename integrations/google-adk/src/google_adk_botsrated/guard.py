@@ -88,7 +88,7 @@ def attach_payment_guard(
     The client is the x402 client the Google ADK app already uses to pay. This does not
     construct an agent, a runner, or a session service.
 
-    ``preset`` is your choice: ``warn`` (advice only), ``carefulBuyer``, or ``strict``
+    ``preset`` is your choice: ``warn`` (warn only), ``carefulBuyer``, or ``strict``
     (same stops as ``carefulBuyer``). Omit it for the guard's advice-only default.
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
     When a remote policy check returns no decision (``decision: null``, HTTP 503, or a

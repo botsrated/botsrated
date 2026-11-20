@@ -22,7 +22,7 @@ Order in the scaffold:
 3. Attach Guard on that client: `attach_payment_guard` / `attachPaymentGuard`, or `guard.install` for core. For an `@x402/mcp` client, use the `@x402/mcp` hook row in step 1 of the canon.
 4. Only then add the first paid request or paid tool call.
 
-The canon for this path is `docs/guard/default-middleware.md` (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff). Defaults stay as shipped: omit preset for advice only, omit fail_mode to stay open.
+The canon for this path is `docs/guard/default-middleware.md` (hook → measured seller facts → your policy pass / fail receipt → Desk / alerts handoff). Defaults stay as shipped: omit preset for warn only, omit fail_mode to stay open.
 
 Core JS, Python, and curl paste: [`docs/guard/copy-paste-attach.md`](docs/guard/copy-paste-attach.md). Curl does not attach. The stack attach below stays the pair-with call.
 
@@ -42,7 +42,7 @@ Attach:
 
 ```python
 from botsrated_openai_agents import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Then wrap the paying GET if the stack needs a URL hint:
@@ -67,7 +67,7 @@ Attach:
 
 ```python
 from langgraph_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#langgraph
@@ -86,7 +86,7 @@ Attach:
 
 ```python
 from llama_stack_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#llama-stack
@@ -105,7 +105,7 @@ Attach:
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
-const guard = attachPaymentGuard(x402Client); // omit preset = advice; omit failMode = open
+const guard = attachPaymentGuard(x402Client); // omit preset = warn only; omit failMode = open
 const paidFetch = guard.wrapFetch(fetch);
 ```
 
@@ -125,7 +125,7 @@ Attach:
 
 ```python
 from langchain_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#langchain
@@ -144,7 +144,7 @@ Attach:
 
 ```python
 from llama_index.tools.botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#llamaindex
@@ -163,7 +163,7 @@ Attach:
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#microsoft-agent-framework
@@ -182,7 +182,7 @@ Attach:
 
 ```python
 from google_adk_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#google-adk
@@ -201,7 +201,7 @@ Attach:
 
 ```python
 from crewai_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Docs: https://botsrated.com/docs/guard#crewai
@@ -218,7 +218,7 @@ Pydantic AI and Mastra have no pair-with package on PyPI or npm (measured 2026-1
 2. Installing does not attach — always call `attach_payment_guard` / `attachPaymentGuard`.
 3. Omit preset and fail_mode unless the user asked for carefulBuyer or closed. `carefulBuyer` has the same stops as `policies.strict`. Presets are `warn`, `carefulBuyer`, and `dry-run-only`.
 4. `BOTSRATED_TOKEN` is optional and only for Desk remote policy. It is never required for local attach. LangChain, Microsoft Agent Framework, Google ADK, and CrewAI read that variable when `token` is omitted. `llama-index-tools-botsrated` 0.1.5 does not; pass `token=` on that package when you use Desk policy.
-5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = advice) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
+5. If the stack is not in Choose stack, use core. Python: `pip install "botsrated[x402]"`, then `PaymentGuard()` (omit preset = warn only) and `guard.install(x402_client)`. TypeScript: `npm install @botsrated/x402-preflight`, then `createPaymentGuard` from `@botsrated/x402-preflight/payment-guard`. Pydantic AI and Mastra use this fallback (see Omitted from Choose stack).
 6. Facts, not grades. Do not say the guard holds funds. Do not say attach is required to try.
 7. The attach step is not optional in pay code you write. Do not ship a scaffold that can send a paid request before the attach call runs. This rule is about the code you write. It is not a claim to the user that attach is required to try BotsRated.
 

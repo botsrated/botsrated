@@ -79,7 +79,7 @@ export {
 
 export type RuleEffect = "allow" | "warn" | "block";
 
-/** Which facts warn and which stop a payment. Every rule defaults to advice only (warn or info). */
+/** Which facts warn and which stop a payment. Every rule defaults to warn only (warn or info). */
 export interface PaymentGuardPolicy {
   /** The payTo is not among the payTos BotsRated's probes recorded for the host. Default "warn". */
   payToMismatch?: RuleEffect;
@@ -152,7 +152,7 @@ const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
 
 /** Rule-effect tables. Choosing one is your decision; the zero-config default is `policies.warn`. */
 export const policies = Object.freeze({
-  /** Advice only: never stops a payment. The default. */
+  /** Warn only: never stops a payment. The default. */
   warn: warnPolicy,
   /** Same effects as {@link policies.carefulBuyer}. */
   strict: strictPolicy,
@@ -176,7 +176,7 @@ export type PaymentGuardPresetName = "warn" | "carefulBuyer" | "dry-run-only";
  * `carefulBuyer` is the stricter rule table. `dry-run-only` is advice: it does not add a new rule.
  */
 export const presets = Object.freeze({
-  /** Zero-config behavior, named: advice only. */
+  /** Zero-config behavior, named: warn only. */
   warn: Object.freeze<PaymentGuardPreset>({ policy: policies.warn }),
   /** Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. */
   carefulBuyer: Object.freeze<PaymentGuardPreset>({ policy: policies.carefulBuyer }),
@@ -246,12 +246,12 @@ export type PreflightFn = (host: string) => Promise<{ found: boolean; body: Reco
 
 export interface PaymentGuardOptions {
   /**
-   * Named preset: `warn` (advice only), `carefulBuyer` (same stops as `policies.strict`), or `dry-run-only`
+   * Named preset: `warn` (warn only), `carefulBuyer` (same stops as `policies.strict`), or `dry-run-only`
    * (log `wouldBlock`, never stop a payment). `dry-run-only` forces dry-run even when `dryRun` is also passed.
    * An explicit `policy` replaces the preset's rule table field by field. The zero-config default is `warn`.
    */
   preset?: PaymentGuardPresetName;
-  /** Which facts warn or stop a payment. Default {@link policies.warn} (advice only). */
+  /** Which facts warn or stop a payment. Default {@link policies.warn} (warn only). */
   policy?: PaymentGuardPolicy;
   /**
    * Log decisions and change nothing: no payment is stopped and no retry key is added.
@@ -810,7 +810,7 @@ function presetOf(name: PaymentGuardPresetName): PaymentGuardPreset {
   return presets[name];
 }
 
-/** Creates a payment guard. Zero-config: advice only (`policies.warn`), hosted host-name lookup, fail-open, retry key where advertised. */
+/** Creates a payment guard. Zero-config: warn only (`policies.warn`), hosted host-name lookup, fail-open, retry key where advertised. */
 export function createPaymentGuard(options: PaymentGuardOptions = {}): PaymentGuard {
   const opts: PaymentGuardOptions = { ...options };
   if (opts.onchain) rpcListOf(opts.onchain); // configuration errors (more than 3 RPCs) surface here, not mid-payment

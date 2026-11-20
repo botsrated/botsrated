@@ -17,7 +17,7 @@ const TOKEN_ENV = "BOTSRATED_TOKEN";
 
 export interface AttachPaymentGuardOptions {
   /**
-   * `warn` is advice only. `carefulBuyer` and `strict` block an unobserved payTo.
+   * `warn` is warn only. `carefulBuyer` and `strict` block an unobserved payTo.
    * Omit for the guard's advice-only default. `strict` is the same rule table as `carefulBuyer`.
    */
   preset?: PresetName;

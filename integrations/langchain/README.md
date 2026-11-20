@@ -1,5 +1,7 @@
 # langchain-botsrated
 
+Not affiliated with or endorsed by LangChain; the name says what this package works with.
+
 ## One-click attach
 
 > Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)). The default path these attaches follow is [`docs/guard/default-middleware.md`](https://github.com/botsrated/botsrated/blob/main/docs/guard/default-middleware.md).
@@ -12,7 +14,7 @@ pip install langchain-botsrated
 
 ```python
 from langchain_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Core JS, Python, and curl paste (curl does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
@@ -35,7 +37,7 @@ Free. No key for local attach. Pairs with LangChain. The guard is not a runtime.
 # Free. No key for local attach. Not a runtime.
 # Optional BOTSRATED_TOKEN for Desk remote policy.
 from langchain_botsrated import attach_payment_guard
-# Omit preset = advice. Omit fail_mode = open.
+# Omit preset = warn only. Omit fail_mode = open.
 guard = attach_payment_guard(x402_client)
 ```
 
@@ -47,7 +49,7 @@ guard = attach_payment_guard(x402_client)
 from langchain_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
-3. Omit `preset` for advice only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset` for warn only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -94,7 +96,7 @@ guard = attach_payment_guard(x402_client, preset="carefulBuyer", fail_mode="open
 # token=... is remote_policy on botsrated 0.3.0+ (see the token paragraph above)
 ```
 
-`preset` is yours: `warn` (advice only; the default when you omit it) or `carefulBuyer` (same stops as `policies.strict`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays open. The guard
+`preset` is yours: `warn` (warn only; the default when you omit it) or `carefulBuyer` (same stops as `policies.strict`). `fail_mode` is `"open"` or `"closed"`; omit it and the guard stays open. The guard
 reports measurements and receipt links. It does not sign a payment and does not hold funds.
 
 `x402_client` is your x402 client. `token` is sent as `remote_policy` on botsrated 0.3.0 and later. A configured token without `parse_remote_policy` raises and is not dropped.
