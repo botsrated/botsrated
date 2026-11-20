@@ -424,7 +424,7 @@ const botsrated = new BotsRatedClient({
 const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 0.25 });
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
-await botsrated.check("seller.example");            // $0.01 (first 25 per client IP per UTC day free, shared with MCP check)
+await botsrated.check("seller.example");            // $0.01 (first 5 per client IP per UTC day free, 25 with a free API key; shared with MCP check)
 await botsrated.report("seller.example");           // $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
@@ -436,7 +436,7 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   settle and the reservation is released (`payment_not_created`). The older
   `fetchWithPayment: wrapFetchWithPayment(fetch, client)` still works, but it re-reads the 402 itself, so
   register the guard on the same `x402Client` so that re-served 402 is checked again before signing.
-- Free daily quota (`FREE_DAILY_QUOTA`): BotsRated serves the first 25 `/v1/check` and 3 `/v1/report` calls per client IP
+- Free daily quota (`FREE_DAILY_QUOTA` (the package's `FREE_DAILY_QUOTA` constant still reads 25 until the next release; the server's `free_quota` block is what counts)): BotsRated serves the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP
   per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
   even without `paid` until the quota is used up (then they throw `paid_disabled`).

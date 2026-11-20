@@ -33,7 +33,7 @@ with botsrated:
     agent("What measurements does BotsRated have for https://api.agentweather.io/v1/models/report?")
 ```
 
-Tools: the live MCP list has 13 tools (`GET`/`POST` `https://botsrated.com/mcp` `tools/list`). Free tools include `preflight`, `check_mcp_setup`, `watch_free`, `what_changed`, `find`, `coverage`, `sample`, `history`, `seller_self_check`, and `seller_announce`. Paid tools: `check` ($0.01; first 25 per client IP per UTC day free, shared with HTTP `GET /v1/check`), `report` ($0.002; paid on MCP from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`), and `best` ($0.01, no free quota).
+Tools: the live MCP list has 14 tools (`GET`/`POST` `https://botsrated.com/mcp` `tools/list`). Free tools include `preflight`, `check_mcp_setup`, `watch_free`, `what_changed`, `find`, `coverage`, `sample`, `history`, `seller_self_check`, `seller_announce`, and `start_upgrade`. Paid tools: `check` ($0.01; first 5 per client IP per UTC day free, 25 with a free API key, shared with HTTP `GET /v1/check`), `report` ($0.002; paid on MCP from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`), and `best` ($0.01, no free quota).
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 

@@ -351,7 +351,7 @@ botsrated = BotsRatedClient(budget_usd="0.05", x402_client=client)   # signs onl
 guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
-botsrated.check("seller.example")     # $0.01 (first 25 per client IP per UTC day free, shared with MCP check)
+botsrated.check("seller.example")     # $0.01 (first 5 per client IP per UTC day free, 25 with a free API key; shared with MCP check)
 botsrated.report("seller.example")    # $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 botsrated.best("web search")          # $0.01
 ```
@@ -364,7 +364,7 @@ the allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSe
 itself, so register the guard on the same x402 client so the re-served 402 is checked again before signing.
 
 How paid calls work:
-- Free daily quota (`FREE_DAILY_QUOTA`): the first 25 `/v1/check` and 3 `/v1/report` calls per client IP per UTC day are
+- Free daily quota (`FREE_DAILY_QUOTA` (the package's `FREE_DAILY_QUOTA` constant still reads 25 until the next release; the server's `free_quota` block is what counts)): the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP per UTC day are
   served free (200 with `charged: false` and a `free_quota` block). The client asks unpaid first, so
   inside the quota nothing is paid and the budget is untouched; `check()`/`report()` also work without
   a budget until the quota is used up (then `paid_disabled`). `client.last_free_quota` shows what is left.
