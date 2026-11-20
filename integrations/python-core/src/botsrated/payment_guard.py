@@ -92,7 +92,7 @@ MEASUREMENT_NOTE = "This is a measurement, not a finding about the seller."
 
 @dataclass(frozen=True)
 class PaymentGuardPolicy:
-    """Which facts warn and which stop a payment. Every rule defaults to advice only."""
+    """Which facts warn and which stop a payment. Every rule defaults to warn only."""
 
     pay_to_mismatch: RuleEffect = "warn"  # payTo not among the payTos BotsRated's probes recorded
     pay_to_invalid: RuleEffect = "warn"  # payTo not a 20-byte hex address
@@ -118,7 +118,7 @@ _STRICT = PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", re
 
 # Rule-effect tables. Choosing one is your decision; the zero-config default is POLICIES["warn"].
 POLICIES: dict[str, PaymentGuardPolicy] = {
-    # Advice only: never stops a payment. The default.
+    # Warn only: never stops a payment. The default.
     "warn": _WARN,
     # Same effects as "carefulBuyer".
     "strict": _STRICT,
@@ -733,13 +733,13 @@ class _RetryKeyExtension:
 
 
 class PaymentGuard:
-    """Payment guard. Zero-config: advice only, hosted host-name lookup, fail-open, retry key where advertised.
+    """Payment guard. Zero-config: warn only, hosted host-name lookup, fail-open, retry key where advertised.
 
     Args:
-        preset: ``warn`` (advice only), ``carefulBuyer`` (same stops as ``POLICIES["strict"]``), or ``dry-run-only``
+        preset: ``warn`` (warn only), ``carefulBuyer`` (same stops as ``POLICIES["strict"]``), or ``dry-run-only``
             (log ``would_block``, never stop a payment). ``dry-run-only`` forces dry-run even when ``dry_run=False``.
             An explicit ``policy`` replaces the preset's rule table. The zero-config default is ``warn``.
-        policy: Which facts warn or stop a payment. Default ``POLICIES["warn"]`` (advice only).
+        policy: Which facts warn or stop a payment. Default ``POLICIES["warn"]`` (warn only).
         dry_run: Log decisions and change nothing (no payment stopped, no retry key added). Ignored when
             ``preset`` is ``dry-run-only`` (that preset always dry-runs).
         hosted: Call BotsRated's free hosted preflight. With False nothing is sent to botsrated.com.

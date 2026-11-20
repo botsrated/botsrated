@@ -1,5 +1,7 @@
 # BotsRated for Strands Agents
 
+Not affiliated with or endorsed by AWS (Strands Agents); the name says what this package works with.
+
 [BotsRated](https://botsrated.com) checks an x402 seller before your agent pays it. It probes the x402 seller hosts
 BotsRated currently covers on Base and Solana (live count: [GET /v1/coverage](https://botsrated.com/v1/coverage)) and the remote MCP servers in the Official MCP Registry without paying them,
 and records each probe (HTTP status, valid 402 challenge, latency, quoted price and payTo) as a signed

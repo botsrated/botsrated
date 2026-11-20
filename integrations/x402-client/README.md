@@ -3,14 +3,14 @@
 ## Install in 3 steps
 
 1. Install: `npm install @botsrated/x402-preflight` (0.3.4 is on npm).
-2. Attach to your x402 client (omit `preset` for advice only; omit `failMode` to stay open):
+2. Attach to your x402 client (omit `preset` for warn only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
-const guard = createPaymentGuard(); // omit preset = advice; omit failMode = open
+const guard = createPaymentGuard(); // omit preset = warn only; omit failMode = open
 guard.install(client);
 const paidFetch = guard.wrapFetch(payingFetch); // payingFetch already pays, e.g. wrapFetchWithPayment(fetch, client)
 ```
-3. Omit `preset`, or call `createPaymentGuard()`, for advice only. That never stops a payment. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). `strict` is not a preset name. Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset`, or call `createPaymentGuard()`, for warn only. That never stops a payment. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). `strict` is not a preset name. Omit `failMode` inside `remotePolicy` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 Same paste in TypeScript / JS, Python, and curl (curl reads free preflight facts and does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
 
@@ -86,12 +86,12 @@ const result = await verifyReceipt(receipt, keyset);
 
 `result.status` is `signature valid`, `signature invalid`, `key unknown`, or `redacted copy`. Pass the receipt and keyset you already have. `redacted copy` means this JSON withholds signed fields. It is not a failed signature.
 
-Pick a named preset. Preset keys are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is not a preset key; it is `policies.strict`. The zero-config call (`createPaymentGuard()`) is `warn`: advice only, it never stops a payment.
+Pick a named preset. Preset keys are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is not a preset key; it is `policies.strict`. The zero-config call (`createPaymentGuard()`) is `warn`: warn only, it never stops a payment.
 Dry-run is optional: it logs `wouldBlock` and still never stops a payment.
 
 | Name | How to select it | What you get |
 |---|---|---|
-| `warn` | `createPaymentGuard()` or `{ preset: "warn" }` or `{ policy: policies.warn }` | Advice only. The default. |
+| `warn` | `createPaymentGuard()` or `{ preset: "warn" }` or `{ policy: policies.warn }` | Warn only. The default. |
 | `carefulBuyer` | `{ preset: "carefulBuyer" }` or `{ policy: policies.carefulBuyer }` | Same rule effects as `policies.strict`. Stops when the payTo wasn't observed, is invalid, the host mismatches, or the paid URL is unknown. |
 | `policies.strict` | `{ policy: policies.strict }` | The same stops as `carefulBuyer`. Not a preset. |
 | `dry-run-only` | `dryRunOnly(...)`, `{ preset: "dry-run-only" }`, or `presets["dry-run-only"]` | Logs `wouldBlock` and never stops a payment. No retry key. `preset: "dry-run-only"` and `dryRunOnly()` force dry-run. |
@@ -203,7 +203,7 @@ smaller local bundle and does not add a summary number, because the response has
 
 ### Fail-Open Or Fail-Closed
 
-- **Fail-open (default):** if botsrated.com is down or slow, or the guard itself hits an error, the payment goes
+- **Fail-open (default):** if botsrated.com is unreachable or slow, or the guard itself hits an error, the payment goes
   ahead and the decision says `botsrated_unreachable` (or `hook_error`). Our outage never stops your agent, but
   during an outage you get no seller facts. HTTP 503, HTTP 429 and a timeout are that miss: the guard reads
   `Retry-After` (or waits 5 s, at most 60 s) and skips further hosted lookups in the process until then.

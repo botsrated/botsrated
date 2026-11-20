@@ -1,5 +1,7 @@
 # agent-framework-botsrated
 
+Not affiliated with or endorsed by Microsoft; the name says what this package works with.
+
 ## One-click attach
 
 > Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)). The default path these attaches follow is [`docs/guard/default-middleware.md`](https://github.com/botsrated/botsrated/blob/main/docs/guard/default-middleware.md).
@@ -12,7 +14,7 @@ pip install agent-framework-botsrated
 
 ```python
 from agent_framework_botsrated import attach_payment_guard
-guard = attach_payment_guard(x402_client)  # omit preset = advice; omit fail_mode = open
+guard = attach_payment_guard(x402_client)  # omit preset = warn only; omit fail_mode = open
 ```
 
 Core JS, Python, and curl paste (curl does not attach): [`docs/guard/copy-paste-attach.md`](../../docs/guard/copy-paste-attach.md).
@@ -45,7 +47,7 @@ from agent_framework_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+Omit `preset` for warn only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -62,7 +64,7 @@ from agent_framework_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` blocks an unobserved payTo only when you select it (same stops as `policies.strict`). Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+Omit `preset` for warn only (`warn`). `carefulBuyer` blocks an unobserved payTo only when you select it (same stops as `policies.strict`). Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## What it checks
 
@@ -109,7 +111,7 @@ agent = Agent(
 
 `BotsRatedPaymentMiddleware(["paid_tool"], preset="carefulBuyer", fail_mode="open", token=...)` builds that same guard when you do not already have one. It does not register x402 hooks. Only the named payment tools are checked. On a block, `on_block="raise"` raises `BotsRatedPaymentBlocked`. The default returns the blocked reason and does not run the tool. `botsrated_check_payment_tool()` is the free preflight and does not attach a guard.
 
-`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked, and an invalid payTo is blocked. Setting `fail_mode` or `token` without a `preset` keeps both of those blocks (`pay_to_mismatch="block"` and `pay_to_invalid="block"`). It does not switch the default to advice-only, and it does not change `fail_mode` (omit it to stay open). `preset="warn"` is advice only when selected.
+`BotsRatedPaymentMiddleware(["paid_tool"])` with no guard, preset, fail_mode, or token keeps the existing free-preflight guard: an unobserved payTo is blocked, and an invalid payTo is blocked. Setting `fail_mode` or `token` without a `preset` keeps both of those blocks (`pay_to_mismatch="block"` and `pay_to_invalid="block"`). It does not switch the default to advice-only, and it does not change `fail_mode` (omit it to stay open). `preset="warn"` is warn only when selected.
 
 ## Middleware: check payments before they run
 

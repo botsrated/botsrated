@@ -189,7 +189,7 @@ class BotsRatedPaymentMiddleware(FunctionMiddleware):
         preset: ``warn``, ``carefulBuyer``, or ``strict`` when building a ``PaymentGuard`` here.
             Omit it and an unobserved payTo still blocks, including when ``fail_mode`` or
             ``token`` is set. An invalid payTo blocks on that path too
-            (``pay_to_invalid="block"``). ``warn`` is advice only when selected.
+            (``pay_to_invalid="block"``). ``warn`` is warn only when selected.
         fail_mode: ``"open"`` or ``"closed"`` for that ``PaymentGuard``. Omit it to fail open.
         token: Remote-policy token for that ``PaymentGuard``. Omit the argument to leave the
             historical guard in place. ``None`` reads ``BOTSRATED_TOKEN``.

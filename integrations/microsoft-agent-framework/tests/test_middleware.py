@@ -35,7 +35,7 @@ class RecordingGuard(PrePaymentGuard):
 
     def decide(self, resource_url, requirements):  # type: ignore[override]
         self.calls.append((resource_url, dict(requirements)))
-        # Blocking on an unobserved payTo is opt-in since botsrated 0.2 (advice only by default).
+        # Blocking on an unobserved payTo is opt-in since botsrated 0.2 (warn only by default).
         return evaluate_payment(self.facts, requirements, resource_url, GuardPolicy(pay_to_mismatch="block"))
 
 

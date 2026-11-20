@@ -6,7 +6,7 @@ Path: [`default-middleware.md`](default-middleware.md) — hook → measured sel
 
 Guard pairs with that client. It does not replace the host runtime. Free. No key for local attach. Facts, chips, and signed receipt links. Not a rating. Guard does not hold funds.
 
-Omit `preset` for advice only. Omit `failMode` / `fail_mode` to stay open. `failOpen` stays true. Constructor presets are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is `policies.strict` (Python: `POLICIES["strict"]`), not a preset. `fail_mode: "closed"` on a policy does not set `failOpen` to false ([`fail-mode.md`](fail-mode.md)).
+Omit `preset` for warn only. Omit `failMode` / `fail_mode` to stay open. `failOpen` stays true. Constructor presets are `warn`, `carefulBuyer`, and `dry-run-only`. `strict` is `policies.strict` (Python: `POLICIES["strict"]`), not a preset. `fail_mode: "closed"` on a policy does not set `failOpen` to false ([`fail-mode.md`](fail-mode.md)).
 
 Framework packages: [`llms-install.md`](../../llms-install.md#when-scaffolding-x402-pay-coding-agents). This page is the core paste.
 
@@ -19,13 +19,13 @@ npm install @botsrated/x402-preflight
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
 
-// omit preset = advice only; omit failMode = open. failOpen stays true.
+// omit preset = warn only only; omit failMode = open. failOpen stays true.
 const guard = createPaymentGuard();
 guard.install(x402Client);
 const paidFetch = guard.wrapFetch(payingFetch);
 ```
 
-`payingFetch` already pays, for example `wrapFetchWithPayment(fetch, x402Client)` from `@x402/fetch`. `wrapFetch` passes the paid URL. Without it the guard only has the host on the seller's 402. `createPaymentGuard()` is advice only (`policies.warn`). It does not stop a payment. Pass `preset` only for `carefulBuyer` or `dry-run-only`.
+`payingFetch` already pays, for example `wrapFetchWithPayment(fetch, x402Client)` from `@x402/fetch`. `wrapFetch` passes the paid URL. Without it the guard only has the host on the seller's 402. `createPaymentGuard()` is warn only (`policies.warn`). It does not stop a payment. Pass `preset` only for `carefulBuyer` or `dry-run-only`.
 
 ## Python — `PaymentGuard` + `guard.install`
 
@@ -36,13 +36,13 @@ pip install "botsrated[x402]"
 ```python
 from botsrated import PaymentGuard
 
-# omit preset = advice only; omit fail_mode = open. fail_open stays true.
+# omit preset = warn only only; omit fail_mode = open. fail_open stays true.
 guard = PaymentGuard()
 guard.install(x402_client)
 paid_get = guard.wrap_get(session.get)  # or guard.wrap_async_get(http.get)
 ```
 
-`session.get` / `http.get` is the paying call. `wrap_get` or `wrap_async_get` passes the paid URL. `PaymentGuard()` is advice only. It does not stop a payment.
+`session.get` / `http.get` is the paying call. `wrap_get` or `wrap_async_get` passes the paid URL. `PaymentGuard()` is warn only. It does not stop a payment.
 
 ## curl — preflight facts and optional policy save
 

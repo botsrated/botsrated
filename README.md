@@ -98,7 +98,7 @@ Free daily quota: the first 25 checks per client IP (IPv6 per /48) per UTC day a
 | | |
 |---|---|
 | `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the 25 free checks per client IP per UTC day, shared with `/v1/check`) |
-| `GET https://botsrated.com/v1/pulse` | Live totals (cached 60 s): services watched, working in the last 24 h, down or failed in 7 days, checks run in 7 days. Never names a seller |
+| `GET https://botsrated.com/v1/pulse` | Live totals (cached 60 s): services watched, working in the last 24 h, did not answer at least one check in 7 days, checks run in 7 days. Never names a seller |
 | `GET https://botsrated.com/v1/rates` | Measured rates (no proper 402 answer, payTo changes, price vs listing) with sample size, dates and source |
 | https://botsrated.com/sellers | Browse and filter every covered seller and MCP server |
 | `https://botsrated.com/s/<host>` | One page per seller or MCP server: status, 30-day chart, price, payTo, test purchases, receipts, alternatives |

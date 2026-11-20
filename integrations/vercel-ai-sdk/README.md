@@ -1,10 +1,12 @@
 # @botsrated/ai-sdk
 
+Not affiliated with or endorsed by Vercel; the name says what this package works with.
+
 ## One-click attach
 
 > Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)). The default path these attaches follow is [`docs/guard/default-middleware.md`](https://github.com/botsrated/botsrated/blob/main/docs/guard/default-middleware.md).
 
-Free. No key for local attach. Pairs with the Vercel AI SDK. Not a generation runtime. Paid checks are not required to attach. Published on npm as `@botsrated/ai-sdk` 0.1.4 (`attachPaymentGuard`).
+Free. No key for local attach. Pairs with the Vercel AI SDK. Not a generation runtime. Paid checks are not required to attach. Published on npm as `@botsrated/ai-sdk` 0.1.3 (`attachPaymentGuard`).
 
 ```bash
 npm install @botsrated/ai-sdk
@@ -12,7 +14,7 @@ npm install @botsrated/ai-sdk
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
-const guard = attachPaymentGuard(x402Client); // npm 0.1.4; omit preset = advice; omit failMode = open
+const guard = attachPaymentGuard(x402Client); // npm 0.1.3; omit preset = warn only; omit failMode = open
 const paidFetch = guard.wrapFetch(fetch);
 ```
 
@@ -28,13 +30,13 @@ Live docs: [botsrated.com/docs/guard#vercel-ai-sdk](https://botsrated.com/docs/g
 
 ## Install in 3 steps
 
-1. Free. No key for local attach. Install: `npm install @botsrated/ai-sdk` (npm 0.1.4, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`. Paid checks are not required to attach.
+1. Free. No key for local attach. Install: `npm install @botsrated/ai-sdk` (npm 0.1.3, includes `attachPaymentGuard`). It depends on `@botsrated/x402-preflight` `^0.3.0`. Paid checks are not required to attach.
 2. Attach to your x402 client. Installing does not attach a guard:
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
 const guard = attachPaymentGuard(x402Client);
 ```
-3. Omit `preset` for advice only. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset` for warn only. Pick `preset: "carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `failMode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On `@botsrated/x402-preflight` 0.3.0 and later it is sent only as `remotePolicy: { token, failMode }`, never as a bare string. A configured token on a core without `normalizeRemotePolicy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -42,14 +44,14 @@ Omit `failMode` and the guard stays open. `"closed"` stops the payment when Bots
 
 ## Default install
 
-Free. No key for local attach. Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Paid checks are not required to attach. `npm install @botsrated/ai-sdk` (npm 0.1.4, `attachPaymentGuard`).
+Free. No key for local attach. Pairs with the [Vercel AI SDK](https://ai-sdk.dev) (`ai`). Payment-client wrap only. Not a generation runtime, agent, or model. `generateText` and `streamText` stay the SDK's. Paid checks are not required to attach. `npm install @botsrated/ai-sdk` (npm 0.1.3, `attachPaymentGuard`).
 
 ```ts
 import { attachPaymentGuard } from "@botsrated/ai-sdk";
 const guard = attachPaymentGuard(x402Client);
 ```
 
-Omit `preset` for advice only. `carefulBuyer` blocks an unobserved payTo only when selected (same stops as `policies.strict`). Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
+Omit `preset` for warn only. `carefulBuyer` blocks an unobserved payTo only when selected (same stops as `policies.strict`). Omit `failMode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing. A tool-level approval helper is deferred: pinned AI SDK 7 deprecates `needsApproval` (it asks the user; it does not deny).
 
 ## Token
 
@@ -77,7 +79,7 @@ const result = await generateText({ model, tools: { ...botsratedTools(), paidToo
 [AI SDK](https://ai-sdk.dev) tools for [BotsRated](https://botsrated.com). Use them as a
 pre-payment check before an agent pays an x402 seller.
 
-**Status: published on npm as [`@botsrated/ai-sdk` 0.1.4](https://www.npmjs.com/package/@botsrated/ai-sdk)** (includes `attachPaymentGuard`). It depends on
+**Status: published on npm as [`@botsrated/ai-sdk` 0.1.3](https://www.npmjs.com/package/@botsrated/ai-sdk)** (includes `attachPaymentGuard`). It depends on
 [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) `^0.3.0`. Docs: https://botsrated.com/docs/ai-sdk
 
 ```bash

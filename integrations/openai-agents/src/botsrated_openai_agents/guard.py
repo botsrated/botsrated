@@ -89,7 +89,7 @@ def attach_payment_guard(
     The client is the x402 / payment HTTP client the agent's paid calls already use.
     ``Agent`` and ``Runner`` stay as the OpenAI Agents SDK defined them.
 
-    ``preset`` is your choice: ``warn`` (advice only), ``carefulBuyer``, or ``strict``
+    ``preset`` is your choice: ``warn`` (warn only), ``carefulBuyer``, or ``strict``
     (same stops as ``carefulBuyer``). Omit it for the guard's advice-only default.
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
     When the hosted preflight cannot be reached, closed stops the payment and open allows it.

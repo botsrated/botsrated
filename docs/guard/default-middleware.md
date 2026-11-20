@@ -21,7 +21,7 @@ Attach on the existing payment client. Installing a package does not attach.
 | A framework stack | The stack's `attach_*` call on the x402 client: `attach_payment_guard(x402_client)` (Python) or `attachPaymentGuard(x402Client)` (Vercel AI SDK). Per-stack install lines: [`llms-install.md` → Choose stack](../../llms-install.md#choose-stack--install--attach). |
 | Any other Python x402 client | `PaymentGuard()` then `guard.install(x402_client)` from `botsrated[x402]` |
 
-Omit `preset` for advice only (`warn`). Omit `fail_mode` / `failMode` to stay open. `failOpen` stays `true`. `fail_mode: "closed"` on a policy does not set `failOpen: false` ([`fail-mode.md`](fail-mode.md)).
+Omit `preset` for warn only (`warn`). Omit `fail_mode` / `failMode` to stay open. `failOpen` stays `true`. `fail_mode: "closed"` on a policy does not set `failOpen: false` ([`fail-mode.md`](fail-mode.md)).
 
 The `@x402/core` SDK `$1` spend cap runs before `policies` and before `onBeforePaymentCreation`. A quote above it can throw before a verdict is recorded. Do not pass a spend-control override. Details: [`guard-check.md`](guard-check.md#attach-and-the-sdk-1-default).
 

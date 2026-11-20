@@ -1,5 +1,7 @@
 # pydantic-ai-botsrated
 
+Not affiliated with or endorsed by Pydantic; the name says what this package works with.
+
 ## One-click attach
 
 > Coding agents: the stack-by-stack attach recipe is [`llms-install.md` → When scaffolding x402 pay](https://github.com/botsrated/botsrated/blob/main/llms-install.md#when-scaffolding-x402-pay-coding-agents) (also a [Cursor rule](https://github.com/botsrated/botsrated/blob/main/.cursor/rules/botsrated-guard-attach.mdc) and an [agent skill](https://github.com/botsrated/botsrated/blob/main/docs/agent-skills/botsrated-guard-attach/SKILL.md)). The default path these attaches follow is [`docs/guard/default-middleware.md`](https://github.com/botsrated/botsrated/blob/main/docs/guard/default-middleware.md).
@@ -12,7 +14,7 @@ pip install "botsrated[x402]"
 
 ```python
 from botsrated import PaymentGuard
-guard = PaymentGuard()  # omit preset = advice; omit fail_mode = open
+guard = PaymentGuard()  # omit preset = warn only; omit fail_mode = open
 guard.install(x402_client)  # the x402 client your agent already pays with
 ```
 
@@ -36,7 +38,7 @@ Live docs: [botsrated.com/docs/guard#pydantic-ai](https://botsrated.com/docs/gua
 from pydantic_ai_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
-3. Omit `preset` for advice only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
+3. Omit `preset` for warn only. Pick `preset="carefulBuyer"` only when you want it (same stops as `policies.strict`; stops an unobserved payTo). Omit `fail_mode` to stay open. `"closed"` stops the payment when BotsRated or your policy cannot answer. A missing decision is never a pass. A remote pass never clears a local block.
 
 `BOTSRATED_TOKEN` is optional. Omit `token` and the guard reads `BOTSRATED_TOKEN`. On botsrated 0.3.0 and later it is sent only as `remote_policy={"token", "fail_mode"}`, never as a bare string. A configured token on a core without `parse_remote_policy` raises and is not dropped. The policy decision is not signed. Get a token in [Desk](https://botsrated.com/desk).
 
@@ -53,7 +55,7 @@ from pydantic_ai_botsrated import attach_payment_guard
 guard = attach_payment_guard(x402_client)
 ```
 
-Omit `preset` for advice only (`warn`). `carefulBuyer` blocks an unobserved payTo only when you select it (same stops as `policies.strict`). Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
+Omit `preset` for warn only (`warn`). `carefulBuyer` blocks an unobserved payTo only when you select it (same stops as `policies.strict`). Omit `fail_mode` to stay open. Free preflight is `https://botsrated.com` only. No custody and no payment signing.
 
 ## Before-pay hooks and token
 

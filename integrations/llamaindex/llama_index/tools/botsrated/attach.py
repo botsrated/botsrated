@@ -73,7 +73,7 @@ def attach_payment_guard(
 ) -> Any:
     """Register PaymentGuard on ``x402_client`` and return the guard.
 
-    ``preset`` is your choice: ``warn`` (advice only), ``carefulBuyer``, or ``strict``
+    ``preset`` is your choice: ``warn`` (warn only), ``carefulBuyer``, or ``strict``
     (same stops as ``carefulBuyer``). Omit it for the guard's advice-only default.
     ``fail_mode`` is ``open`` or ``closed``. Omit it to leave the guard fail-open.
     ``token`` is forwarded as ``remote_policy`` (or ``remotePolicy``), as
