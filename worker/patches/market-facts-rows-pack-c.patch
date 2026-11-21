@@ -1,0 +1,244 @@
+# Soft OPEN Prefer KEEP Pack C. Soft CTA tip tip c844a702. want 30ab1739d0b20a67eddc8027d57c1992.
+# Git base stays main 1f4791b59f552bd9ab2d9d4a067518971af9ba61. Soft CTA walls HOLD. fp ebf26695. No tip.
+# Legal md5 fb67b73e58995add45a474702b6b8899. Do not tip, deploy, merge, re-arm writers, migrate D1, or publish.
+# Apply on the private receipts-mvp tree at tip c844a702. This file is the rows pack only.
+# Paths: worker/src/market_facts.ts and worker/test/market_facts_unit.ts only.
+# MARKET_FACTS_PUBLISH_ROWS=true. Six B rewrites. Toll per-check range 0.01–0.05 USDG.
+# Preflight402 and APEX stay off and are not emitted.
+# Apply from the private receipts-mvp tree root:
+#   patch -p1 --fuzz=0 --no-backup-if-mismatch < worker/patches/market-facts-rows-pack-c.patch
+--- a/worker/src/market_facts.ts
++++ b/worker/src/market_facts.ts
+@@ -6,8 +6,7 @@
+ // Design AMEND v2 LOCK body md5 fe2d059d7ad866da2d82dcf836cb73d4 (supersedes 66f00532103d285c17afbd8118aad9e0).
+ // Evidence Market facts link is non-`/` only. Exact `/` skips decorateSiteHtml appends. /docs list line stays on /docs.
+ // Legal cfd69bf1 GO-with-gates. Seed 2a09d33f. Claim language 32edd145.
+-// Peer rows are HOLD APPLY: structured below, not emitted until
+-// MARKET_FACTS_PUBLISH_ROWS is set true after Legal slice-5 and Security MATCH.
++// Peer rows publish. Preflight402 and APEX stay in the list and are not emitted.
+ //
+ // Mount on the private receipts-mvp tree (shell + html already exist):
+ //
+@@ -34,8 +33,8 @@
+ export const MARKET_NOTE =
+   "Listed the same way for every service, BotsRated included. Not a rating, ranking, or review.";
+ 
+-/** Flip only after Legal slice-5 unpaid re-spot and Security MATCH. Default off. */
+-export const MARKET_FACTS_PUBLISH_ROWS = false;
++/** Peer rows emit on /market. Preflight402 and APEX stay off. */
++export const MARKET_FACTS_PUBLISH_ROWS = true;
+ 
+ export const SEED_AS_OF = "2026-11-04";
+ /** Seed header: fetched ~1:30pm CT on 2026-11-04 (CST, UTC-6). Date grain for every row. */
+@@ -99,16 +98,17 @@
+ 
+ /**
+  * HOLD APPLY rows from seed 2a09d33f, phrased with claim language 32edd145.
+- * Prices and source URLs are the seed's. Offers are one sentence and do not reuse
+- * a peer's judgment words as our label. APEX stays in the list and is hidden:
+- * the seed has no source_url. No change-board events are invented from these rows.
++ * Prices and source URLs are the seed's, except Toll's per-check range 0.01–0.05 USDG
++ * (the seed had no amount; the page now shows it). Offers are one sentence and do not reuse
++ * a peer's judgment words as our label. APEX stays hidden (no source_url).
++ * Preflight402 stays off and is not emitted. No change-board events are invented from these rows.
+  */
+ export const MARKET_FACTS_HOLD_ROWS: readonly MarketFactRow[] = [
+   {
+     name: "Agent Embassy",
+     offers: "Lists paid tools with signed outcome receipts, as published.",
+     rails: "x402 + MCP",
+-    price_as_published: "Check ping $0.001; trust preflight $0.25; trust report $0.25; (full list on pricing.md)",
++    price_as_published: "Check ping $0.001; \"trust preflight\" $0.25 and \"trust report\" $0.25 (their product names); full list on pricing.md",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://aemb.pro/pricing.md",
+@@ -209,7 +209,7 @@
+     name: "probe402",
+     offers: "Publishes a free per-endpoint report as their product output.",
+     rails: "x402 + MCP",
+-    price_as_published: "Free grade; paid 30-day history $0.005 per call",
++    price_as_published: "\"Free grade\" (their term); paid 30-day history $0.005 per call",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://probe402.com/",
+@@ -232,7 +232,7 @@
+     name: "PulseFeed",
+     offers: "Lists a check of liveness before pay, as published.",
+     rails: "x402 + MCP",
+-    price_as_published: "free /verify; $0.004; $0.01+",
++    price_as_published: "free `/verify` endpoint (their route name); $0.004; $0.01+",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://pulsefeed.dev/",
+@@ -241,7 +241,7 @@
+   },
+   {
+     name: "Settlens",
+-    offers: "Lists an MCP preflight of pay, review, or do_not_pay against a spending policy, as published.",
++    offers: "Lists an MCP preflight that returns `pay`, `review`, or `do_not_pay` (their output values) against a spending policy, as published.",
+     rails: "x402 + MCP",
+     price_as_published: NOT_PUBLISHED,
+     as_of: SEED_AS_OF,
+@@ -277,7 +277,7 @@
+     name: "Toll",
+     offers: "Lists an x402 payee check. Settlement is stated as USDG on Robinhood Chain, as published.",
+     rails: "x402 + MCP",
+-    price_as_published: "Free tier (coins/day, more with $TOLL holdings); pay per check over x402 (per-check amount not shown in text read)",
++    price_as_published: "Free tier (coins/day, more with $TOLL holdings); pay per check over x402 0.01–0.05 USDG",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://t0ll.xyz/pricing",
+@@ -300,7 +300,7 @@
+     name: "UseTested / Market402 (UseTested)",
+     offers: "Spends on services and publishes write-ups anchored to on-chain payment proofs, as published.",
+     rails: "x402 + MCP",
+-    price_as_published: "Free to read; top-10 $0.05; provider self-report $0.005; re-test $1 fee + 20 probes",
++    price_as_published: "Free to read; \"top-10\" list $0.05 (their term); provider self-report $0.005; re-test $1 fee + 20 probes",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://usetested.com/",
+@@ -322,7 +322,7 @@
+     name: "x402-trust",
+     offers: "Publishes endpoint history and a highlighted list as their product, and lists an MCP server, as published.",
+     rails: "x402 + MCP",
+-    price_as_published: "Trust score $0.005; endpoint history $0.02; alternatives $0.005; watch ~$0.20; bulk $0.045–$0.50",
++    price_as_published: "\"Trust score\" (their term) $0.005; endpoint history $0.02; alternatives $0.005; watch ~$0.20; bulk $0.045–$0.50",
+     as_of: SEED_AS_OF,
+     as_of_iso: SEED_AS_OF_ISO,
+     source_url: "https://x402-trust.com/",
+@@ -396,9 +396,12 @@
+   }
+ }
+ 
++/** Stored rows that must not be emitted. APEX has no source. Preflight402 stays off. */
++const UNPUBLISHED_ROW_NAMES = new Set(["APEX", "Preflight402"]);
++
+ export function visibleMarketRows(rows: readonly MarketFactRow[]): MarketFactRow[] {
+   return rows
+-    .filter((row) => row.as_of.trim() !== "" && sourceHost(row.source_url) !== "")
++    .filter((row) => row.as_of.trim() !== "" && sourceHost(row.source_url) !== "" && !UNPUBLISHED_ROW_NAMES.has(row.name))
+     .slice()
+     .sort((a, b) => {
+       const aa = a.name.toLowerCase();
+--- a/worker/test/market_facts_unit.ts
++++ b/worker/test/market_facts_unit.ts
+@@ -17,7 +17,22 @@
+   type MarketFactRow,
+ } from "../src/market_facts.ts";
+ 
+-const JUDGMENT = /\b(verified|safe|trusted|scam|risky|grades?|scores?|ranks?|better|shame|pioneer)\b|first-mover|got here first|independent reviews|top-\d+/i;
++const JUDGMENT_RE = /grade|score|rank|top-?10|safe|trust|verif|scam|risky|review|verdict|badge|pioneer|first-mover/g;
++const SHOULD_BARE = ["free under $10 at risk", "paid verdict routes", "badge $1 / 30 days"];
++
++function judgmentClass(html: string, index: number, word: string): string {
++  const window = html.slice(Math.max(0, index - 90), Math.min(html.length, index + word.length + 90));
++  if (window.includes("Not a rating, ranking, or review.")) return "lock";
++  const around = html.slice(Math.max(0, index - 16), index + word.length + 16);
++  if (around.includes("x402-trust")) return "proper";
++  const before = html.slice(0, index);
++  const inQuote = (before.match(/&quot;/g) || []).length % 2 === 1 || (before.match(/`/g) || []).length % 2 === 1;
++  const after = html.slice(index, index + 180);
++  const attributed = /\(their term\)|\(their product names\)|\(their route name\)|\(their output values\)/.test(after);
++  if (inQuote && attributed) return "quoted";
++  if (SHOULD_BARE.some((phrase) => window.includes(phrase))) return "should-bare";
++  return "other";
++}
+ 
+ function shell(_c: unknown, o: { title: string; desc: string; path: string; body: string }): string {
+   return `<!doctype html><html><head><title>${o.title}</title><meta name="description" content="${o.desc}"><link rel="canonical" href="https://botsrated.com${o.path}"><meta property="og:image" content="https://botsrated.com/og.png"></head><body><header class="top"><nav class="nav"><a href="/desk">Desk</a></nav></header><main id="main">${o.body}</main><footer class="foot"><nav aria-label="Evidence"><ul><li><a href="/methodology">Methodology</a></li><li><a href="/leaderboard">Recent checks</a></li><li><a href="/v1/coverage">Coverage</a></li></ul></nav></footer></body></html>`;
+@@ -29,11 +44,36 @@
+ 
+ const deps: MarketDeps = { shell, html };
+ 
+-test("publish gate stays off", () => {
+-  assert.equal(MARKET_FACTS_PUBLISH_ROWS, false);
++test("publish gate is on with the six rewrites and the toll range", () => {
++  assert.equal(MARKET_FACTS_PUBLISH_ROWS, true);
++  const row = (name: string) => MARKET_FACTS_HOLD_ROWS.find((item) => item.name === name);
++  assert.equal(row("probe402")?.price_as_published, `"Free grade" (their term); paid 30-day history $0.005 per call`);
++  assert.equal(
++    row("UseTested / Market402 (UseTested)")?.price_as_published,
++    `Free to read; "top-10" list $0.05 (their term); provider self-report $0.005; re-test $1 fee + 20 probes`,
++  );
++  assert.equal(
++    row("x402-trust")?.price_as_published,
++    `"Trust score" (their term) $0.005; endpoint history $0.02; alternatives $0.005; watch ~$0.20; bulk $0.045–$0.50`,
++  );
++  assert.equal(
++    row("Agent Embassy")?.price_as_published,
++    `Check ping $0.001; "trust preflight" $0.25 and "trust report" $0.25 (their product names); full list on pricing.md`,
++  );
++  assert.equal(row("PulseFeed")?.price_as_published, "free `/verify` endpoint (their route name); $0.004; $0.01+");
++  assert.equal(
++    row("Settlens")?.offers,
++    "Lists an MCP preflight that returns `pay`, `review`, or `do_not_pay` (their output values) against a spending policy, as published.",
++  );
++  assert.equal(
++    row("Toll")?.price_as_published,
++    "Free tier (coins/day, more with $TOLL holdings); pay per check over x402 0.01–0.05 USDG",
++  );
++  const visible = visibleMarketRows(MARKET_FACTS_HOLD_ROWS);
++  assert.equal(visible.some((item) => item.name === "Preflight402" || item.name === "APEX"), false);
+ });
+ 
+-test("default page is empty states and locked chrome", async () => {
++test("published page keeps locked chrome", async () => {
+   const res = marketFactsDispatch(new URL("https://botsrated.com/market"), new Request("https://botsrated.com/market"), {}, deps);
+   assert.ok(res);
+   assert.equal(res.status, 200);
+@@ -48,17 +88,28 @@
+   assert.match(page, /<h1>Market facts<\/h1>/);
+   assert.match(page, /<h2>Side by side<\/h2>/);
+   assert.match(page, /<h2>What changed<\/h2>/);
+-  assert.match(page, /No data yet\./);
+   assert.match(page, /No changes yet\./);
++  assert.doesNotMatch(page, /<p class="mf-empty">No data yet\.<\/p>/);
+   assert.match(page, /Peer entries are their published claims/);
+   assert.match(page, /not continuous monitoring/);
+   assert.match(page, /<a href="\/disputes">Request an update<\/a>/);
+   assert.match(page, /<a href="\/methodology">How we measure our own rows<\/a>/);
+   assert.match(page, /<a href="\/docs">How Desk alerts work<\/a>/);
+   assert.doesNotMatch(page, /Watch in Desk/);
+-  assert.doesNotMatch(page, /vet402|Attest|APEX|probe402/);
++  assert.equal(page.includes("Preflight402"), false);
++  assert.equal(page.includes(">APEX<"), false);
++  assert.equal(page.includes("per-check amount not shown"), false);
++  assert.match(page, /0\.01–0\.05 USDG/);
++  assert.match(page, /&quot;Free grade&quot; \(their term\); paid 30-day history \$0\.005 per call/);
++  assert.match(page, /free `\/verify` endpoint \(their route name\)/);
++  assert.match(page, /`pay`, `review`, or `do_not_pay` \(their output values\)/);
+   assert.equal(page.includes(MARKET_NOTE), true);
+-  assert.equal(JUDGMENT.test(page), false, page.match(JUDGMENT)?.[0]);
++  assert.doesNotMatch(page, /pioneer|first-mover/);
++  for (const phrase of SHOULD_BARE) assert.equal(page.includes(phrase), true, phrase);
++  for (const match of page.matchAll(new RegExp(JUDGMENT_RE.source, "g"))) {
++    const kind = judgmentClass(page, match.index ?? 0, match[0]);
++    assert.notEqual(kind, "other", `${match[0]} @ ${match.index}`);
++  }
+   assert.equal(/#[0-9a-fA-F]{3,8}/.test(page), false);
+   assert.match(page, /href="\/leaderboard">Recent checks<\/a><\/li><li><a href="\/market">Market facts<\/a>/);
+   assert.equal(page.includes('id="pulse"'), false);
+@@ -80,6 +131,7 @@
+ test("HOLD rows hide a missing source and sort by name", () => {
+   const rows = visibleMarketRows(MARKET_FACTS_HOLD_ROWS);
+   assert.equal(rows.some((row) => row.name === "APEX"), false);
++  assert.equal(rows.some((row) => row.name === "Preflight402"), false);
+   assert.equal(rows.some((row) => row.name === "BotsRated"), true);
+   assert.deepEqual(rows.map((row) => row.name), [
+     "Agent Embassy",
+@@ -90,7 +142,6 @@
+     "Lumi",
+     "MEO",
+     "paidfor.dev",
+-    "Preflight402",
+     "probe402",
+     "Proof Rail",
+     "PulseFeed",
+@@ -125,6 +176,7 @@
+   const vett = page.indexOf(">vet402<");
+   assert.ok(bots > 0 && vett > bots);
+   assert.equal(page.includes(">APEX<"), false);
++  assert.equal(page.includes("Preflight402"), false);
+ });
+ 
+ test("change board is last-20 newest first and empty by default", () => {
