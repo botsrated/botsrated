@@ -117,7 +117,7 @@ Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email.
 | `alerts-free` | $0 | Watch 1 seller. Daily digest: one email per UTC day when its facts change. Slack, Discord, and webhook need a paid plan (`paid_channel_required`). Up to 3 free alerts per client IP, 1,000 in total |
 | `alerts-50` (Pro) | $19 | Up to 50 sellers or tools; a signed webhook within one probe cycle of a change (payTo, quoted price, valid 402, listing, freshness) |
 | `desk-pro` (Desk Pro; API name `data-pro`) | $199 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (600 requests/min), the change-event export (`GET /v1/export/changes.ndjson?host=`), and the team workspace |
-| Data licensing | No public price | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
+| Data & Feeds | $199 Signed-History Snapshot (one-time); $499/month Commercial Feed | Card checkout: https://botsrated.com/checkout/stripe?plan=snapshot and https://botsrated.com/checkout/stripe?plan=commercial_feed. Commercial Feed: optional 30-day free trial for vetted teams: hello@botsrated.com. License terms: https://botsrated.com/data-license |
 
 `data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Pro $19/month (https://botsrated.com/billing/start), Desk Team $99/month, Desk Pro $199/month; prepaid credit packs at https://botsrated.com/credits ($10 for 1,000 checks, $25 for 2,500); Signed-History Snapshot $199 (paid once) and Commercial Feed $499/month (https://botsrated.com/data-license). Pilot is no longer sold to new buyers; a Pilot already paid for keeps working through its term. Current prices: https://botsrated.com/pricing
 
