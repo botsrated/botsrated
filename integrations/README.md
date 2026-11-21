@@ -1,7 +1,7 @@
 # BotsRated integrations (pre-payment checks for x402 buyers)
 
 These are small client packages that check an x402 seller with BotsRated before an agent pays it. The free
-preflight runs by default. The `/v1/check` ($0.01 USDC on Base after 25 free per UTC day) is opt-in and stays within a budget
+preflight runs by default. The `/v1/check` ($0.01 USDC on Base after 5 free per UTC day, or 25 with a free API key) is opt-in and stays within a budget
 the user sets.
 
 **Status: this release.** Versions named here are the ones these packages publish.

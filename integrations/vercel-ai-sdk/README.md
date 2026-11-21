@@ -112,7 +112,7 @@ import { BotsRatedClient, botsratedTools } from "@botsrated/ai-sdk";
 const x402 = new x402Client();
 registerExactEvmScheme(x402, { signer }); // your signer, e.g. a viem account
 const client = new BotsRatedClient({ paid: { budgetUsd: 0.02, x402Client: x402 } });
-const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.01 each after 25 free checks per client IP per UTC day, stops at $0.02) }
+const tools = botsratedTools(client); // { botsratedPreflight, botsratedCheck ($0.01 each after the free daily checks: 5 per client IP per UTC day, 25 with a free API key; stops at $0.02) }
 ```
 
 The client validates BotsRated's 402 and signs only a copy rebuilt from allowlisted fields: a one-shot

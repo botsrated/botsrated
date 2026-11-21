@@ -41,7 +41,7 @@ botsrated.close()
 ```
 
 Free tools: `preflight`, `check_mcp_setup`, `watch_free`, `what_changed`, `find`, `coverage`, `sample`, `seller_self_check`, and `seller_announce`. The server also lists `check`, `report` and `best`,
-which are paid x402 routes (`check` $0.01, `report` $0.002, `best` $0.01 USDC on Base). `check` shares the first 25 free calls per client IP per UTC day with HTTP `GET /v1/check`. MCP `report` and `best` are paid from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`. Leave the paid tools out of `tool_names` unless your agent can pay x402.
+which are paid x402 routes (`check` $0.01, `report` $0.002, `best` $0.01 USDC on Base). `check` shares the free daily calls (5 per client IP per UTC day, 25 with a free API key) with HTTP `GET /v1/check`. MCP `report` and `best` are paid from the first call; the first 3 reports per UTC day are free only on HTTP `GET /v1/report/{host}`. Leave the paid tools out of `tool_names` unless your agent can pay x402.
 
 ## 2. A pre-payment tool backed by the `botsrated` package
 

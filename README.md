@@ -48,7 +48,7 @@ Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra
 
 ## Tools
 
-Live MCP `tools/list` at `https://botsrated.com/mcp` has 13 tools:
+Live MCP `tools/list` at `https://botsrated.com/mcp` has 14 tools:
 
 | Tool | Price | What it returns |
 |---|---|---|
@@ -56,15 +56,16 @@ Live MCP `tools/list` at `https://botsrated.com/mcp` has 13 tools:
 | `check_mcp_setup` | free | Check the MCP servers in a config or a list of hosts (up to 50 hosts or an mcp.json). Same report as `POST /v1/dependency-watch/report` |
 | `watch_free` | free | Email when a covered host's measured facts change (1 host, at most once per UTC day, 30 days, up to 3 active watches per client). Same watch as `POST /v1/alerts/subscribe` |
 | `what_changed` | free | Measured changes for a free watch. Pass the handle from `watch_free` |
-| `find` | free (uses 1 of the 25 free checks per client IP per UTC day) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
+| `find` | free (uses 1 of the free daily checks: 5 per client IP per UTC day, 25 with a free API key) | Top matching x402 sellers and remote MCP servers for a need (`q`, e.g. `weather`), each with a one-line factual reason and its page URL. Same filters as `best`, without the full ranking. HTTP: `GET https://botsrated.com/v1/find?q=` |
 | `coverage` | free | How many x402 sellers and MCP servers are covered, from which sources, and when the last probe ran. Live counts: `GET https://botsrated.com/v1/coverage` |
 | `sample` | free | A real sample of a paid answer (`check`, `report` or `best`) for a fixed example |
 | `history` | free | Signed daily aggregates for one host (counts, latency, quoted amounts, 402 checks, receipt ids), newest first. Payee addresses are keyed HMAC-SHA256 hashes, not raw payTo. Raw archive NDJSON parts are not published. HTTP: `GET https://botsrated.com/v1/history?host=` |
-| `check` | $0.01 (x402, USDC on Base); first 25 per client IP per UTC day free on this tool and on HTTP `GET /v1/check` (one shared quota) | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
+| `check` | $0.01 (x402, USDC on Base); first 5 per client IP per UTC day free (25 with a free email-verified API key) on this tool and on HTTP `GET /v1/check` (one shared quota) | Measured facts and the last 5 receipts for one host. Paid at `GET https://botsrated.com/v1/check?host=` |
 | `report` | $0.002 (x402); paid on MCP from the first call. The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}` | Full receipt history for one host. Paid at `GET https://botsrated.com/v1/report/{host}` |
 | `best` | $0.01 (x402); paid on MCP from the first call; no free quota | Top 3 measured providers for a task (`sort=reliability\|price\|latency`). Paid at `GET https://botsrated.com/v1/best?task=` |
 | `seller_self_check` | free | Stored measurements for a host anyone can read: listing versus quoted price and recent unpaid probes |
 | `seller_announce` | free (verified owner) | Verified owner posts a planned price and/or payTo |
+| `start_upgrade` | free, never charges | For when the free daily checks are used up: returns a personal link where a person can buy a prepaid credit pack |
 
 ## Facts bundle (`preflight` and `check`)
 
@@ -91,13 +92,13 @@ The payment guard in `@botsrated/x402-preflight` and `botsrated` keeps a smaller
 
 Paid MCP tools: an unpaid call returns an x402 v2 PaymentRequired tool error (isError, structuredContent with accepts); an x402-aware MCP client (e.g. `@x402/mcp`) retries with the payment in `_meta["x402/payment"]`. The same data is on the HTTP routes, payable by any x402 client (e.g. `@x402/fetch`, Coinbase Agentic Wallet). All three paid routes are also listed in the Coinbase x402 Bazaar.
 
-Free daily quota: the first 25 checks per client IP (IPv6 per /48) per UTC day are free on the MCP `check` tool and on HTTP `GET /v1/check` (one shared quota). The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}`. MCP `report` and `best` are paid from the first call. `/v1/find` spends one check from the shared check quota. `/v1/best` has no free quota. After the free quota the normal x402 402 applies. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
+Free daily quota: the first 5 checks per client IP (IPv6 per /48) per UTC day are free (25 with a free email-verified API key, `POST https://botsrated.com/v1/keys/free`) on the MCP `check` tool and on HTTP `GET /v1/check` (one shared quota). The first 3 reports per client IP per UTC day are free only on HTTP `GET /v1/report/{host}`. MCP `report` and `best` are paid from the first call. `/v1/find` spends one check from the shared check quota. `/v1/best` has no free quota. After the free quota the normal x402 402 applies. Preflight stays free, no key, rate limits. No accounts, prepaid balances or stored credit. The badge is free and earned, never sold. Details: https://botsrated.com/pricing
 
 ## Free HTTP endpoints and pages
 
 | | |
 |---|---|
-| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the 25 free checks per client IP per UTC day, shared with `/v1/check`) |
+| `GET https://botsrated.com/v1/find?q=<need>` | Top matches for a need with a reason (uses 1 of the free daily checks, 5 per client IP per UTC day or 25 with a free API key, shared with `/v1/check`) |
 | `GET https://botsrated.com/v1/pulse` | Live totals (cached 60 s): services watched, working in the last 24 h, did not answer at least one check in 7 days, checks run in 7 days. Never names a seller |
 | `GET https://botsrated.com/v1/rates` | Measured rates (no proper 402 answer, payTo changes, price vs listing) with sample size, dates and source |
 | https://botsrated.com/sellers | Browse and filter every covered seller and MCP server |
@@ -118,7 +119,7 @@ Pro: watch up to 50 sellers or tools; alert to webhook, Slack, Discord or email.
 | `desk-pro` (Desk Pro; API name `data-pro`) | $199 | Bearer token for `/v1/check`, `/v1/report`, `/v1/best` without per-call payment (600 requests/min), the change-event export (`GET /v1/export/changes.ndjson?host=`), and the team workspace |
 | Data licensing | No public price | Volume or bulk delivery; support terms agreed per contract: botsrated@gmail.com |
 
-`data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Desk Team $99/month, Desk Pro $199/month, Pilot $149 for 6 weeks (paid once). Current prices: https://botsrated.com/pricing
+`data-starter` is not on sale; a token already issued keeps working until it expires. Card plans: Pro $19/month (https://botsrated.com/billing/start), Desk Team $99/month, Desk Pro $199/month; prepaid credit packs at https://botsrated.com/credits ($10 for 1,000 checks, $25 for 2,500); Signed-History Snapshot $199 (paid once) and Commercial Feed $499/month (https://botsrated.com/data-license). Pilot is no longer sold to new buyers; a Pilot already paid for keeps working through its term. Current prices: https://botsrated.com/pricing
 
 Paid BotPulse plans are retired; the feed stays free. Plans already bought keep working until their 30-day period ends. Free reads stay at https://botsrated.com/v1/botpulse/latest and https://botsrated.com/v1/botpulse/feed.json. Alerts on tools use Pro's 50 slots.
 
