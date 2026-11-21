@@ -44,7 +44,7 @@ Versions and the stacks not listed here (Google ADK, CrewAI, Pydantic AI, Mastra
 | OpenAPI | https://botsrated.com/openapi.json |
 | A2A agent card | https://botsrated.com/.well-known/agent-card.json |
 | llms.txt | https://botsrated.com/llms.txt |
-| Contact | botsrated@gmail.com |
+| Contact | hello@botsrated.com (help: support@botsrated.com; legal: legal@botsrated.com) |
 
 ## Tools
 
@@ -149,7 +149,7 @@ VS Code (`.vscode/mcp.json`):
 See [CHANGELOG.md](CHANGELOG.md). Catalog listing copy (not submitted from this file): [SUBMISSIONS.md](SUBMISSIONS.md).
 
 ## Security
-Report security issues privately: see [SECURITY.md](SECURITY.md) (botsrated@gmail.com, subject "Security"). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
+Report security issues privately: see [SECURITY.md](SECURITY.md) (support@botsrated.com, subject "Security"). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Methodology, replies
 - Methodology: https://botsrated.com/methodology

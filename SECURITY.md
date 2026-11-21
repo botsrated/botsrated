@@ -4,7 +4,7 @@
 
 Please report security issues privately, not in a public issue or pull request.
 
-- **Email:** botsrated@gmail.com, with "Security" in the subject line.
+- **Email:** support@botsrated.com, with "Security" in the subject line.
 - **GitHub:** you can also use [private vulnerability reporting](https://github.com/botsrated/botsrated/security/advisories/new) on this repository.
 
 Please include:
