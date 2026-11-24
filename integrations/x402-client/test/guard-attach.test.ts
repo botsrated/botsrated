@@ -44,6 +44,47 @@ describe("policy vectors", () => {
   });
 });
 
+describe("a given field never hides a failed rule", () => {
+  const good = { amount: "1000", payTo: PAYTO, network: "eip155:8453", resource: { url: "https://seller.example/api" } };
+  const run = (requirement: Record<string, unknown>, options: Record<string, unknown> = {}) =>
+    evaluateCustomerPolicy(policy, requirement, options);
+
+  it("fails the host rule when the request goes to a host outside the policy and the 402 names an allowed host", () => {
+    const e = run(good, { resourceUrl: "https://other.example/api" });
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual(["fail", "resource_host", true]);
+  });
+
+  it("fails the host rule when the request host and the resource.url host differ", () => {
+    const e = run({ ...good, resource: { url: "https://other.example/x" } }, { resourceUrl: "https://seller.example/api" });
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual(["fail", "resource_host", true]);
+  });
+
+  it("fails the payTo rule when payTo and pay_to differ", () => {
+    const e = run({ ...good, payTo: "0x2222222222222222222222222222222222222222", pay_to: PAYTO });
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual(["fail", "pay_to", true]);
+  });
+
+  it("fails on fail_mode open, where a missing decision would let the payment continue", () => {
+    expect(policy.fail_mode).toBe("open");
+    const e = run({ ...good, amount: "999999999", payTo: "not-an-address" });
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual(["fail", "amount", true]);
+  });
+
+  it("keeps an absent field a missing decision, not a fail", () => {
+    const { amount: _amount, ...noAmount } = good;
+    const e = run(noAmount);
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual([null, "unevaluable", false]);
+  });
+
+  it("keeps conflicting fields a missing decision when no rule reads them", () => {
+    const e = evaluateCustomerPolicy(
+      { id: "pol_desk", version: "3", max_amount_atomic: "5000000" },
+      { ...good, payTo: "0x2222222222222222222222222222222222222222", pay_to: PAYTO },
+    );
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual([null, "unevaluable", false]);
+  });
+});
+
 describe("guardAttach", () => {
   it("keeps failOpen default true when fail_mode is closed", () => {
     const guard = createPaymentGuard();
