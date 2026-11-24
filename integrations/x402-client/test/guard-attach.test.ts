@@ -76,10 +76,26 @@ describe("a given field never hides a failed rule", () => {
     expect([e.verdict, e.rule_hit, e.abort]).toEqual([null, "unevaluable", false]);
   });
 
-  it("keeps conflicting fields a missing decision when no rule reads them", () => {
+  it("fails two different payTo values even when the policy has no payTo rule", () => {
+    for (const fail_mode of ["open", "closed"] as const) {
+      const e = evaluateCustomerPolicy(
+        { id: "pol_desk", version: "3", fail_mode, max_amount_atomic: "5000000" },
+        { ...good, payTo: "0x2222222222222222222222222222222222222222", pay_to: PAYTO },
+      );
+      expect([e.verdict, e.rule_hit, e.abort]).toEqual(["fail", "pay_to", true]);
+    }
+  });
+
+  it("treats payTo and pay_to that differ only in letter case as one value", () => {
+    const e = evaluateCustomerPolicy({ id: "pol_desk", version: "3", max_amount_atomic: "5000000" }, { ...good, payTo: PAYTO, pay_to: PAYTO.toUpperCase().replace("0X", "0x") });
+    expect([e.verdict, e.rule_hit, e.abort]).toEqual(["pass", "none", false]);
+  });
+
+  it("keeps a request host that differs from resource.url a missing decision when the policy has no host rule", () => {
     const e = evaluateCustomerPolicy(
       { id: "pol_desk", version: "3", max_amount_atomic: "5000000" },
-      { ...good, payTo: "0x2222222222222222222222222222222222222222", pay_to: PAYTO },
+      { ...good, resource: { url: "https://other.example/x" } },
+      { resourceUrl: "https://seller.example/api" },
     );
     expect([e.verdict, e.rule_hit, e.abort]).toEqual([null, "unevaluable", false]);
   });
