@@ -79,6 +79,19 @@ describe("evaluatePayment (real preflight fixture)", () => {
     expect(d.reasons[0].effect).toBe("warn");
   });
 
+  it("a quote on another network is a note by default and stops on strict", () => {
+    const otherChain = req({ network: "eip155:137", payTo: "0x000000000000000000000000000000000000dEaD" });
+    const note = evaluatePayment(facts, otherChain, SELLER_URL);
+    expect(note.action).toBe("allow");
+    expect(note.reasons.map((r) => [r.code, r.effect])).toEqual([["network_not_observed", "warn"]]);
+    const stop = evaluatePayment(facts, otherChain, SELLER_URL, strictGuardPolicy);
+    expect(stop.action).toBe("block");
+    expect(stop.reasons.map((r) => [r.code, r.effect])).toEqual([["network_not_observed", "block"]]);
+    const off = evaluatePayment(facts, otherChain, SELLER_URL, { networkNotObserved: "allow" });
+    expect(off.action).toBe("allow");
+    expect(off.reasons).toEqual([]);
+  });
+
   it("only compares payTo on the measured network", () => {
     const d = evaluatePayment(facts, req({ network: "eip155:84532", payTo: "0x000000000000000000000000000000000000dEaD" }), SELLER_URL);
     expect(d.action).toBe("allow");

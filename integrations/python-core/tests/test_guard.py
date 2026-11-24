@@ -65,6 +65,17 @@ def test_evaluate_payto_mismatch_warns_by_default_blocks_with_explicit_policy(fo
     assert strict.summary().endswith("This is a measurement, not a finding about the seller. Dispute: https://botsrated.com/disputes")
 
 
+def test_other_network_is_a_note_by_default_and_stops_on_strict(found):
+    facts = facts_from(found, "blockrun.ai", "preflight")
+    other_chain = req(found, payTo=DEAD, network="eip155:137")
+    note = evaluate_payment(facts, other_chain, None)
+    assert note.action == "allow" and [(r.code, r.effect) for r in note.reasons] == [("network_not_observed", "warn")]
+    stop = evaluate_payment(facts, other_chain, None, STRICT_GUARD_POLICY)
+    assert stop.action == "block" and [(r.code, r.effect) for r in stop.reasons] == [("network_not_observed", "block")]
+    off = evaluate_payment(facts, other_chain, None, GuardPolicy(network_not_observed="allow"))
+    assert off.action == "allow" and off.reasons == []
+
+
 def test_evaluate_other_network_not_compared(found):
     facts = facts_from(found, "blockrun.ai", "preflight")
     d = evaluate_payment(facts, req(found, payTo=DEAD, network="eip155:84532"), None)

@@ -122,6 +122,9 @@ class GuardPolicy:
     pay_to_base58_format: Literal["allow", "warn", "block"] = "warn"
     # Same route, quoted amount above the listed amount. strict stays warn.
     quote_above_listing: Literal["allow", "warn", "block"] = "warn"
+    # BotsRated's probes recorded this host on another network, so the payTo on this quote's network cannot be
+    # compared (network_not_observed). STRICT_GUARD_POLICY blocks.
+    network_not_observed: Literal["allow", "warn", "block"] = "warn"
     stale: Literal["allow", "block"] = "allow"
     min_valid_402_rate: float | None = None
     # Block an x402 hook payment when the request URL being paid is unknown (no ``paying_request`` /
@@ -132,7 +135,7 @@ class GuardPolicy:
 # The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
 # Since 0.2.0 it also sets require_request_url, so a payment whose real request URL is unknown is stopped too
 # (use ``wrap_get`` or ``x402_hook_for``).
-STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block", require_request_url=True)
+STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block", network_not_observed="block", require_request_url=True)
 
 
 def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "check"]) -> SellerFacts:
@@ -215,7 +218,7 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
             listing_sol = facts.listing_pay_to if is_base58_pubkey(facts.listing_pay_to) else None
             no_base58 = not known_sol and not listing_sol
             if observed and not same_observed_network(observed, network):
-                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
+                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", p.network_not_observed)
             elif known_sol and raw_pay_to not in known_sol:
                 add(
                     "payto_not_observed",
@@ -233,7 +236,7 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
                     )
             elif no_base58 and (facts.known_pay_tos or facts.listing_pay_to):
                 if not observed:
-                    add("network_not_observed", f"the payTo addresses BotsRated's probes recorded for {host} are eip155 addresses, not {network} addresses.", "info")
+                    add("network_not_observed", f"the payTo addresses BotsRated's probes recorded for {host} are eip155 addresses, not {network} addresses.", p.network_not_observed)
                 else:
                     add(
                         "payto_not_observed",
@@ -244,7 +247,7 @@ def evaluate_payment(facts: SellerFacts, req: dict[str, Any], resource_url: str 
             add("payto_invalid", "the payTo in this payment request is not a 20-byte hex address.", p.pay_to_mismatch)
         elif is_address(raw_pay_to):
             if observed and not same_observed_network(observed, network):
-                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", "info")
+                add("network_not_observed", f"BotsRated's probes recorded {host} on {observed}, not on {network}.", p.network_not_observed)
             elif known and raw_pay_to.lower() not in known:
                 add(
                     "payto_not_observed",

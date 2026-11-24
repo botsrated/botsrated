@@ -117,6 +117,12 @@ export interface PaymentGuardPolicy {
    * A server policy reason with this code uses this effect too.
    */
   quoteAboveListing?: RuleEffect;
+  /**
+   * BotsRated's probes recorded this host on another network, and hold no record for the network this quote is
+   * on, so its payTo cannot be compared (`network_not_observed`). Default "warn"; `policies.strict` blocks.
+   * A network that preflight `quotes_by_network` lists is compared with its own record and never matches this rule.
+   */
+  networkNotObserved?: RuleEffect;
 }
 
 const warnPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
@@ -130,11 +136,12 @@ const warnPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   repeatPayment: "warn",
   payToBase58Format: "warn",
   quoteAboveListing: "warn",
+  networkNotObserved: "warn",
 });
 
 /**
- * Stops a payment when the payTo wasn't observed, is invalid, the 402 names another host, or the URL being paid is
- * unknown (use `wrapFetch`). A price above the last observed amount still warns. An uncovered or stale host stays
+ * Stops a payment when the payTo wasn't observed, is invalid, is on a network the probes did not record, the 402
+ * names another host, or the URL being paid is unknown (use `wrapFetch`). A price above the last observed amount still warns. An uncovered or stale host stays
  * informational.
  */
 const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
@@ -148,6 +155,7 @@ const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   repeatPayment: "warn",
   payToBase58Format: "warn",
   quoteAboveListing: "warn",
+  networkNotObserved: "block",
 });
 
 /** Rule-effect tables. Choosing one is your decision; the zero-config default is `policies.warn`. */
@@ -483,8 +491,9 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
     ? { ...facts0, knownPayTos: perNet.payTo ? [perNet.payTo] : [], observedNetwork: network, observedAmount: perNet.amount, listingPayTo: undefined }
     : facts0;
   if (perNet?.rotating) add("payto_rotating", undefined, "info", `BotsRated's probes recorded ${facts.host} quoting a new payTo on (nearly) every request on ${networkLabel(network)}; the payTo is not compared.`);
-  // A payTo is compared only when it matches a known network family. Other formats are not compared.
-  const payTo = typeof req.payTo === "string" && payToFormatFor(network, req.payTo) === "ok" ? normalizePayTo(req.payTo) : undefined;
+  // A 20-byte hex payTo is compared on any network string, including a missing one. A base58 public key is
+  // compared when the quote is on a solana-family network. Other formats are not compared.
+  const payTo = isAddress(req.payTo) ? req.payTo.toLowerCase() : networkFamily(network) === "solana" && isBase58Pubkey(req.payTo) ? req.payTo : undefined;
   if (!facts.covered) {
     add("not_covered", "notCovered", RULE_TO_EFFECT(p.notCovered, "info"), `BotsRated has no probe record for ${facts.host}.`);
     return out;
@@ -493,9 +502,9 @@ export function evaluateFacts(facts0: GuardFacts, req: { payTo?: unknown; amount
   const knownFamily = facts.observedNetwork ? networkFamily(facts.observedNetwork) : "eip155";
   const hasKnown = facts.knownPayTos.length > 0 || !!facts.listingPayTo;
   if (facts.observedNetwork && network && !sameObservedNetwork(facts.observedNetwork, network)) {
-    add("network_not_observed", undefined, "info", `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${networkLabel(network)}.`);
+    add("network_not_observed", "networkNotObserved", RULE_TO_EFFECT(p.networkNotObserved, "warn"), `BotsRated's probes recorded ${facts.host} on ${facts.observedNetwork}, not on ${networkLabel(network)}.`);
   } else if (!facts.observedNetwork && hasKnown && quoteFamily !== undefined && quoteFamily !== knownFamily) {
-    add("network_not_observed", undefined, "info", `the payTo addresses BotsRated's probes recorded for ${facts.host} are eip155 addresses, not ${networkLabel(network)} addresses.`);
+    add("network_not_observed", "networkNotObserved", RULE_TO_EFFECT(p.networkNotObserved, "warn"), `the payTo addresses BotsRated's probes recorded for ${facts.host} are eip155 addresses, not ${networkLabel(network)} addresses.`);
   } else if (payTo && !perNet?.rotating) {
     if (facts.knownPayTos.length > 0 && !facts.knownPayTos.includes(payTo)) {
       add(
