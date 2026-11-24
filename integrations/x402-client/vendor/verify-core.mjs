@@ -259,7 +259,13 @@ export async function verifyReceipt(raw, keyset, deps) {
     const sigOk = known && msg ? await checkSig(keys[sig.key_id], msg, sig.sig_b64) : false;
     say(known && sigOk, `ed25519 receipt signature, key ${sig.key_id}`, known ? "signature_mismatch" : "key_unknown");
     if (known && sigOk) lines.push(`INFO  signed by BotsRated key ${sig.key_id}`);
-    inWindow(sig.key_id, r.ts || r.generated_at);
+    const signedTime = (typeof r.signed_late_at === "string" && r.signed_late_at) || (typeof r.signed_at === "string" && r.signed_at) || null;
+    if (signedTime) {
+      const stT = Date.parse(signedTime), btT = Date.parse(r.ts || "");
+      say(Number.isFinite(stT) && (!Number.isFinite(btT) || stT >= btT), `signing time ${signedTime} (${r.signed_late_at ? "signed_late_at" : "signed_at"}) is not before the buy time ${r.ts || "-"}`, "signing_time");
+      lines.push(`INFO  buy time ${r.ts || "-"}; signed ${signedTime}; the key's validity window is checked at the signing time`);
+    }
+    inWindow(sig.key_id, signedTime || r.ts || r.generated_at);
   } else if (deps.loadSnapshot) {
     const snap = await deps.loadSnapshot();
     const ds = snap.bytes;

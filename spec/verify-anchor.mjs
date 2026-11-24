@@ -38,6 +38,7 @@ export function leafCandidates(raw) {
 
 export function dayOf(raw) {
   const r = unwrapReceipt(raw) || {};
+  if (r.signed_late === true && typeof r.published_day === "string" && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(r.published_day)) return r.published_day; // signed late: anchored on the day it was signed
   const ts = typeof r.ts === "string" ? r.ts : typeof r.generated_at === "string" ? r.generated_at : "";
   const d = new Date(ts);
   return isNaN(d) ? null : d.toISOString().slice(0, 10);
