@@ -111,12 +111,22 @@ class PaymentGuardPolicy:
     pay_to_base58_format: RuleEffect = "warn"
     # Same route, quoted amount above the listed amount. A server reason with this code uses this effect too.
     quote_above_listing: RuleEffect = "warn"
+    # BotsRated's probes recorded this host on another network and hold no record for the network this quote is on,
+    # so its payTo cannot be compared (network_not_observed). Advice by default; POLICIES["strict"] blocks.
+    network_not_observed: RuleEffect = "warn"
 
 
 _WARN = PaymentGuardPolicy()
-# Stops a payment when the payTo wasn't observed, is invalid, the 402 names another host, or the URL being paid is
-# unknown (use guard.request(url) or wrap_get). A price above the last observed amount still warns.
-_STRICT = PaymentGuardPolicy(pay_to_mismatch="block", pay_to_invalid="block", resource_host_mismatch="block", paid_url_unknown="block")
+# Stops a payment when the payTo wasn't observed, is invalid, is on a network the probes did not record, the 402 names
+# another host, or the URL being paid is unknown (use guard.request(url) or wrap_get). A price above the last
+# observed amount still warns.
+_STRICT = PaymentGuardPolicy(
+    pay_to_mismatch="block",
+    pay_to_invalid="block",
+    resource_host_mismatch="block",
+    paid_url_unknown="block",
+    network_not_observed="block",
+)
 
 # Rule-effect tables. Choosing one is your decision; the zero-config default is POLICIES["warn"].
 POLICIES: dict[str, PaymentGuardPolicy] = {
@@ -149,6 +159,7 @@ _RULE_NAMES = {
     "repeat_payment": "repeatPayment",
     "pay_to_base58_format": "payToBase58Format",
     "quote_above_listing": "quoteAboveListing",
+    "network_not_observed": "networkNotObserved",
 }
 
 
@@ -635,13 +646,21 @@ def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: Pa
     known_family = network_family(facts.observed_network) if facts.observed_network else "eip155"
     has_known = bool(facts.known_pay_tos) or bool(facts.listing_pay_to)
     if facts.observed_network and network and not same_observed_network(facts.observed_network, network):
-        out.append(GuardReason("network_not_observed", "info", f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network_label(network)}."))
+        out.append(
+            GuardReason(
+                "network_not_observed",
+                _effect(policy.network_not_observed, "warn"),
+                f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network_label(network)}.",
+                "networkNotObserved",
+            )
+        )
     elif not facts.observed_network and has_known and quote_family is not None and quote_family != known_family:
         out.append(
             GuardReason(
                 "network_not_observed",
-                "info",
+                _effect(policy.network_not_observed, "warn"),
                 f"the payTo addresses BotsRated's probes recorded for {facts.host} are eip155 addresses, not {network_label(network)} addresses.",
+                "networkNotObserved",
             )
         )
     elif pay_to and not rotating:

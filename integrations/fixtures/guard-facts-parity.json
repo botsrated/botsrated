@@ -153,13 +153,13 @@
    "warn": [
     [
      "network_not_observed",
-     "info"
+     "warn"
     ]
    ],
    "strict": [
     [
      "network_not_observed",
-     "info"
+     "block"
     ]
    ]
   },
@@ -291,13 +291,13 @@
    "warn": [
     [
      "network_not_observed",
-     "info"
+     "warn"
     ]
    ],
    "strict": [
     [
      "network_not_observed",
-     "info"
+     "block"
     ]
    ]
   },
@@ -328,13 +328,13 @@
    "warn": [
     [
      "network_not_observed",
-     "info"
+     "warn"
     ]
    ],
    "strict": [
     [
      "network_not_observed",
-     "info"
+     "block"
     ]
    ]
   },
@@ -806,13 +806,13 @@
    "warn": [
     [
      "network_not_observed",
-     "info"
+     "warn"
     ]
    ],
    "strict": [
     [
      "network_not_observed",
-     "info"
+     "block"
     ]
    ]
   },
@@ -871,6 +871,208 @@
     [
      "not_covered",
      "info"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, no network field, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, no network field, same payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x1111111111111111111111111111111111111111",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [],
+   "strict": []
+  },
+  {
+   "name": "evm recorded, unknown network name",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "weird-net",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "untagged evm record, unknown network name, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "weird-net",
+    "amount": "1"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "sol recorded, hex payTo on the solana network",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, testnet of the same family",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x1111111111111111111111111111111111111111",
+    "network": "eip155:84532",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "block"
     ]
    ]
   }
