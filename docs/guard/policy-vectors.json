@@ -297,7 +297,7 @@
       }
     },
     {
-      "name": "a payTo that is not a 20-byte address is not in the policy",
+      "name": "a Solana payTo is not in an EVM-only pay_to policy",
       "policy": {
         "id": "pol_desk",
         "version": "3",
@@ -317,7 +317,7 @@
       "chips": ["no data yet"],
       "requirement_echo": {
         "amount": "500",
-        "pay_to": null,
+        "pay_to": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
         "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
         "resource_host": null
       }

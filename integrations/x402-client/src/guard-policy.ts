@@ -12,6 +12,8 @@
  * The same rules are checked against docs/guard/policy-vectors.json from the
  * worker stub and the Python mirror.
  */
+import { isBase58Pubkey } from "./util.js";
+
 export const GUARD_CHIPS = ["live", "402 ok", "payTo changed", "probe failed", "no data yet"] as const;
 export type GuardChip = (typeof GUARD_CHIPS)[number];
 
@@ -33,7 +35,12 @@ function cleanText(value: unknown, max = 120): string {
 }
 
 function isAddress(value: unknown): value is string {
-  return typeof value === "string" && ADDRESS.test(value);
+  return typeof value === "string" && (ADDRESS.test(value) || isBase58Pubkey(value));
+}
+
+/** EVM addresses compare case-insensitively. Solana base58 addresses are case-sensitive and kept as written. */
+function normalAddress(value: string): string {
+  return ADDRESS.test(value) ? value.toLowerCase() : value;
 }
 
 function isAtomicAmount(value: unknown): value is string {
@@ -163,10 +170,14 @@ function readOwn(record: Record<string, unknown>, key: string): unknown {
   return value === undefined ? undefined : value;
 }
 
+function sameAddressKey(value: unknown): string {
+  return typeof value === "string" ? normalAddress(value) : String(value);
+}
+
 function payToOf(requirement: Record<string, unknown>): { value: unknown; conflict: boolean } {
   const camel = readOwn(requirement, "payTo");
   const snake = readOwn(requirement, "pay_to");
-  if (camel !== undefined && snake !== undefined && String(camel).toLowerCase() !== String(snake).toLowerCase()) {
+  if (camel !== undefined && snake !== undefined && sameAddressKey(camel) !== sameAddressKey(snake)) {
     return { value: undefined, conflict: true };
   }
   return { value: camel !== undefined ? camel : snake, conflict: false };
@@ -276,6 +287,40 @@ function finish(
 }
 
 /**
+ * Why a policy document cannot be read, one line per problem. Empty when it can be read.
+ * The same checks `evaluateCustomerPolicy` uses to return "no decision".
+ */
+export function customerPolicyProblems(policy: CustomerPolicy | null | undefined): string[] {
+  if (!isRecord(policy)) return ["the policy is not an object"];
+  const problems: string[] = [];
+  if (!label(policy.id)) problems.push("id must be 1-80 characters: letters, digits, . _ : - (no spaces)");
+  if (!label(policy.version)) problems.push("version must be 1-80 characters: letters, digits, . _ : - (no spaces)");
+  if (policy.fail_mode !== undefined && policy.failMode !== undefined && policy.fail_mode !== policy.failMode) {
+    problems.push("fail_mode and failMode disagree");
+  } else {
+    const raw = policy.fail_mode ?? policy.failMode;
+    if (raw !== undefined && raw !== "open" && raw !== "closed") problems.push('fail_mode must be "open" or "closed"');
+  }
+  if (!listOf(policy.resource_hosts, policyHost).ok) problems.push(`resource_hosts must be a list of up to ${MAX_LIST} bare host names`);
+  if (!listOf(policy.pay_to, (item) => (isAddress(item) ? normalAddress(item) : null)).ok) {
+    problems.push(`pay_to must be a list of up to ${MAX_LIST} EVM (0x) or Solana (base58) addresses`);
+  }
+  if (!listOf(policy.networks, (item) => (typeof item === "string" && NETWORK.test(item.trim()) ? item.trim() : null)).ok) {
+    problems.push(`networks must be a list of up to ${MAX_LIST} network ids`);
+  }
+  if (policy.max_amount_atomic !== undefined && !isAtomicAmount(policy.max_amount_atomic)) {
+    problems.push("max_amount_atomic must be a string of digits");
+  }
+  return problems;
+}
+
+/** Throw when the policy cannot be read. A policy that cannot be read must never let a payment through silently. */
+export function assertCustomerPolicy(policy: CustomerPolicy | null | undefined): void {
+  const problems = customerPolicyProblems(policy);
+  if (problems.length) throw new TypeError(`Guard policy cannot be read: ${problems.map((p) => cleanText(p, 160)).join("; ")}`);
+}
+
+/**
  * Compare one signed requirement with the customer's policy.
  * A missing decision is `verdict: null`, never a pass. A field that is given but cannot satisfy its
  * rule is a `fail` on that rule, not a missing decision.
@@ -290,11 +335,15 @@ export function evaluateCustomerPolicy(
   const req = isRecord(requirement) ? requirement : {};
   const pay = payToOf(req);
   const resource = resourceUrlOf(req, options.resourceUrl);
-  const amountRaw = readOwn(req, "amount");
+  // x402 v1 quotes carry the price in maxAmountRequired; v2 uses amount. Read v1 only when amount is absent.
+  const amountV2 = readOwn(req, "amount");
+  const amountV1 = readOwn(req, "maxAmountRequired");
+  const amountConflict = present(amountV2) && present(amountV1) && String(amountV2) !== String(amountV1);
+  const amountRaw = present(amountV2) ? amountV2 : amountV1;
   const networkRaw = readOwn(req, "network");
   const echo: RequirementEcho = {
     amount: isAtomicAmount(amountRaw) ? amountRaw : null,
-    pay_to: !pay.conflict && isAddress(pay.value) ? String(pay.value).toLowerCase() : null,
+    pay_to: !pay.conflict && isAddress(pay.value) ? normalAddress(pay.value) : null,
     network: typeof networkRaw === "string" && NETWORK.test(networkRaw.trim()) ? networkRaw.trim() : null,
     resource_host: resource.conflict ? null : httpHost(resource.url),
   };
@@ -305,7 +354,7 @@ export function evaluateCustomerPolicy(
   const version = label(policy?.version);
   const enforceHost = options.enforceResourceHost !== false;
   const hosts = listOf(policy?.resource_hosts, policyHost);
-  const payTos = listOf(policy?.pay_to, (item) => (isAddress(item) ? String(item).toLowerCase() : null));
+  const payTos = listOf(policy?.pay_to, (item) => (isAddress(item) ? normalAddress(item) : null));
   const networks = listOf(policy?.networks, (item) => (typeof item === "string" && NETWORK.test(item.trim()) ? item.trim() : null));
   const max = policy?.max_amount_atomic;
   const maxOk = max === undefined || isAtomicAmount(max);
@@ -332,6 +381,9 @@ export function evaluateCustomerPolicy(
   // decided is decided first, so one odd or absent field never hides a failed rule. Only an absent field
   // (undefined or null) is "missing", and missing is reported only when no rule failed.
   if (needAmount && present(amountRaw)) {
+    if (amountConflict) {
+      return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the requirement carries two different amounts" });
+    }
     if (!echo.amount) {
       return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the signed amount is not a whole atomic amount" });
     }

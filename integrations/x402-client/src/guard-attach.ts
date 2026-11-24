@@ -19,11 +19,16 @@
  * Omit it and that halt stays off. A policy `halt_on` or `strict_mode` is
  * read only when `haltOn` is omitted. The halt does not change the default above.
  *
+ * A policy that cannot be read (bad id, version, fail_mode, pay_to, networks,
+ * resource_hosts or max_amount_atomic) throws a TypeError here, at attach.
+ * It never starts and silently lets payments through.
+ *
  * This module never signs a payment and never sends one.
  */
 import { evaluateHalt, type HaltDecision, type HaltOn } from "./halt-policy.js";
 import { abortOnly } from "./payment-guard.js";
 import {
+  assertCustomerPolicy,
   evaluateCustomerPolicy,
   type CustomerPolicy,
   type MeasuredFacts,
@@ -72,6 +77,9 @@ function resourceUrlOf(paymentRequired: unknown): unknown {
  * `haltOn` is a separate abort. It does not change `failOpenDefault`.
  */
 export function guardAttach(options: GuardAttachOptions) {
+  // Fail loud: a policy that cannot be read would turn every rule into "no decision", and on the default
+  // fail_mode the payment would go ahead. Refuse to start instead.
+  assertCustomerPolicy(options?.policy);
   let last: PolicyEvaluation | undefined;
   let lastHaltDecision: HaltDecision | undefined;
 

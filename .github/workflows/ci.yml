@@ -127,4 +127,4 @@ jobs:
           node --check spec/verify.mjs
           node --check spec/courthouse/verify-booth.mjs
       - name: Verifier tests
-        run: node --test spec/verify.test.mjs
+        run: node --test spec/verify.test.mjs spec/verify-anchor.test.mjs

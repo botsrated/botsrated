@@ -1,7 +1,7 @@
 # Fragment for the private Pages worker. This file is not a deployable project
 # and must not be published with `wrangler deploy` or `wrangler pages deploy`.
-# The live worker config is not in this public repo (Pages tip f61ad18b is an
-# ad-hoc deploy). Lead copies the var below into that private wrangler.toml.
+# The live worker config is kept outside this public repo. The var below is
+# copied into that config by the maintainers.
 # Default off. Only the exact string "true" enables the org ledger.
 
 [vars]

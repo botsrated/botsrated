@@ -1,8 +1,8 @@
-# Attach retention (internal)
+# Attach retention (unpublished shape)
 
 | | |
 |---|---|
-| Status | Internal. Not a public page, badge, or API. |
+| Status | Unpublished. Not a public page, badge, or API. |
 | Spec string | `botsrated-guard-attach-retention-internal/1` |
 | Schema | [`attach-retention-internal.schema.json`](attach-retention-internal.schema.json) |
 | Example | [`examples/attach-retention-internal.example.json`](examples/attach-retention-internal.example.json) |
@@ -43,7 +43,7 @@ The site, the public API, and any badge must not expose this scoreboard when `co
 | Caller Convert | Primary publish owner. The counting section also lands the figure with Caller Convert. |
 | Data Checker | Primary publish owner, including the QA-clean filter |
 | Live Ops | Digests, as named in the counting section. Not a second public number. |
-| Guard | Packs this internal shape and these docs only |
+| Guard | Packs this shape and these docs only |
 
 A later public number is those publish owners' number, and only once it is real. Guard does not publish it from this change.
 

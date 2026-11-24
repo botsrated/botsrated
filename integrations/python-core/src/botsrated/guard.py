@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
 
@@ -132,6 +132,27 @@ class GuardPolicy:
     # ``wrap_get`` / ``x402_hook_for``). Off by default: the host is then read from the 402's resource.url.
     require_request_url: bool = False
 
+    def __post_init__(self) -> None:
+        # Fail loud: a rule value that cannot be read must never act as "allow" and let payments through silently.
+        allowed: dict[str, tuple[Any, ...]] = {
+            "not_covered": ("allow", "block"),
+            "stale": ("allow", "block"),
+            "require_request_url": (True, False),
+        }
+        bad: list[str] = []
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if f.name == "min_valid_402_rate":
+                if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
+                    bad.append(f"{f.name}={value!r}")
+            elif f.name == "require_request_url":
+                if not isinstance(value, bool):
+                    bad.append(f"{f.name}={value!r}")
+            elif value not in allowed.get(f.name, ("allow", "warn", "block")):
+                bad.append(f"{f.name}={value!r}")
+        if bad:
+            raise ValueError("GuardPolicy cannot be read (" + ", ".join(bad) + ").")
+
 
 # The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
 # Since 0.2.0 it also sets require_request_url, so a payment whose real request URL is unknown is stopped too
@@ -187,9 +208,14 @@ def as_requirements(req: Any) -> dict[str, Any]:
     elif hasattr(req, "model_dump"):
         d = req.model_dump(by_alias=True)
     else:
-        d = {k: getattr(req, k, None) for k in ("scheme", "network", "asset", "amount", "pay_to")}
+        d = {k: getattr(req, k, None) for k in ("scheme", "network", "asset", "amount", "pay_to", "max_amount_required")}
     if "payTo" not in d and "pay_to" in d:
         d["payTo"] = d["pay_to"]
+    # x402 v1 quotes carry the price in maxAmountRequired. Read it only when amount is absent.
+    if d.get("amount") is None:
+        v1 = d.get("maxAmountRequired", d.get("max_amount_required"))
+        if v1 is not None:
+            d["amount"] = v1
     return d
 
 
