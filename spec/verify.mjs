@@ -5,7 +5,8 @@
 //   node spec/verify.mjs '<receipt_url>'
 // verify.mjs alone does not run. The receipt page one-liner downloads those three files from the same ref (main).
 // Checks: (1) receipt id, (2) per-receipt ed25519 signature, or, for unsigned receipts, the signed snapshot that lists the id,
-// (3) optional: for paid test-buys, the on-chain USDC Transfer(payer -> payTo, paid amount) in the tx receipt.
+// (3) optional: for paid test-buys, an on-chain USDC Transfer to payTo of the paid amount in the tx receipt.
+//     The sender is not compared: the receipt's `payer` field is a description of who paid, not an address.
 // Presentation fields receipt_url, tx_url, and signature are removed. payment is removed only when it is not an object
 // (string hints on unpaid probes). An object payment is signed (mcp_probe) and stays.
 // A copy with withheld_fields or withheld_note is a redacted copy. The CLI prints REDACTED and exits 3.
