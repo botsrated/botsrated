@@ -119,6 +119,7 @@ class GuardPolicy:
     # Same payment identifier, or the same host, route, amount and nonce, within 60 seconds. strict does not change it.
     repeat_payment: Literal["allow", "warn", "block"] = "warn"
     # Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Does not change the Base USDC rule.
+    # STRICT_GUARD_POLICY blocks.
     pay_to_base58_format: Literal["allow", "warn", "block"] = "warn"
     # Same route, quoted amount above the listed amount. strict stays warn.
     quote_above_listing: Literal["allow", "warn", "block"] = "warn"
@@ -135,7 +136,7 @@ class GuardPolicy:
 # The pre-0.2.0 behavior as an explicit choice: stop payments whose payTo BotsRated's probes did not record.
 # Since 0.2.0 it also sets require_request_url, so a payment whose real request URL is unknown is stopped too
 # (use ``wrap_get`` or ``x402_hook_for``).
-STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block", network_not_observed="block", require_request_url=True)
+STRICT_GUARD_POLICY = GuardPolicy(pay_to_mismatch="block", network_not_observed="block", pay_to_base58_format="block", require_request_url=True)
 
 
 def facts_from(body: dict[str, Any], host: str, source: Literal["preflight", "check"]) -> SellerFacts:

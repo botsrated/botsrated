@@ -513,7 +513,7 @@ function normalizeRef(input: RecordReceiptRefInput): NormalizedRef | null {
   const key = scrubKeyId(input.key_id);
   const usage = input.usage_event_id == null || input.usage_event_id === "" ? null : input.usage_event_id;
   const measured = input.measured_at == null || input.measured_at === "" ? null : input.measured_at;
-  const at = input.at && ISO_TS.test(input.at) ? input.at : new Date().toISOString();
+  const at = (input.at ? normTs(input.at) : null) ?? new Date().toISOString();
   const id = input.id && REF_ID.test(input.id) ? input.id : newRefId();
   return {
     id,
@@ -526,7 +526,7 @@ function normalizeRef(input: RecordReceiptRefInput): NormalizedRef | null {
     receipt_id: input.receipt_id.toLowerCase(),
     locator,
     receipt_sha256: normSha(input.receipt_sha256),
-    measured_at: measured != null && ISO_TS.test(measured) ? measured : null,
+    measured_at: measured != null ? normTs(measured) : null,
     usage_event_id: usage != null && USAGE_EVENT_ID.test(usage) ? usage : null,
     at,
   };
@@ -606,8 +606,18 @@ function bound(value: string | null | undefined, edge: "from" | "to"): string | 
     if (edge === "from") return value + "T00:00:00.000Z";
     return nextDay(value) + "T00:00:00.000Z";
   }
-  if (!ISO_TS.test(value) || Number.isNaN(Date.parse(value))) return false;
-  return value;
+  return normTs(value) ?? false;
+}
+
+/**
+ * Timestamps are compared as text in SQL, so every one this module binds or stores has the same shape:
+ * millisecond precision, `YYYY-MM-DDTHH:MM:SS.sssZ`. Without this, `...:00Z` sorts after `...:00.500Z`.
+ * Returns null when the value is not an ISO UTC timestamp.
+ */
+function normTs(value: string): string | null {
+  if (!ISO_TS.test(value)) return null;
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
 }
 
 function nextDay(day: string): string {

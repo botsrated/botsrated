@@ -173,7 +173,8 @@ def test_payto_base58_format_matches_the_live_examples(found):
     assert "payto_base58_format" not in [r.code for r in base[0].reasons]
     with judging.request(url):
         assert judging.before_payment_creation(bad) is not None
-    assert POLICIES["carefulBuyer"].pay_to_base58_format == "warn"
+    assert POLICIES["carefulBuyer"].pay_to_base58_format == "block"
+    assert POLICIES["warn"].pay_to_base58_format == "warn"
 
 
 def test_quote_above_listing_warns_on_the_same_route(found):
@@ -390,7 +391,7 @@ def test_strict_payto_rows_keep_non_solana_blocks_and_compare_solana(found):
     action, got = codes(None, "garbage")
     assert action == "block" and "payto_invalid" in got
     action, got = codes(SOL, "not-a-key")
-    assert action == "allow" and "payto_base58_format" in got and "payto_invalid" not in got
+    assert action == "block" and "payto_base58_format" in got and "payto_invalid" not in got
     other = "So11111111111111111111111111111111111111112"
     sol_facts = dataclasses.replace(facts, observed_network=SOL, known_pay_tos=[SOL_KEY])
     swapped = evaluate_payment(sol_facts, req(found, network=SOL, payTo=other), url, STRICT_GUARD_POLICY)

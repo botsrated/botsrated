@@ -305,3 +305,18 @@ def test_async_payment_guard_applies_fail_mode(found):
     decision = asyncio.run(run())
     assert decision.action == "block" and decision.remote_decision is None
     assert any(r.url.path.endswith("/policy/check") for r in seen)
+
+
+@pytest.mark.parametrize("base_url", ["http://policy.example", "http://botsrated.com", "http://10.0.0.5:8080"])
+def test_remote_policy_token_is_not_sent_over_plain_http(base_url):
+    from botsrated.payment_guard import RemotePolicy
+
+    with pytest.raises(ValueError, match="https"):
+        RemotePolicy(token=TOKEN, fail_mode="closed", base_url=base_url)
+
+
+@pytest.mark.parametrize("base_url", ["https://policy.example", "http://localhost:8787", "http://127.0.0.1:8787", "http://[::1]:8787"])
+def test_remote_policy_accepts_https_and_local_http(base_url):
+    from botsrated.payment_guard import RemotePolicy
+
+    assert RemotePolicy(token=TOKEN, fail_mode="closed", base_url=base_url).base_url == base_url

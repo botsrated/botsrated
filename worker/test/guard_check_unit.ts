@@ -190,3 +190,68 @@ test("wrong method and a mismatched org are refused", async () => {
   );
   assert.equal(mismatch.status, 403);
 });
+
+test("a team or agent token cannot label a receipt as another team or agent", async () => {
+  const env = { FEATURE_GUARD_CHECK: "true" } as Env;
+  const scoped = auth();
+  const otherTeam = await callGuardCheckTool({ policy, requirement: requirement(), team_id: "team_zzzzzzzz" }, scoped, env);
+  assert.equal(otherTeam.structuredContent.error, "team_mismatch");
+  const otherAgent = await callGuardCheckTool({ policy, requirement: requirement(), agent_id: "ag_zzzzzzzz" }, scoped, env);
+  assert.equal(otherAgent.structuredContent.error, "agent_mismatch");
+  const same = await callGuardCheckTool({ policy, requirement: requirement(), team_id: scoped.team_id as string, agent_id: scoped.agent_id as string }, scoped, env);
+  assert.equal(same.isError, false);
+  const receipt = same.structuredContent.receipt as Record<string, unknown>;
+  assert.equal(receipt.team_id, scoped.team_id);
+  assert.equal(receipt.agent_id, scoped.agent_id);
+});
+
+test("an org-level token may name the team and agent a check is for", async () => {
+  const env = { FEATURE_GUARD_CHECK: "true" } as Env;
+  const orgLevel: GuardAuth = { org_id: ORG, scopes: ["guard-check"] };
+  const out = await callGuardCheckTool({ policy, requirement: requirement(), team_id: "team_bbbbbbbb", agent_id: "ag_cccccccc" }, orgLevel, env);
+  assert.equal(out.isError, false);
+  const receipt = out.structuredContent.receipt as Record<string, unknown>;
+  assert.equal(receipt.team_id, "team_bbbbbbbb");
+  assert.equal(receipt.agent_id, "ag_cccccccc");
+});
+
+test("the response says where the measured facts came from", async () => {
+  const env = { FEATURE_GUARD_CHECK: "true" } as Env;
+  const none = await callGuardCheckTool({ policy, requirement: requirement() }, auth(), env);
+  assert.equal(none.structuredContent.measured_source, "none");
+  const sent = await callGuardCheckTool({ policy, requirement: requirement(), measured: { pay_to: PAYTO, probed_at: "2026-11-01T00:00:00Z" } as never }, auth(), env);
+  assert.equal(sent.structuredContent.measured_source, "caller");
+});
+
+test("an oversized body is refused before it is parsed, by declared length and by actual bytes", async () => {
+  const env = { FEATURE_GUARD_CHECK: "true" } as Env;
+  const resolve: ResolveGuardAuth = async () => auth();
+  const big = JSON.stringify({ policy, requirement: requirement(), pad: "x".repeat(40_000) });
+  const declared = await handleGuardCheck(
+    new Request("https://botsrated.com/v1/guard/check", { method: "POST", headers: { authorization: "Bearer t", "content-length": String(big.length) }, body: big }),
+    env,
+    resolve,
+  );
+  assert.equal(declared.status, 413);
+  // No content-length (a stream): counted in bytes as it is read. 12,000 three-byte characters is 36,000 bytes.
+  const multibyte = JSON.stringify({ policy, requirement: requirement(), pad: "\u20ac".repeat(12_000) });
+  assert.ok(multibyte.length < 32_000 && new TextEncoder().encode(multibyte).length > 32_000);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(multibyte));
+      controller.close();
+    },
+  });
+  const streamed = await handleGuardCheck(
+    new Request("https://botsrated.com/v1/guard/check", { method: "POST", headers: { authorization: "Bearer t" }, body: stream, duplex: "half" } as RequestInit),
+    env,
+    resolve,
+  );
+  assert.equal(streamed.status, 413);
+  const ok = await handleGuardCheck(
+    new Request("https://botsrated.com/v1/guard/check", { method: "POST", headers: { authorization: "Bearer t" }, body: JSON.stringify({ policy, requirement: requirement() }) }),
+    env,
+    resolve,
+  );
+  assert.equal(ok.status, 200);
+});

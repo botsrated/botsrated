@@ -1,5 +1,8 @@
 name: Publish npm package (trusted publishing)
 
+# OLDER DRAFT. The copy that runs is .github/workflows/publish-npm.yml, and it has moved on from this file
+# (for example, it can publish the mastra package and this draft cannot). Read that file, not this one.
+
 # Manual only: workflow_dispatch from refs/heads/main. Any other event or ref fails in the first job. Nothing runs on
 # push, tag or schedule. Dry run is the default. Publishes one package from integrations/ to npm with OIDC trusted
 # publishing and --provenance: no npm token is stored in this repo or its secrets.
