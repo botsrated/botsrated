@@ -90,6 +90,27 @@ test("unknown key_id", async () => {
   assert.deepEqual(verifyResultJson(result).errors.includes("key_unknown"), true);
 });
 
+test("a key_id that names an Object.prototype property is an unknown key, not a crash", async () => {
+  for (const kid of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
+    const r = await verifyReceipt({ id: "x", kind: "unpaid_probe", probe_version: 1, ts: "2026-11-01T00:00:00Z", host: "a.example", sig: { key_id: kid, sig_b64: "AAAA" } }, keys, nodeDeps());
+    assert.equal(r.valid, false, kid);
+    assert.equal(r.status, "key unknown", kid);
+    assert.ok(r.errors.includes("key_unknown"), kid);
+  }
+});
+
+test("a malformed signature or key list is a failed check, not a crash", async () => {
+  const listed = keys.keys[0].key_id;
+  const receipt = (sig) => ({ id: "x", kind: "unpaid_probe", probe_version: 1, ts: "2026-11-01T00:00:00Z", host: "a.example", sig });
+  const notBase64 = await verifyReceipt(receipt({ key_id: listed, sig_b64: "!!! not base64 !!!" }), keys, nodeDeps());
+  assert.equal(notBase64.valid, false);
+  assert.ok(notBase64.errors.includes("signature_mismatch"));
+  const noList = await verifyReceipt(receipt({ key_id: listed, sig_b64: "AAAA" }), { keys: "not a list" }, nodeDeps());
+  assert.equal(noList.status, "key unknown");
+  const junk = await verifyReceipt(receipt({ key_id: listed, sig_b64: "AAAA" }), { keys: [null, 5, { key_id: 7 }, { key_id: listed }] }, nodeDeps());
+  assert.equal(junk.status, "key unknown");
+});
+
 test("Accept negotiation keeps JSON for API clients", () => {
   assert.equal(prefersHtml(""), false);
   assert.equal(prefersHtml("*/*"), false);
