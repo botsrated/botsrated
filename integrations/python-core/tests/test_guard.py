@@ -533,3 +533,50 @@ def test_resource_url_odd_spellings_cannot_skip_the_check(mock_api, found):
     for claimed in ("  https://evil.example/x", "https:evil.example", "https:///evil.example"):
         d = g.decide(claimed, req(found), request_url=found["latest_probe"]["url"])
         assert d.action == "block" and d.reasons[0].code == "resource_url_mismatch", claimed
+
+
+def test_signed_call_does_not_follow_a_redirect(check_402_b64, monkeypatch):
+    """A caller-supplied client that follows redirects must not carry PAYMENT-SIGNATURE to another host."""
+    import botsrated.client as client_mod
+
+    monkeypatch.setattr(client_mod, "_sign", lambda _x402_client, _terms: "sig-for-test")
+    seen: list[tuple[str, bool]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        signed = "payment-signature" in request.headers
+        seen.append((request.url.host, signed))
+        if request.url.host != "botsrated.com":
+            return httpx.Response(200, json={"reached": "another host"})
+        if signed:
+            return httpx.Response(302, headers={"location": "https://elsewhere.example/v1/check?host=blockrun.ai"})
+        return httpx.Response(402, json={}, headers={"payment-required": check_402_b64})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    c = BotsRatedClient(budget_usd="0.001", http=http, x402_client=object())
+    with pytest.raises(BotsRatedError) as e:
+        c.check("blockrun.ai")
+    assert e.value.code == "paid_call_failed"
+    assert seen == [("botsrated.com", False), ("botsrated.com", True)]
+    assert c.budget.spent_atomic == 1000  # a signed payment may have settled, so it stays counted
+
+
+def test_preflight_does_not_follow_a_redirect():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host != "botsrated.com":
+            return httpx.Response(200, json={"found": True})
+        return httpx.Response(302, headers={"location": "https://elsewhere.example/v1/preflight"})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    with pytest.raises(BotsRatedError) as e:
+        BotsRatedClient(http=http).preflight("seller.example")
+    assert e.value.code == "http_error" and e.value.status == 302
+    assert seen == ["botsrated.com"]
+
+
+def test_preflight_body_that_is_not_an_object_is_not_a_crash():
+    http = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=["not", "an", "object"])))
+    result = BotsRatedClient(http=http).preflight("seller.example")
+    assert result.body == {}

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { BotsRatedClient, createPrePaymentGuard, strictGuardPolicy } from "../src/index";
-import { createPaymentGuard, interpretPolicyBody, policies, resetHostedLookupCircuit, type GuardDecision } from "../src/payment-guard";
+import { createPaymentGuard, interpretPolicyBody, normalizeRemotePolicy, policies, resetHostedLookupCircuit, type GuardDecision } from "../src/payment-guard";
 import { FOUND, OTHER_PAYTO, SELLER_URL, json, pr, req } from "./helpers";
 
 const TOKEN = "policy-token-1";
@@ -236,5 +236,16 @@ describe("remotePolicy", () => {
     expect(interpretPolicyBody(200, { decision: null }, "closed", "blockrun.ai")).toMatchObject({ decision: null, effect: "block" });
     expect(interpretPolicyBody(200, { decision: "block" }, "open", "blockrun.ai").decision).toBe("block");
     expect(interpretPolicyBody(null, {}, "closed", "blockrun.ai")).toMatchObject({ decision: null, effect: "block" });
+  });
+});
+
+describe("remote policy base URL", () => {
+  it.each(["http://policy.example", "http://botsrated.com", "http://10.0.0.5:8080"])("does not send the token over plain http: %s", (baseUrl) => {
+    expect(() => normalizeRemotePolicy({ token: TOKEN, failMode: "closed", baseUrl })).toThrow(/https/);
+    expect(() => createPaymentGuard({ remotePolicy: { token: TOKEN, failMode: "closed", baseUrl } })).toThrow(/https/);
+  });
+
+  it.each(["https://policy.example", "http://localhost:8787", "http://127.0.0.1:8787", "http://[::1]:8787"])("accepts https and local http: %s", (baseUrl) => {
+    expect(normalizeRemotePolicy({ token: TOKEN, failMode: "closed", baseUrl }).baseUrl).toBe(baseUrl);
   });
 });

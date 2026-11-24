@@ -113,7 +113,7 @@ A stopped payment raises the x402 abort error with text like:
 | `quote_above_listing`: same route, amount above the listed amount. A server policy reason with this code uses the same effect | `quote_above_listing` | warn | warn |
 | `network_not_observed`: the probes recorded the host on another network and hold no record for the network this quote is on, so its payTo cannot be compared | `network_not_observed` | warn | **block** |
 | `repeat_payment`: the same payment identifier, or the same host, route, amount and nonce, repeats within 60 seconds. Local only. `replay_tested` stays false | `repeat_payment` | warn | warn |
-| `pay_to_base58_format`: a Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. The Base USDC rule is unchanged | `payto_base58_format` | warn | warn |
+| `pay_to_base58_format`: a Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. The Base USDC rule is unchanged | `payto_base58_format` | warn | **block** |
 | After payment, on `wrap_get` / `wrap_async_get`, once a payload was created: a 2xx is not a delivery unless the body is non-empty, the content type is one this check accepts (`application/json`, `application/problem+json`, `text/plain`, `text/json`, or a `+json` type), and a JSON schema the seller declared matches. This check does not block | `delivery_check` | warn | warn |
 | `not_covered`: BotsRated has no probe record for the host | `not_covered` | info | info |
 | `stale`: BotsRated's latest probe is older than 24 h | `data_stale` | info | info |

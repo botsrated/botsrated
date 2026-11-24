@@ -49,7 +49,7 @@
       "notCovered": "allow",
       "stale": "allow",
       "repeatPayment": "warn",
-      "payToBase58Format": "warn",
+      "payToBase58Format": "block",
       "quoteAboveListing": "warn",
       "networkNotObserved": "block"
     },

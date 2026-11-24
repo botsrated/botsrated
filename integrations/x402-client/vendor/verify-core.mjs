@@ -218,9 +218,20 @@ export async function verifyReceipt(raw, keyset, deps) {
     lines.push(`INFO  receipt sha256 (canonical JSON, compare with EAS receiptSha256): 0x${await sha256(canon(r))}`);
   }
 
-  const list = (keyset && keyset.keys) || [];
-  const keys = Object.fromEntries(list.map((k) => [k.key_id, k.public_key_b64]));
-  const kmeta = Object.fromEntries(list.map((k) => [k.key_id, k]));
+  // Key ids come from the receipt, so the lookup tables have no prototype: an id like "constructor" or
+  // "__proto__" is an unknown key, not an inherited property. Only string ids with a string public key are listed.
+  const list = keyset && Array.isArray(keyset.keys) ? keyset.keys : [];
+  const keys = Object.create(null);
+  const kmeta = Object.create(null);
+  for (const k of list) {
+    if (!k || typeof k !== "object" || typeof k.key_id !== "string" || typeof k.public_key_b64 !== "string") continue;
+    keys[k.key_id] = k.public_key_b64;
+    kmeta[k.key_id] = k;
+  }
+  // A signature or key that is not valid base64, or not the right length, is a failed check, not a crash.
+  const checkSig = async (publicKeyB64, message, sigB64) => {
+    try { return (await deps.ed25519(publicKeyB64, message, sigB64)) === true; } catch { return false; }
+  };
   const inWindow = (kid, ts) => {
     const k = kmeta[kid];
     if (!k) return false;
@@ -245,7 +256,7 @@ export async function verifyReceipt(raw, keyset, deps) {
       msg = canon({ ...r, sig: undefined });
     }
     const known = !!keys[sig.key_id];
-    const sigOk = known && msg ? await deps.ed25519(keys[sig.key_id], msg, sig.sig_b64) : false;
+    const sigOk = known && msg ? await checkSig(keys[sig.key_id], msg, sig.sig_b64) : false;
     say(known && sigOk, `ed25519 receipt signature, key ${sig.key_id}`, known ? "signature_mismatch" : "key_unknown");
     if (known && sigOk) lines.push(`INFO  signed by BotsRated key ${sig.key_id}`);
     inWindow(sig.key_id, r.ts || r.generated_at);
@@ -255,7 +266,7 @@ export async function verifyReceipt(raw, keyset, deps) {
     const ss = snap.sig;
     say(await sha256(ds) === ss.sha256, `snapshot sha256 ${ss.sha256.slice(0, 16)}…`, "snapshot_sha256");
     const known = !!keys[ss.key_id];
-    const sigOk = known ? keys[ss.key_id] === ss.public_key_b64 && await deps.ed25519(keys[ss.key_id], ds, ss.signature_b64) : false;
+    const sigOk = known ? keys[ss.key_id] === ss.public_key_b64 && await checkSig(keys[ss.key_id], ds, ss.signature_b64) : false;
     say(sigOk, `snapshot ed25519 signature, key ${ss.key_id}, generated ${ss.generated_at}`, known ? "snapshot_signature" : "key_unknown");
     inWindow(ss.key_id, ss.generated_at);
     const text = new TextDecoder().decode(ds);
