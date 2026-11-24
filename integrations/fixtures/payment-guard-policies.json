@@ -10,7 +10,8 @@
     "stale",
     "repeatPayment",
     "payToBase58Format",
-    "quoteAboveListing"
+    "quoteAboveListing",
+    "networkNotObserved"
   ],
   "pythonFields": {
     "payToMismatch": "pay_to_mismatch",
@@ -22,7 +23,8 @@
     "stale": "stale",
     "repeatPayment": "repeat_payment",
     "payToBase58Format": "pay_to_base58_format",
-    "quoteAboveListing": "quote_above_listing"
+    "quoteAboveListing": "quote_above_listing",
+    "networkNotObserved": "network_not_observed"
   },
   "presets": {
     "warn": {
@@ -35,7 +37,8 @@
       "stale": "allow",
       "repeatPayment": "warn",
       "payToBase58Format": "warn",
-      "quoteAboveListing": "warn"
+      "quoteAboveListing": "warn",
+      "networkNotObserved": "warn"
     },
     "strict": {
       "payToMismatch": "block",
@@ -47,7 +50,8 @@
       "stale": "allow",
       "repeatPayment": "warn",
       "payToBase58Format": "warn",
-      "quoteAboveListing": "warn"
+      "quoteAboveListing": "warn",
+      "networkNotObserved": "block"
     },
     "carefulBuyer": "strict"
   }
