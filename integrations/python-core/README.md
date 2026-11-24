@@ -140,6 +140,9 @@ never echoed except a parsed host name.
 | `observed_amount` | Last amount recorded on the probed route, in atomic units |
 | `stale` | True when the latest probe is older than 24 hours |
 | `receipt_url` | `https://botsrated.com/receipt/...` when the preflight included a receipt on botsrated.com |
+| `quotes_by_network` | Per-network payTo, amount, and rotating flag from preflight `quotes_by_network`, when that object is present. `None` on older bodies |
+
+`quotes_by_network` compares a request with the record stored under that same network string. A Solana payTo (base58, exact case) is compared with the payTo recorded for that network, the same way a Base address is. x402 v1 names `base` and `solana` are known families and are not rewritten to a CAIP-2 id. The on-chain check stays Base USDC only.
 
 `reasons` lists each fact (`code`, `effect` of `info`, `warn` or `block`, `rule`, `fact`). `dispute_url` is
 https://botsrated.com/disputes. `would_block` is true when a rule's effect is `block`, including in dry-run, where
@@ -364,7 +367,7 @@ the allowlisted fields only (scheme, network, asset, amount, payTo, maxTimeoutSe
 itself, so register the guard on the same x402 client so the re-served 402 is checked again before signing.
 
 How paid calls work:
-- Free daily quota (`FREE_DAILY_QUOTA` (the package's `FREE_DAILY_QUOTA` constant still reads 25 until the next release; the server's `free_quota` block is what counts)): the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP per UTC day are
+- Free daily quota (`FREE_DAILY_QUOTA`; the server's `free_quota` block is what counts): the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP per UTC day are
   served free (200 with `charged: false` and a `free_quota` block). The client asks unpaid first, so
   inside the quota nothing is paid and the budget is untouched; `check()`/`report()` also work without
   a budget until the quota is used up (then `paid_disabled`). `client.last_free_quota` shows what is left.

@@ -436,7 +436,7 @@ await botsrated.best("web search", { sort: "price" }); // $0.01
   settle and the reservation is released (`payment_not_created`). The older
   `fetchWithPayment: wrapFetchWithPayment(fetch, client)` still works, but it re-reads the 402 itself, so
   register the guard on the same `x402Client` so that re-served 402 is checked again before signing.
-- Free daily quota (`FREE_DAILY_QUOTA` (the package's `FREE_DAILY_QUOTA` constant still reads 25 until the next release; the server's `free_quota` block is what counts)): BotsRated serves the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP
+- Free daily quota (`FREE_DAILY_QUOTA`; the server's `free_quota` block is what counts): BotsRated serves the first 5 `/v1/check` (25 with a free API key) and 3 `/v1/report` calls per client IP
   per UTC day free (200 with `charged: false` and a `free_quota` block). The client asks unpaid
   first, so inside the quota nothing is paid and the budget is untouched; `check()`/`report()` work
   even without `paid` until the quota is used up (then they throw `paid_disabled`).

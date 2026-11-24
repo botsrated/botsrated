@@ -120,6 +120,11 @@ export interface EvaluateOptions {
   enforceResourceHost?: boolean;
 }
 
+/** A signed field counts as given unless it is undefined or null. */
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -272,7 +277,8 @@ function finish(
 
 /**
  * Compare one signed requirement with the customer's policy.
- * A missing decision is `verdict: null`, never a pass.
+ * A missing decision is `verdict: null`, never a pass. A field that is given but cannot satisfy its
+ * rule is a `fail` on that rule, not a missing decision.
  */
 export function evaluateCustomerPolicy(
   policy: CustomerPolicy | null | undefined,
@@ -303,7 +309,7 @@ export function evaluateCustomerPolicy(
   const networks = listOf(policy?.networks, (item) => (typeof item === "string" && NETWORK.test(item.trim()) ? item.trim() : null));
   const max = policy?.max_amount_atomic;
   const maxOk = max === undefined || isAtomicAmount(max);
-  const badPolicy = !policy || !id || !version || !failMode || !hosts.ok || !payTos.ok || !networks.ok || !maxOk || pay.conflict || resource.conflict;
+  const badPolicy = !policy || !id || !version || !failMode || !hosts.ok || !payTos.ok || !networks.ok || !maxOk;
 
   const base = {
     fail_mode: failMode ?? "open",
@@ -320,21 +326,45 @@ export function evaluateCustomerPolicy(
   const needPay = policy.pay_to !== undefined;
   const needNetwork = policy.networks !== undefined;
   const needHost = enforceHost && policy.resource_hosts !== undefined;
-  if ((needAmount && !echo.amount) || (needPay && !echo.pay_to) || (needNetwork && !echo.network) || (needHost && !echo.resource_host)) {
-    return finish({ ...base, verdict: null, rule_hit: "unevaluable", detail: "a signed requirement field is missing" });
-  }
 
-  if (needAmount && BigInt(echo.amount!) > BigInt(max as string)) {
-    return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the signed amount is above your policy ceiling" });
+  // A rule fails when its signed field is there and does not satisfy it: above the ceiling, not on the
+  // list, in a form the rule cannot match, or given twice with different values. Every rule that can be
+  // decided is decided first, so one odd or absent field never hides a failed rule. Only an absent field
+  // (undefined or null) is "missing", and missing is reported only when no rule failed.
+  if (needAmount && present(amountRaw)) {
+    if (!echo.amount) {
+      return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the signed amount is not a whole atomic amount" });
+    }
+    if (BigInt(echo.amount) > BigInt(max as string)) {
+      return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the signed amount is above your policy ceiling" });
+    }
   }
-  if (needPay && !payTos.values.includes(echo.pay_to!)) {
-    return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the signed payTo is not in your policy" });
+  if (needPay) {
+    if (pay.conflict) {
+      return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the requirement carries two different payTo values" });
+    }
+    if (present(pay.value) && (!echo.pay_to || !payTos.values.includes(echo.pay_to))) {
+      return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the signed payTo is not in your policy" });
+    }
   }
-  if (needNetwork && !networks.values.includes(echo.network!)) {
+  if (needNetwork && present(networkRaw) && (!echo.network || !networks.values.includes(echo.network))) {
     return finish({ ...base, verdict: "fail", rule_hit: "network", detail: "the signed network is not in your policy" });
   }
-  if (needHost && !hosts.values.includes(echo.resource_host!)) {
-    return finish({ ...base, verdict: "fail", rule_hit: "resource_host", detail: "the resource.url host is not in your policy" });
+  if (needHost) {
+    if (resource.conflict) {
+      return finish({ ...base, verdict: "fail", rule_hit: "resource_host", detail: "the request host and the resource.url host differ" });
+    }
+    if (present(resource.url) && (!echo.resource_host || !hosts.values.includes(echo.resource_host))) {
+      return finish({ ...base, verdict: "fail", rule_hit: "resource_host", detail: "the resource.url host is not in your policy" });
+    }
+  }
+
+  // Conflicting fields that no rule in this policy reads: no decision, as before.
+  if (pay.conflict || resource.conflict) {
+    return finish({ ...base, verdict: null, rule_hit: "unevaluable", detail: "the requirement carries conflicting fields" });
+  }
+  if ((needAmount && !echo.amount) || (needPay && !echo.pay_to) || (needNetwork && !echo.network) || (needHost && !echo.resource_host)) {
+    return finish({ ...base, verdict: null, rule_hit: "unevaluable", detail: "a signed requirement field is missing" });
   }
   return finish({ ...base, verdict: "pass", rule_hit: "none", detail: `policy ${id} version ${version}` });
 }

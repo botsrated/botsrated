@@ -6,6 +6,8 @@ from botsrated import (
     BASE_MAINNET,
     BASE_USDC,
     BOTSRATED_PAY_TO,
+    FREE_DAILY_QUOTA,
+    PAID_ROUTE_MAX_ATOMIC,
     STRICT_GUARD_POLICY,
     BotsRatedClient,
     BotsRatedError,
@@ -254,20 +256,45 @@ def test_best_without_paid_lookups_does_not_mention_a_quota():
     assert "quota" not in str(e.value) and "x402_client" in str(e.value)
 
 
-def test_refuses_old_check_price(check_402_b64):
+def _check_402_at(check_402_b64, amount: str) -> str:
+    """The captured check quote (1000 atomic) with every option re-priced, as a PAYMENT-REQUIRED header."""
     import base64
     import json as _json
 
     terms = _json.loads(base64.b64decode(check_402_b64))
     for a in terms["accepts"]:
-        a["amount"] = "2000"
-    hdr = base64.b64encode(_json.dumps(terms).encode()).decode()
+        a["amount"] = amount
+    return base64.b64encode(_json.dumps(terms).encode()).decode()
+
+
+def test_check_price_ceiling_is_the_published_price():
+    # /v1/check is $0.01 (10000 atomic USDC); 5 free per client IP per UTC day without a key.
+    assert PAID_ROUTE_MAX_ATOMIC["check"] == 10000
+    assert FREE_DAILY_QUOTA["check"] == 5
+
+
+def test_refuses_check_quote_above_published_price(check_402_b64):
     with respx.mock(base_url="https://botsrated.com") as m:
-        m.get("/v1/check").respond(402, json={}, headers={"payment-required": hdr})
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": _check_402_at(check_402_b64, "10001")})
         c = BotsRatedClient(budget_usd=1, paying_get=lambda u: pytest.fail("must not pay"))
         with pytest.raises(BotsRatedError) as e:
             c.check("blockrun.ai")
         assert e.value.code == "terms_rejected"
+
+
+def test_pays_check_quote_at_published_price(check_402_b64, sample_check):
+    paid = []
+
+    def pay(url):
+        paid.append(url)
+        return httpx.Response(200, json=sample_check)
+
+    with respx.mock(base_url="https://botsrated.com") as m:
+        m.get("/v1/check").respond(402, json={}, headers={"payment-required": _check_402_at(check_402_b64, "10000")})
+        c = BotsRatedClient(budget_usd="0.01", paying_get=pay)
+        c.check("blockrun.ai")
+    assert len(paid) == 1
+    assert c.budget.spent_atomic == 10000 and c.budget.remaining_atomic == 0
 
 
 def test_guard_check_uses_free_quota_without_paid(found, not_covered, free_check):

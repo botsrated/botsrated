@@ -308,7 +308,7 @@ class PrePaymentGuard:
         policy: What to block or warn on.
         fail_open: Allow the payment when BotsRated is unreachable. Default True.
         paid_check_at_or_above_usd: Run a check for payments at or above this: free within the daily quota
-            (25 per UTC day), then a $0.001 paid check with a paid-enabled client (skipped otherwise).
+            (5 per UTC day, 25 with a free API key), then a $0.01 paid check with a paid-enabled client (skipped otherwise).
         on_decision: Called with every decision.
         remote_policy: Optional private policy check (``token``, ``fail_mode`` ``open`` or ``closed``, optional
             ``base_url``). Before paying, ``POST /v1/policy/check`` with the host and quote. A remote block stops
