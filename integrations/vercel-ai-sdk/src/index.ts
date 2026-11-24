@@ -63,11 +63,11 @@ export function botsratedPreflight(client: BotsRatedClient = new BotsRatedClient
   });
 }
 
-/** Paid ($0.001; first 25 per client IP per UTC day free) BotsRated check. Needs a client created with `paid: { budgetUsd, x402Client }`. */
+/** Paid ($0.01; first 5 per client IP per UTC day free, 25 with a free API key) BotsRated check. Needs a client created with `paid: { budgetUsd, x402Client }`. */
 export function botsratedCheck(client: BotsRatedClient): Tool<BotsRatedCheckInput, BotsRatedToolOutput> {
   return tool({
     description:
-      "Paid: $0.001 USDC on Base (first 25 per client IP per UTC day free, nothing charged), within a budget the user set. Full BotsRated facts for one x402 seller host (probe counts, valid-402 rate, latency, price/payTo vs listing, paid test-buys with tx links). Use botsratedPreflight (free, no key, rate limits) first.",
+      "Paid: $0.01 USDC on Base (first 5 per client IP per UTC day free, 25 with a free API key, nothing charged), within a budget the user set. Full BotsRated facts for one x402 seller host (probe counts, valid-402 rate, latency, price/payTo vs listing, paid test-buys with tx links). Use botsratedPreflight (free, no key, rate limits) first.",
     inputSchema: z.object({ host: z.string().describe("The x402 seller host or URL") }),
     execute: async ({ host }): Promise<BotsRatedToolOutput> => {
       try {
