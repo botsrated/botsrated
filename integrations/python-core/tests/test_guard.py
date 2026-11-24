@@ -559,6 +559,13 @@ def test_preflight_does_not_follow_a_redirect():
         return httpx.Response(302, headers={"location": "https://elsewhere.example/v1/preflight"})
 
     http = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
-    with pytest.raises(BotsRatedError):
+    with pytest.raises(BotsRatedError) as e:
         BotsRatedClient(http=http).preflight("seller.example")
+    assert e.value.code == "http_error" and e.value.status == 302
     assert seen == ["botsrated.com"]
+
+
+def test_preflight_body_that_is_not_an_object_is_not_a_crash():
+    http = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=["not", "an", "object"])))
+    result = BotsRatedClient(http=http).preflight("seller.example")
+    assert result.body == {}

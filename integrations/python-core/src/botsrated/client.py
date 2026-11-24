@@ -246,10 +246,13 @@ class BotsRatedClient:
             body = resp.json()
         except ValueError:
             body = {}
-        err = body.get("error") if isinstance(body, dict) else None
+        if not isinstance(body, dict):
+            body = {}
+        err = body.get("error")
         if resp.status_code == 404 and isinstance(err, dict) and err.get("code") == "host_not_covered":
             result = PreflightResult(False, host, {**body, "found": False})
-        elif resp.status_code >= 400:
+        elif not 200 <= resp.status_code < 300:
+            # Any answer that is not a 2xx is an error, including a redirect (redirects are never followed).
             msg = err.get("message") if isinstance(err, dict) else None
             code = err.get("code") if isinstance(err, dict) else None
             raise BotsRatedError(clean_text(msg or f"preflight returned {resp.status_code}"), clean_text(code or "http_error", 40), resp.status_code)
