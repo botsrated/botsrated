@@ -1,5 +1,5 @@
 {
-  "note": "Shared cases for the customer-policy evaluator. Pass/fail uses only amount, payTo, network, and resource.url host. Seller text is present and must not change the result. No $1 cap is applied here.",
+  "note": "Shared cases for the customer-policy evaluator. Pass/fail uses only amount, payTo, network, and resource.url host. Seller text is present and must not change the result. No $1 cap is applied here. A field that is given but cannot satisfy its rule fails that rule; only an absent field is unevaluable, and only when no rule failed.",
   "cases": [
     {
       "name": "matching rule passes",
@@ -268,6 +268,187 @@
         "expires_at": "2026-11-04T13:00:00Z",
         "last_checked": "2026-11-04T12:00:00Z",
         "evidence_url": null
+      }
+    },
+    {
+      "name": "amount above the ceiling fails even when the payTo is not an address",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "amount": "999999999",
+        "payTo": "not-an-address",
+        "network": "eip155:8453"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "amount",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "999999999",
+        "pay_to": null,
+        "network": "eip155:8453",
+        "resource_host": null
+      }
+    },
+    {
+      "name": "a payTo that is not a 20-byte address is not in the policy",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "amount": "500",
+        "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "pay_to",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "500",
+        "pay_to": null,
+        "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "resource_host": null
+      }
+    },
+    {
+      "name": "an amount sent as a number fails the amount rule",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "amount": 999999999,
+        "payTo": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "amount",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": null,
+        "pay_to": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453",
+        "resource_host": null
+      }
+    },
+    {
+      "name": "a network that is not a string fails the network rule",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "amount": "500",
+        "payTo": "0x1111111111111111111111111111111111111111",
+        "network": 8453
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "network",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "500",
+        "pay_to": "0x1111111111111111111111111111111111111111",
+        "network": null,
+        "resource_host": null
+      }
+    },
+    {
+      "name": "two different payTo values fail the payTo rule",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "amount": "500",
+        "payTo": "0x2222222222222222222222222222222222222222",
+        "pay_to": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "pay_to",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "500",
+        "pay_to": null,
+        "network": "eip155:8453",
+        "resource_host": null
+      }
+    },
+    {
+      "name": "a failed rule wins over a missing field",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "max_amount_atomic": "1000",
+        "pay_to": ["0x1111111111111111111111111111111111111111"],
+        "networks": ["eip155:8453"]
+      },
+      "requirement": {
+        "payTo": "0x2222222222222222222222222222222222222222",
+        "network": "eip155:8453"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "pay_to",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": null,
+        "pay_to": "0x2222222222222222222222222222222222222222",
+        "network": "eip155:8453",
+        "resource_host": null
+      }
+    },
+    {
+      "name": "a resource.url that is not http(s) is not in the policy",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "resource_hosts": ["seller.example"]
+      },
+      "requirement": {
+        "amount": "500",
+        "payTo": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453",
+        "resource_url": "ftp://seller.example/api"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "resource_host",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "500",
+        "pay_to": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453",
+        "resource_host": null
       }
     }
   ]
