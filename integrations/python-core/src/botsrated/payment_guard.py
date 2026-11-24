@@ -34,7 +34,7 @@ import time
 from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime, timezone
 from typing import Any, Literal, TypeVar
 from urllib.parse import urlsplit
@@ -115,6 +115,12 @@ class PaymentGuardPolicy:
     # BotsRated's probes recorded this host on another network and hold no record for the network this quote is on,
     # so its payTo cannot be compared (network_not_observed). Advice by default; POLICIES["strict"] blocks.
     network_not_observed: RuleEffect = "warn"
+
+    def __post_init__(self) -> None:
+        # Fail loud: a rule value that cannot be read must never act as "allow" and let payments through silently.
+        bad = [f"{f.name}={getattr(self, f.name)!r}" for f in fields(self) if getattr(self, f.name) not in ("allow", "warn", "block")]
+        if bad:
+            raise ValueError("PaymentGuardPolicy cannot be read: each rule must be \"allow\", \"warn\" or \"block\" (" + ", ".join(bad) + ").")
 
 
 _WARN = PaymentGuardPolicy()
@@ -283,6 +289,14 @@ def _quote_record(quotes: dict[str, dict[str, Any]], network: str) -> dict[str, 
     return None
 
 
+def _amount_of(obj: Any) -> Any:
+    """The quoted amount. x402 v1 quotes carry it in ``maxAmountRequired``; read that only when ``amount`` is absent."""
+    amount = _get(obj, "amount")
+    if amount is None:
+        amount = _get(obj, "maxAmountRequired", "max_amount_required")
+    return amount
+
+
 def _get(obj: Any, *names: str) -> Any:
     """Read a field from a dict or a pydantic model (camelCase or snake_case)."""
     for n in names:
@@ -402,7 +416,7 @@ def policy_quote(req: Any) -> dict[str, str]:
     pay_to = _get(req, "payTo", "pay_to")
     if is_address(pay_to):
         quote["payTo"] = pay_to
-    amount = _get(req, "amount")
+    amount = _amount_of(req)
     if isinstance(amount, bool):
         amount_s = None
     elif isinstance(amount, int):
@@ -646,7 +660,7 @@ def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: Pa
         pay_to = raw_pay_to.lower()
     elif network_family(network) == "solana" and is_base58_pubkey(raw_pay_to):
         pay_to = raw_pay_to
-    amount = _get(req, "amount")
+    amount = _amount_of(req)
     if not facts.covered:
         out.append(GuardReason("not_covered", _effect(policy.not_covered, "info"), f"BotsRated has no probe record for {facts.host}.", "notCovered"))
         return out
@@ -1303,7 +1317,7 @@ class PaymentGuard:
             return None
         frm, nonce = auth.get("from"), auth.get("nonce")
         pay_to = _get(accepted, "payTo", "pay_to")
-        amount = _get(accepted, "amount")
+        amount = _amount_of(accepted)
         try:
             valid_before = int(str(auth.get("validBefore")))
         except (TypeError, ValueError):
@@ -1362,7 +1376,7 @@ class PaymentGuard:
         return repeat_sighting(
             payment_id=payment_identifier_of(_get(ctx, "payment_required", "paymentRequired"), req, payload) or self._retry_id_for(pay_to, url),
             url=url,
-            amount=_get(accepted, "amount") if accepted is not None else _get(req, "amount"),
+            amount=_amount_of(accepted) if accepted is not None else _amount_of(req),
             nonce=nonce_of(payload, req),
         )
 
