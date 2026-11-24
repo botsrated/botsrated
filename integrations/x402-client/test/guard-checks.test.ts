@@ -133,7 +133,8 @@ describe("payto_base58_format", () => {
 
     const stop = createPaymentGuard({ hosted: false, policy: { payToBase58Format: "block" } });
     expect(await stop.hooks.beforePaymentCreation(bad)).toMatchObject({ abort: true });
-    expect(policies.carefulBuyer.payToBase58Format).toBe("warn");
+    expect(policies.carefulBuyer.payToBase58Format).toBe("block");
+    expect(policies.warn.payToBase58Format).toBe("warn");
   });
 });
 
@@ -620,7 +621,7 @@ describe("schema work budget and strict payTo rows", () => {
     expect(missing.action).toBe("block");
     expect(missing.reasons.map((r) => r.code)).toContain("payto_invalid");
     const invalidSolana = codes(SOL, "not-a-key");
-    expect(invalidSolana.action).toBe("allow");
+    expect(invalidSolana.action).toBe("block");
     expect(invalidSolana.codes).toContain("payto_base58_format");
     expect(invalidSolana.codes).not.toContain("payto_invalid");
     const otherSol = "So11111111111111111111111111111111111111112";

@@ -109,7 +109,7 @@ export interface PaymentGuardPolicy {
   repeatPayment?: RuleEffect;
   /**
    * A Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Default "warn".
-   * `policies.strict` stays "warn". Does not change the Base USDC hard rule.
+   * `policies.strict` blocks, as it blocks a Base payTo that is not a hex address. Does not change the Base USDC hard rule.
    */
   payToBase58Format?: RuleEffect;
   /**
@@ -153,7 +153,7 @@ const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   notCovered: "allow",
   stale: "allow",
   repeatPayment: "warn",
-  payToBase58Format: "warn",
+  payToBase58Format: "block",
   quoteAboveListing: "warn",
   networkNotObserved: "block",
 });
