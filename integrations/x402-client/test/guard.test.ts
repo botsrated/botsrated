@@ -5,6 +5,8 @@ import {
   BASE_USDC,
   BOTSRATED_PAY_TO,
   BotsRatedClient,
+  FREE_DAILY_QUOTA,
+  PAID_ROUTE_MAX_ATOMIC,
   Budget,
   createPrePaymentGuard,
   evaluatePayment,
@@ -292,14 +294,31 @@ describe("paid routes (opt-in, budgeted)", () => {
     expect(String(err.message)).not.toMatch(/quota/);
   });
 
-  it("refuses a check quote above the new published price (1000 atomic)", async () => {
+  it("pins the check ceiling to the published price ($0.01) and the free quota to 5", () => {
+    expect(PAID_ROUTE_MAX_ATOMIC.check).toBe(10000n);
+    expect(FREE_DAILY_QUOTA.check).toBe(5);
+  });
+
+  it("refuses a check quote above the published price (10000 atomic)", async () => {
     const terms = JSON.parse(atob(CHECK_402_B64));
-    terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "2000" }));
+    terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "10001" }));
     const f = vi.fn(async () => json({}, 402, { "payment-required": btoa(JSON.stringify(terms)) }));
     const pay = vi.fn();
     const c = new BotsRatedClient({ fetch: f, paid: { budgetUsd: 1, fetchWithPayment: pay } });
     await expect(c.check("blockrun.ai")).rejects.toMatchObject({ code: "terms_rejected" });
     expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("pays a check quote at the published price (10000 atomic)", async () => {
+    const terms = JSON.parse(atob(CHECK_402_B64));
+    terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "10000" }));
+    const f = vi.fn(async () => json({}, 402, { "payment-required": btoa(JSON.stringify(terms)) }));
+    const pay = vi.fn(async () => json(SAMPLE_CHECK));
+    const c = new BotsRatedClient({ fetch: f, paid: { budgetUsd: 0.01, fetchWithPayment: pay } });
+    await c.check("blockrun.ai");
+    expect(pay).toHaveBeenCalledTimes(1);
+    expect(c.budget!.spentAtomic).toBe(10000n);
+    expect(c.budget!.remainingAtomic).toBe(0n);
   });
 
   it("the guard's check uses the free quota even without a paid-enabled client", async () => {

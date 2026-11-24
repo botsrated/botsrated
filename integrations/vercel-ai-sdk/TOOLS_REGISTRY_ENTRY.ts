@@ -4,7 +4,7 @@
     slug: 'botsrated',
     name: 'BotsRated',
     description:
-      'Pre-payment check for x402 sellers. Free preflight (no key, rate limits) returns the latest unpaid, signed probe of a seller (status, valid 402, latency, observed price and payTo) and reports a payTo never seen for that host. Optional check ($0.001 USDC on Base, first 25 per client IP per UTC day free) with a user-set budget. Measurements and signed receipts only.',
+      'Pre-payment check for x402 sellers. Free preflight (no key, rate limits) returns the latest unpaid, signed probe of a seller (status, valid 402, latency, observed price and payTo) and reports a payTo never seen for that host. Optional check ($0.01 USDC on Base, first 5 per client IP per UTC day free, 25 with a free API key) with a user-set budget. Measurements and signed receipts only.',
     packageName: '@botsrated/ai-sdk',
     tags: ['payments', 'x402'],
     installCommand: {
