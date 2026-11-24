@@ -106,6 +106,14 @@ export async function runGuardCheck(args: {
   if (args.body.org_id !== undefined && args.body.org_id !== args.auth.org_id) {
     return { status: 403, body: { error: "org_mismatch" } };
   }
+  // A token that is tied to one team or one agent cannot label a receipt with another. A token with no
+  // team or agent of its own (an org-level token) may name the team and agent the check is for.
+  if (args.auth.team_id != null && args.body.team_id !== undefined && args.body.team_id !== args.auth.team_id) {
+    return { status: 403, body: { error: "team_mismatch" } };
+  }
+  if (args.auth.agent_id != null && args.body.agent_id !== undefined && args.body.agent_id !== args.auth.agent_id) {
+    return { status: 403, body: { error: "agent_mismatch" } };
+  }
   const policy = args.body.policy;
   const requirement = asRecord(args.body.requirement);
   if (!policy || !requirement) return { status: 400, body: { error: "invalid_body" } };
@@ -128,8 +136,8 @@ export async function runGuardCheck(args: {
     receipt = await buildPolicyReceipt({
       evaluation,
       orgId: args.auth.org_id,
-      teamId: typeof args.body.team_id === "string" ? args.body.team_id : (args.auth.team_id ?? null),
-      agentId: typeof args.body.agent_id === "string" ? args.body.agent_id : (args.auth.agent_id ?? null),
+      teamId: args.auth.team_id ?? (typeof args.body.team_id === "string" ? args.body.team_id : null),
+      agentId: args.auth.agent_id ?? (typeof args.body.agent_id === "string" ? args.body.agent_id : null),
       policyId: typeof policy.id === "string" ? policy.id : "",
       policyVersion: typeof policy.version === "string" ? policy.version : "",
     });
@@ -148,6 +156,9 @@ export async function runGuardCheck(args: {
       chips: evaluation.chips,
       read_only: true,
       pays: false,
+      // This stub does not open D1, so it cannot look the measured facts up itself. The chips are built from
+      // what the caller sent, and the response says so.
+      measured_source: args.body.measured == null ? "none" : "caller",
       signature_present: false,
       signing_key_scope: "nonprod",
       signing_key_id: signingKeyId,
@@ -156,6 +167,36 @@ export async function runGuardCheck(args: {
       message: evaluation.message,
     },
   };
+}
+
+/**
+ * Read the request body as UTF-8, stopping as soon as it is over `limit` bytes.
+ * Returns null when it is too large, so an oversized body is never held in memory or parsed.
+ */
+async function readBodyUpTo(request: Request, limit: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > limit) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 export async function handleGuardCheck(request: Request, env: Env, resolve: ResolveGuardAuth): Promise<Response> {
@@ -173,8 +214,8 @@ export async function handleGuardCheck(request: Request, env: Env, resolve: Reso
   }
   if (auth instanceof Response) return auth;
 
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) return json(400, { error: "invalid_body" });
+  const text = await readBodyUpTo(request, MAX_BODY_BYTES);
+  if (text === null) return json(413, { error: "body_too_large" });
   let body: CheckBody;
   try {
     body = JSON.parse(text) as CheckBody;

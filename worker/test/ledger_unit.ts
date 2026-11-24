@@ -259,3 +259,22 @@ test("a missing refs table on read is unavailable, not another org's rows", asyn
   const listed = await listLedger(db, { org_id: ORG_A });
   assert.deepEqual(listed, { ok: false, error: "ledger_unavailable" });
 });
+
+test("timestamps are stored and compared at one precision", async () => {
+  const db = openMem();
+  db.exec(readFileSync(new URL("../../d1/migrate-0.23-org-ledger-DRAFT-NOT-APPLIED.sql", import.meta.url), "utf8"));
+  // Same second, written without milliseconds and with them. As raw text "...:00Z" sorts after "...:00.500Z".
+  await recordReceiptRef(db, base({ id: "orr_0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a", at: "2026-10-29T05:00:00Z", receipt_id: "dddddddddddddddddddd" }));
+  await recordReceiptRef(db, base({ id: "orr_0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", at: "2026-10-29T05:00:00.500Z", receipt_id: "eeeeeeeeeeeeeeeeeeee" }));
+  const all = await listLedger(db, { org_id: ORG_A, limit: 10 });
+  assert.equal(all.ok, true);
+  if (!all.ok) return;
+  assert.deepEqual(all.items.map((i) => i.at), ["2026-10-29T05:00:00.500Z", "2026-10-29T05:00:00.000Z"]);
+
+  // A bound written without milliseconds still takes in the row at exactly that second and leaves out the later one.
+  const upTo = await listLedger(db, { org_id: ORG_A, from: "2026-10-29T05:00:00Z", to: "2026-10-29T05:00:00.250Z" });
+  assert.equal(upTo.ok, true);
+  if (!upTo.ok) return;
+  assert.equal(upTo.from, "2026-10-29T05:00:00.000Z");
+  assert.deepEqual(upTo.items.map((i) => i.at), ["2026-10-29T05:00:00.000Z"]);
+});
