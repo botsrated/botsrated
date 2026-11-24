@@ -145,6 +145,7 @@ A stopped payment throws `Payment creation aborted:` with text like:
 | `paidUrlUnknown`: the URL being paid is unknown (no `guard.wrapFetch`), so the only host is the 402's own claim | `paid_url_unknown` | warn | **block** |
 | `priceAboveObserved`: same route, amount above the last amount BotsRated recorded (compared locally) | `price_above_observed` | warn | warn |
 | `quoteAboveListing`: same route, amount above the listed amount. A server policy reason with this code uses the same effect | `quote_above_listing` | warn | warn |
+| `networkNotObserved`: the probes recorded the host on another network and hold no record for the network this quote is on, so its payTo cannot be compared | `network_not_observed` | warn | **block** |
 | `repeatPayment`: the same payment identifier, or the same host, route, amount and nonce, repeats within 60 seconds. Local only. `replay_tested` stays false | `repeat_payment` | warn | warn |
 | `payToBase58Format`: a Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. The Base USDC rule is unchanged | `payto_base58_format` | warn | warn |
 | After payment, on `wrapFetch`, once a payload was created: a 2xx is not a delivery unless the body is non-empty, the content type is one this check accepts (`application/json`, `application/problem+json`, `text/plain`, `text/json`, or a `+json` type), and a JSON schema the seller declared matches. This check does not block | `delivery_check` | warn | warn |

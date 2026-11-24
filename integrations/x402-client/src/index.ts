@@ -622,6 +622,11 @@ export interface GuardPolicy {
   payToBase58Format?: "allow" | "warn" | "block";
   /** Same route, quoted amount above the listed amount. Default "warn". `strictGuardPolicy` stays warn. */
   quoteAboveListing?: "allow" | "warn" | "block";
+  /**
+   * BotsRated's probes recorded this host on another network, so the payTo on this quote's network cannot be
+   * compared (`network_not_observed`). Default "warn". `strictGuardPolicy` blocks.
+   */
+  networkNotObserved?: "allow" | "warn" | "block";
   /** BotsRated data older than 24 h. Default "allow". */
   stale?: "allow" | "block";
   /** Block when the recent valid-402 rate is below this (only with >= 3 recent probes). Off by default. */
@@ -638,7 +643,7 @@ export interface GuardPolicy {
  * Since 0.2.0 it also sets `requireRequestUrl`, so a payment whose real request URL is unknown is stopped too
  * (use `guard.wrapFetch` or `guard.forRequest`).
  */
-export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", requireRequestUrl: true });
+export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", networkNotObserved: "block", requireRequestUrl: true });
 
 export interface Reason {
   code: string;
@@ -667,6 +672,7 @@ const DEFAULT_POLICY: Required<Omit<GuardPolicy, "minValid402Rate" | "requireReq
   repeatPayment: "warn",
   payToBase58Format: "warn",
   quoteAboveListing: "warn",
+  networkNotObserved: "warn",
   stale: "allow",
 };
 
@@ -705,7 +711,7 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
       const listingSol = facts.listingPayTo && isBase58Pubkey(facts.listingPayTo) ? facts.listingPayTo : undefined;
       const noBase58 = knownSol.length === 0 && !listingSol;
       if (observedNetwork && !sameObservedNetwork(observedNetwork, network)) {
-        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
+        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, p.networkNotObserved);
       } else if (knownSol.length > 0 && !knownSol.includes(rawPayTo)) {
         add(
           "payto_not_observed",
@@ -724,7 +730,7 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
         }
       } else if (noBase58 && (facts.knownPayTos.length > 0 || facts.listingPayTo)) {
         if (!observedNetwork) {
-          add("network_not_observed", `the payTo addresses BotsRated's probes recorded for ${host} are eip155 addresses, not ${network} addresses.`, "info");
+          add("network_not_observed", `the payTo addresses BotsRated's probes recorded for ${host} are eip155 addresses, not ${network} addresses.`, p.networkNotObserved);
         } else {
           add(
             "payto_not_observed",
@@ -737,7 +743,7 @@ export function evaluatePayment(facts: SellerFacts, req: PaymentRequirementsLike
       add("payto_invalid", payToInvalidFact(req?.network), p.payToMismatch);
     } else if (isAddress(req?.payTo)) {
       if (observedNetwork && !sameObservedNetwork(observedNetwork, network)) {
-        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, "info");
+        add("network_not_observed", `BotsRated's probes recorded ${host} on ${observedNetwork}, not on ${network}.`, p.networkNotObserved);
       } else if (known.length > 0 && !known.includes(req.payTo.toLowerCase())) {
         add(
           "payto_not_observed",
