@@ -18,7 +18,8 @@ Only a field that is absent from the signed requirement. If your policy has a ru
 A field that is there but cannot satisfy its rule is a `fail`, on either `fail_mode`:
 
 - an amount above your ceiling, or one that is not a whole atomic amount string;
-- a payTo that is not on your list, including one that is not a 20-byte hex address, and a requirement that carries `payTo` and `pay_to` with different values;
+- a payTo that is not on your list, including one that is not a 20-byte hex address;
+- a requirement that carries `payTo` and `pay_to` with different values, whether or not your policy has a payTo rule;
 - a network that is not on your list;
 - a `resource.url` host that is not on your list, and a request whose host differs from the `resource.url` host.
 

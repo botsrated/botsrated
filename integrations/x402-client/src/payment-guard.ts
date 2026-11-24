@@ -109,7 +109,7 @@ export interface PaymentGuardPolicy {
   repeatPayment?: RuleEffect;
   /**
    * A Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Default "warn".
-   * `policies.strict` stays "warn". Does not change the Base USDC hard rule.
+   * `policies.strict` blocks, as it blocks a Base payTo that is not a hex address. Does not change the Base USDC hard rule.
    */
   payToBase58Format?: RuleEffect;
   /**
@@ -153,7 +153,7 @@ const strictPolicy = Object.freeze<Required<PaymentGuardPolicy>>({
   notCovered: "allow",
   stale: "allow",
   repeatPayment: "warn",
-  payToBase58Format: "warn",
+  payToBase58Format: "block",
   quoteAboveListing: "warn",
   networkNotObserved: "block",
 });
@@ -628,6 +628,8 @@ export function normalizeRemotePolicy(value: RemotePolicyOptions): NormalizedRem
   return { token, failMode, baseUrl };
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 /** Origin only. A path on `baseUrl` is not a prefix (the check path is always `/v1/policy/check`). */
 function originOf(baseUrl: string): string {
   if (typeof baseUrl !== "string" || /\s/.test(baseUrl)) throw new TypeError("remotePolicy.baseUrl must be an http(s) URL.");
@@ -639,6 +641,10 @@ function originOf(baseUrl: string): string {
   }
   if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) {
     throw new TypeError("remotePolicy.baseUrl must be an http(s) URL.");
+  }
+  // The policy check carries a bearer token, so it goes over https. Plain http is kept for a local test server only.
+  if (url.protocol === "http:" && !LOOPBACK_HOSTS.has(url.hostname)) {
+    throw new TypeError("remotePolicy.baseUrl must use https (http is accepted for localhost only).");
   }
   return url.origin;
 }

@@ -450,6 +450,32 @@
         "network": "eip155:8453",
         "resource_host": null
       }
+    },
+    {
+      "name": "two different payTo values fail without a payTo rule",
+      "policy": {
+        "id": "pol_desk",
+        "version": "3",
+        "fail_mode": "open",
+        "max_amount_atomic": "1000"
+      },
+      "requirement": {
+        "amount": "500",
+        "payTo": "0x2222222222222222222222222222222222222222",
+        "pay_to": "0x1111111111111111111111111111111111111111",
+        "network": "eip155:8453"
+      },
+      "measured": null,
+      "verdict": "fail",
+      "rule_hit": "pay_to",
+      "abort": true,
+      "chips": ["no data yet"],
+      "requirement_echo": {
+        "amount": "500",
+        "pay_to": null,
+        "network": "eip155:8453",
+        "resource_host": null
+      }
     }
   ]
 }

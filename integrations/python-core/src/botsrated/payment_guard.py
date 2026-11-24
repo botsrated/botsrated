@@ -108,6 +108,7 @@ class PaymentGuardPolicy:
     # Same payment identifier, or the same host, route, amount and nonce, within 60 seconds. Local only.
     repeat_payment: RuleEffect = "warn"
     # Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Does not change the Base USDC rule.
+    # POLICIES["strict"] blocks, as it blocks a Base payTo that is not a hex address.
     pay_to_base58_format: RuleEffect = "warn"
     # Same route, quoted amount above the listed amount. A server reason with this code uses this effect too.
     quote_above_listing: RuleEffect = "warn"
@@ -126,6 +127,7 @@ _STRICT = PaymentGuardPolicy(
     resource_host_mismatch="block",
     paid_url_unknown="block",
     network_not_observed="block",
+    pay_to_base58_format="block",
 )
 
 # Rule-effect tables. Choosing one is your decision; the zero-config default is POLICIES["warn"].
@@ -310,9 +312,15 @@ def _policy_origin(base: str) -> str:
     parts = urlsplit(base.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
         raise ValueError("remote_policy.base_url must be an http(s) URL.")
+    # The policy check carries a bearer token, so it goes over https. Plain http is kept for a local test server only.
+    if parts.scheme == "http" and parts.hostname not in _LOOPBACK_HOSTS:
+        raise ValueError("remote_policy.base_url must use https (http is accepted for localhost only).")
     host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
     netloc = host if parts.port is None else f"{host}:{parts.port}"
     return f"{parts.scheme}://{netloc}"
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _token_ok(token: str) -> bool:
