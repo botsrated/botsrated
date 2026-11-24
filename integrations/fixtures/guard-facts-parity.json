@@ -1,0 +1,878 @@
+{
+ "note": "Shared cases for guardFactsFrom / evaluateFacts (TypeScript) and guard_facts_from / evaluate_facts (Python). Both languages must give the same facts and the same reason codes and effects for each case, under the warn and strict rule tables. host is seller.example and the paid URL is https://seller.example/api. Addresses are made up for the test.",
+ "host": "seller.example",
+ "paid_url": "https://seller.example/api",
+ "cases": [
+  {
+   "name": "sol recorded, same payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [],
+   "strict": []
+  },
+  {
+   "name": "sol recorded, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "sol recorded, v1 name, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "sol recorded, price above",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "5000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ]
+  },
+  {
+   "name": "sol recorded, request on base",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "live_network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "0x1111111111111111111111111111111111111111",
+    "network": "eip155:8453",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, same payTo upper",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x1111111111111111111111111111111111111111",
+    "network": "eip155:8453",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [],
+   "strict": []
+  },
+  {
+   "name": "evm recorded, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:8453",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, v1 base name, other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "base",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, request on solana",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "evm recorded, other chain",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "measured": {
+     "last_quoted_payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:137",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "multi: solana ok",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "single_address"
+     },
+     "eip155:8453": {
+      "payTo": "0x1111111111111111111111111111111111111111",
+      "amount_atomic": "1000"
+     },
+     "weird": {
+      "payTo": "0x2222222222222222222222222222222222222222"
+     },
+     "eip155:137": {
+      "payTo": "nope",
+      "amount_atomic": "5"
+     }
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "2000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "eip155:137": {
+     "amount": "5"
+    },
+    "eip155:8453": {
+     "amount": "1000",
+     "payTo": "0x1111111111111111111111111111111111111111"
+    },
+    "solana": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+   },
+   "warn": [],
+   "strict": []
+  },
+  {
+   "name": "multi: solana other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "single_address"
+     },
+     "eip155:8453": {
+      "payTo": "0x1111111111111111111111111111111111111111",
+      "amount_atomic": "1000"
+     },
+     "weird": {
+      "payTo": "0x2222222222222222222222222222222222222222"
+     },
+     "eip155:137": {
+      "payTo": "nope",
+      "amount_atomic": "5"
+     }
+    }
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "2000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "eip155:137": {
+     "amount": "5"
+    },
+    "eip155:8453": {
+     "amount": "1000",
+     "payTo": "0x1111111111111111111111111111111111111111"
+    },
+    "solana": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+   },
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "multi: solana price above",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "single_address"
+     },
+     "eip155:8453": {
+      "payTo": "0x1111111111111111111111111111111111111111",
+      "amount_atomic": "1000"
+     },
+     "weird": {
+      "payTo": "0x2222222222222222222222222222222222222222"
+     },
+     "eip155:137": {
+      "payTo": "nope",
+      "amount_atomic": "5"
+     }
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana",
+    "amount": "2001"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "eip155:137": {
+     "amount": "5"
+    },
+    "eip155:8453": {
+     "amount": "1000",
+     "payTo": "0x1111111111111111111111111111111111111111"
+    },
+    "solana": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+   },
+   "warn": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ]
+  },
+  {
+   "name": "multi: base other payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "single_address"
+     },
+     "eip155:8453": {
+      "payTo": "0x1111111111111111111111111111111111111111",
+      "amount_atomic": "1000"
+     },
+     "weird": {
+      "payTo": "0x2222222222222222222222222222222222222222"
+     },
+     "eip155:137": {
+      "payTo": "nope",
+      "amount_atomic": "5"
+     }
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:8453",
+    "amount": "1000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "eip155:137": {
+     "amount": "5"
+    },
+    "eip155:8453": {
+     "amount": "1000",
+     "payTo": "0x1111111111111111111111111111111111111111"
+    },
+    "solana": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+   },
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "multi: polygon record without payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "single_address"
+     },
+     "eip155:8453": {
+      "payTo": "0x1111111111111111111111111111111111111111",
+      "amount_atomic": "1000"
+     },
+     "weird": {
+      "payTo": "0x2222222222222222222222222222222222222222"
+     },
+     "eip155:137": {
+      "payTo": "nope",
+      "amount_atomic": "5"
+     }
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:137",
+    "amount": "9"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "eip155:137": {
+     "amount": "5"
+    },
+    "eip155:8453": {
+     "amount": "1000",
+     "payTo": "0x1111111111111111111111111111111111111111"
+    },
+    "solana": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    }
+   },
+   "warn": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "price_above_observed",
+     "warn"
+    ]
+   ]
+  },
+  {
+   "name": "rotating solana",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "live_network": "eip155:8453",
+     "live_amount": "1000",
+     "url": "https://seller.example/api"
+    },
+    "quotes_by_network": {
+     "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
+      "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "amount_atomic": "2000",
+      "payto_pattern": "rotating_per_request"
+     }
+    }
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "2000"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": {
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
+     "amount": "2000",
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "rotating": true
+    }
+   },
+   "warn": [
+    [
+     "payto_rotating",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_rotating",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "listing only sol, match",
+   "body": {
+    "found": true,
+    "listing": {
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1"
+   },
+   "known_pay_tos": [],
+   "listing_pay_to": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_listing_only",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_listing_only",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "listing only sol, differ",
+   "body": {
+    "found": true,
+    "listing": {
+     "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+     "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+    }
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1"
+   },
+   "known_pay_tos": [],
+   "listing_pay_to": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "listing only evm, differ",
+   "body": {
+    "found": true,
+    "listing": {
+     "payTo": "0x1111111111111111111111111111111111111111"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:8453",
+    "amount": "1"
+   },
+   "known_pay_tos": [],
+   "listing_pay_to": "0x1111111111111111111111111111111111111111",
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "untagged evm record, request on solana",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "network_not_observed",
+     "info"
+    ]
+   ]
+  },
+  {
+   "name": "untagged evm record, other evm payTo",
+   "body": {
+    "found": true,
+    "latest_probe": {
+     "live_payTo": "0x1111111111111111111111111111111111111111",
+     "url": "https://seller.example/api"
+    }
+   },
+   "request": {
+    "payTo": "0x2222222222222222222222222222222222222222",
+    "network": "eip155:8453",
+    "amount": "1"
+   },
+   "known_pay_tos": [
+    "0x1111111111111111111111111111111111111111"
+   ],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "payto_not_observed",
+     "warn"
+    ]
+   ],
+   "strict": [
+    [
+     "payto_not_observed",
+     "block"
+    ]
+   ]
+  },
+  {
+   "name": "not covered",
+   "body": {
+    "found": false
+   },
+   "request": {
+    "payTo": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "amount": "1"
+   },
+   "known_pay_tos": [],
+   "listing_pay_to": null,
+   "quotes_by_network": null,
+   "warn": [
+    [
+     "not_covered",
+     "info"
+    ]
+   ],
+   "strict": [
+    [
+     "not_covered",
+     "info"
+    ]
+   ]
+  }
+ ]
+}

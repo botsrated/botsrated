@@ -140,6 +140,9 @@ never echoed except a parsed host name.
 | `observed_amount` | Last amount recorded on the probed route, in atomic units |
 | `stale` | True when the latest probe is older than 24 hours |
 | `receipt_url` | `https://botsrated.com/receipt/...` when the preflight included a receipt on botsrated.com |
+| `quotes_by_network` | Per-network payTo, amount, and rotating flag from preflight `quotes_by_network`, when that object is present. `None` on older bodies |
+
+`quotes_by_network` compares a request with the record stored under that same network string. A Solana payTo (base58, exact case) is compared with the payTo recorded for that network, the same way a Base address is. x402 v1 names `base` and `solana` are known families and are not rewritten to a CAIP-2 id. The on-chain check stays Base USDC only.
 
 `reasons` lists each fact (`code`, `effect` of `info`, `warn` or `block`, `rule`, `fact`). `dispute_url` is
 https://botsrated.com/disputes. `would_block` is true when a rule's effect is `block`, including in dry-run, where
