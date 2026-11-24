@@ -1,0 +1,31 @@
+{
+  "kind": "unpaid_probe",
+  "ts": "2026-11-16T00:35:16Z",
+  "host": "api.arcgate.dev",
+  "url": "https://api.arcgate.dev/trade/v1/quote",
+  "method": "GET",
+  "status": null,
+  "latency_ms": 15000,
+  "error": "Timeout",
+  "req_sha256": "a0c03fb4f5dd95a906cabab342b7aa429f676c26da5fc2085734f4e63c281aa0",
+  "resp_sha256": null,
+  "total_header_bytes": 0,
+  "prober_ua": "BotsRated-probe/0.3 (unpaid check; no payment sent; +https://botsrated.com/disputes)",
+  "prober": "botsrated-prober (Cloudflare cron)",
+  "probe_version": "0.3",
+  "scope": "primary",
+  "valid_402": false,
+  "id": "b96e2e4cb9816e6fe3d5",
+  "first_attempt": {
+    "ts": "2026-11-16T00:34:58Z",
+    "error": "Timeout",
+    "latency_ms": 15000,
+    "note": "timeout or network error, re-checked once before counting"
+  },
+  "sig": {
+    "alg": "ed25519",
+    "key_id": "botsrated-prober-1",
+    "signed": "canonical JSON of this receipt without the sig field (keys sorted, no whitespace)",
+    "sig_b64": "lA1DNbGCPEqvB7Z6sVHq1CpFj/939KaiSNgxrif0XkWA3G9SKV6fvWlgVH8SQdXHv+wtfLiLghNEZTz2aPZNAQ=="
+  }
+}

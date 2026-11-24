@@ -200,14 +200,31 @@ export async function verifyReceipt(raw, keyset, deps) {
     const enc = jcs(body);
     rule = "sha256(RFC 8785 JCS)";
     want = enc.text ? (await sha256(enc.text)).slice(0, 20) : "invalid";
-  } else if (want !== id && r.kind === "unpaid_probe" && r.probe_version && (body.tier !== undefined || body.confirms !== undefined)) {
-    // SPEC 4.2: on fast-tier unpaid probes made before the prober fix, `tier` and `confirms` were
-    // added after the id was computed. The id then covers the rest; the signature still covers every field.
-    const { tier, confirms, ...early } = body;
-    const alt = (await sha256(canon(early))).slice(0, 20);
-    if (alt === id) {
-      want = alt;
-      rule = "sha256(canonical JSON without tier and confirms), fast-tier rule";
+  } else if (want !== id && r.kind === "unpaid_probe" && r.probe_version) {
+    // SPEC 4.2 fallbacks. Each one drops only fields the reference prober added after it computed the id.
+    // The signature (SPEC 4.3) still covers every field, including the ones dropped here.
+    // - fast-tier rule: on fast-tier unpaid probes made before the prober fix, `tier` and `confirms`.
+    // - re-check rule: on a probe re-checked once after a timeout or network error, `first_attempt`
+    //   (an object). It is used only on a receipt that carries a per-receipt signature, so the id never
+    //   stands alone as the binding for a field it does not cover.
+    const hasTierFields = body.tier !== undefined || body.confirms !== undefined;
+    const fa = body.first_attempt;
+    const hasFirstAttempt = !!sig && fa !== null && typeof fa === "object" && !Array.isArray(fa);
+    const tries = [];
+    if (hasTierFields) tries.push([["tier", "confirms"], "sha256(canonical JSON without tier and confirms), fast-tier rule"]);
+    if (hasFirstAttempt) tries.push([["first_attempt"], "sha256(canonical JSON without first_attempt), re-check rule"]);
+    if (hasFirstAttempt && hasTierFields) {
+      tries.push([["first_attempt", "tier", "confirms"], "sha256(canonical JSON without first_attempt, tier and confirms), re-check and fast-tier rule"]);
+    }
+    for (const [drop, label] of tries) {
+      const early = { ...body };
+      for (const k of drop) delete early[k];
+      const alt = (await sha256(canon(early))).slice(0, 20);
+      if (alt === id) {
+        want = alt;
+        rule = label;
+        break;
+      }
     }
   }
   say(want === id, `id ${id} (${rule})`, "id_mismatch");
