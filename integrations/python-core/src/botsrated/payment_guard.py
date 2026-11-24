@@ -255,9 +255,15 @@ def _policy_origin(base: str) -> str:
     parts = urlsplit(base.strip())
     if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
         raise ValueError("remote_policy.base_url must be an http(s) URL.")
+    # The policy check carries a bearer token, so it goes over https. Plain http is kept for a local test server only.
+    if parts.scheme == "http" and parts.hostname not in _LOOPBACK_HOSTS:
+        raise ValueError("remote_policy.base_url must use https (http is accepted for localhost only).")
     host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
     netloc = host if parts.port is None else f"{host}:{parts.port}"
     return f"{parts.scheme}://{netloc}"
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _token_ok(token: str) -> bool:

@@ -222,7 +222,8 @@ class BotsRatedClient:
 
     def _get(self, path: str) -> httpx.Response:
         try:
-            return self._http.get(self.base_url + path, headers={"user-agent": USER_AGENT})
+            # Redirects are never followed, also when the caller passed its own httpx client.
+            return self._http.get(self.base_url + path, headers={"user-agent": USER_AGENT}, follow_redirects=False)
         except httpx.HTTPError as e:
             raise BotsRatedError(f"BotsRated unreachable: {clean_text(e, 80)}", "unreachable") from e
 
@@ -392,8 +393,9 @@ class BotsRatedClient:
         resp: _ResponseLike
         try:
             if self._x402_client is not None:
-                # Send exactly the signed payment; no redirects (httpx default), no re-read of the 402.
-                resp = self._http.get(self.base_url + path, headers={"PAYMENT-SIGNATURE": signature})
+                # Send exactly the signed payment; no re-read of the 402. Redirects are turned off on the call itself,
+                # so a caller-supplied client with follow_redirects=True cannot carry the signature to another host.
+                resp = self._http.get(self.base_url + path, headers={"PAYMENT-SIGNATURE": signature}, follow_redirects=False)
             else:
                 assert self._paying_get is not None
                 with paying_request(self.base_url + path):
