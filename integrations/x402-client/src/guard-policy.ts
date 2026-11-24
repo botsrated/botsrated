@@ -12,8 +12,6 @@
  * The same rules are checked against docs/guard/policy-vectors.json from the
  * worker stub and the Python mirror.
  */
-import { isBase58Pubkey } from "./util.js";
-
 export const GUARD_CHIPS = ["live", "402 ok", "payTo changed", "probe failed", "no data yet"] as const;
 export type GuardChip = (typeof GUARD_CHIPS)[number];
 
@@ -34,8 +32,25 @@ function cleanText(value: unknown, max = 120): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+// Same rule as util.ts isBase58Pubkey (base58 that decodes to 32 bytes). Kept local so this module has no imports
+// and the worker stub can load it directly.
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function isSolanaAddress(value: string): boolean {
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) return false;
+  let n = 0n;
+  for (const c of value) n = n * 58n + BigInt(BASE58_ALPHABET.indexOf(c));
+  let bytes = 0;
+  while (n > 0n) {
+    bytes++;
+    n /= 256n;
+  }
+  let zeros = 0;
+  while (zeros < value.length && value[zeros] === "1") zeros++;
+  return zeros + bytes === 32;
+}
+
 function isAddress(value: unknown): value is string {
-  return typeof value === "string" && (ADDRESS.test(value) || isBase58Pubkey(value));
+  return typeof value === "string" && (ADDRESS.test(value) || isSolanaAddress(value));
 }
 
 /** EVM addresses compare case-insensitively. Solana base58 addresses are case-sensitive and kept as written. */
