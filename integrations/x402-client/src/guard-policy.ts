@@ -339,10 +339,12 @@ export function evaluateCustomerPolicy(
       return finish({ ...base, verdict: "fail", rule_hit: "amount", detail: "the signed amount is above your policy ceiling" });
     }
   }
+  // payTo and pay_to with different values fail, with or without a payTo rule: the requirement does not say
+  // which address is paid, so no policy can be said to pass it.
+  if (pay.conflict) {
+    return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the requirement carries two different payTo values" });
+  }
   if (needPay) {
-    if (pay.conflict) {
-      return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the requirement carries two different payTo values" });
-    }
     if (present(pay.value) && (!echo.pay_to || !payTos.values.includes(echo.pay_to))) {
       return finish({ ...base, verdict: "fail", rule_hit: "pay_to", detail: "the signed payTo is not in your policy" });
     }
@@ -359,8 +361,8 @@ export function evaluateCustomerPolicy(
     }
   }
 
-  // Conflicting fields that no rule in this policy reads: no decision, as before.
-  if (pay.conflict || resource.conflict) {
+  // A request host that differs from the resource.url host, when this policy has no host rule: no decision, as before.
+  if (resource.conflict) {
     return finish({ ...base, verdict: null, rule_hit: "unevaluable", detail: "the requirement carries conflicting fields" });
   }
   if ((needAmount && !echo.amount) || (needPay && !echo.pay_to) || (needNetwork && !echo.network) || (needHost && !echo.resource_host)) {
