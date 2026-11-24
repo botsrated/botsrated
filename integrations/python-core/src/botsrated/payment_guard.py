@@ -69,10 +69,12 @@ from botsrated.util import (
     BOTSRATED_BASE_URL,
     DISPUTE_URL,
     USER_AGENT,
+    canonical_network,
     clean_text,
     host_and_path,
     is_address,
     is_atomic_amount,
+    is_base58_pubkey,
     is_bytes32,
     is_tx_hash,
     network_family,
@@ -172,6 +174,11 @@ class GuardFacts:
     stale: bool = False
     receipt_url: str | None = None
     probed: tuple[str, str] | None = field(default=None, repr=False)
+    # Per-network records from preflight ``quotes_by_network``, when present: ``{network: {"payTo", "amount",
+    # "rotating"}}``. payTo stays in that network's format (hex lower-case for eip155, base58 exact for solana).
+    # A request whose network string is listed here is compared with that record. Host-level fields above keep
+    # their meaning for older bodies. This is a local fact comparison; the on-chain check stays Base USDC only.
+    quotes_by_network: dict[str, dict[str, Any]] | None = None
 
 
 @dataclass
@@ -204,11 +211,31 @@ def guard_facts_from(body: Any, host: str) -> GuardFacts:
     probe = probe if isinstance(probe, dict) else {}
     measured = b.get("measured") if isinstance(b.get("measured"), dict) else {}
     listing = b.get("listing") if isinstance(b.get("listing"), dict) else {}
-    pay_tos = sorted({p.lower() for p in (probe.get("live_payTo"), measured.get("last_quoted_payTo")) if is_address(p)})
+    network = probe.get("live_network") or listing.get("network")
+
+    # Known payTos follow the recorded network. Untagged records stay hex, as before.
+    def pay_to_ok(value: Any) -> bool:
+        return pay_to_format_for(network, value) == "ok" if network_family(network) else is_address(value)
+
+    pay_tos = sorted({_normalize_pay_to(p) for p in (probe.get("live_payTo"), measured.get("last_quoted_payTo")) if pay_to_ok(p)})
     receipt = probe.get("receipt_url") if isinstance(probe.get("receipt_url"), str) else None
     rhost = try_host_of(receipt) if receipt else None
     amount = probe.get("live_amount") or measured.get("last_quoted_amount_atomic")
-    network = probe.get("live_network") or listing.get("network")
+    # Per-network records. Only a known family is kept, with its payTo only when well-formed. Cap 16 keys, in body order.
+    qbn: dict[str, dict[str, Any]] = {}
+    raw_qbn = b.get("quotes_by_network")
+    if isinstance(raw_qbn, dict):
+        for net, q in list(raw_qbn.items())[:16]:
+            if not isinstance(net, str) or not network_family(net) or not isinstance(q, dict):
+                continue
+            rec: dict[str, Any] = {}
+            if pay_to_format_for(net, q.get("payTo")) == "ok":
+                rec["payTo"] = _normalize_pay_to(q["payTo"])
+            if is_atomic_amount(q.get("amount_atomic")):
+                rec["amount"] = q["amount_atomic"]
+            if q.get("payto_pattern") == "rotating_per_request":
+                rec["rotating"] = True
+            qbn[clean_text(net, 40)] = rec
     rp = b.get("route_probed") if isinstance(b.get("route_probed"), dict) else {}
     route = probe.get("url") or rp.get("url")
     freshness = b.get("freshness") if isinstance(b.get("freshness"), dict) else {}
@@ -216,14 +243,31 @@ def guard_facts_from(body: Any, host: str) -> GuardFacts:
         covered=b.get("found") is not False,
         host=host,
         known_pay_tos=pay_tos,
-        listing_pay_to=listing["payTo"].lower() if is_address(listing.get("payTo")) else None,
+        listing_pay_to=_normalize_pay_to(listing["payTo"]) if pay_to_ok(listing.get("payTo")) else None,
         observed_network=clean_text(network, 40) if isinstance(network, str) else None,
         observed_amount=amount if is_atomic_amount(amount) else None,
         listed_amount=listed_amount_of(b),
         stale=freshness.get("stale") is True,
         receipt_url=clean_text(receipt, 200) if receipt and rhost and same_site_host(rhost, "botsrated.com") and receipt.startswith("https://") else None,
         probed=host_and_path(route),
+        quotes_by_network=qbn or None,
     )
+
+
+def _normalize_pay_to(pay_to: str) -> str:
+    """Hex addresses are lower-cased. A base58 public key is returned unchanged."""
+    return pay_to.lower() if is_address(pay_to) else pay_to
+
+
+def _quote_record(quotes: dict[str, dict[str, Any]], network: str) -> dict[str, Any] | None:
+    """The per-network record for this network string, or for the documented v1/CAIP-2 name of the same chain."""
+    if network in quotes:
+        return quotes[network]
+    want = canonical_network(network)
+    for key, value in quotes.items():
+        if canonical_network(key) == want:
+            return value
+    return None
 
 
 def _get(obj: Any, *names: str) -> Any:
@@ -549,19 +593,59 @@ def fetch_remote_policy(http: httpx.Client, policy: RemotePolicy, host: str, req
 
 
 def evaluate_facts(facts: GuardFacts, req: Any, paid_url: str | None, policy: PaymentGuardPolicy) -> list[GuardReason]:
-    """Pure, local comparison of one payment option with BotsRated facts."""
+    """Pure, local comparison of one payment option with BotsRated facts.
+
+    When ``quotes_by_network`` has this request's network, that record is the one compared (its payTo, its amount).
+    Without it, a payTo is compared with the host-level record: a 20-byte hex address as before, and a base58
+    public key when the request is on a solana-family network.
+    """
     out: list[GuardReason] = []
+    facts0 = facts
     network = clean_text(_get(req, "network"), 40) if isinstance(_get(req, "network"), str) else ""
+    per_net = _quote_record(facts0.quotes_by_network, network) if network and facts0.quotes_by_network else None
+    if per_net is not None:
+        facts = replace(
+            facts0,
+            known_pay_tos=[per_net["payTo"]] if per_net.get("payTo") else [],
+            observed_network=network,
+            observed_amount=per_net.get("amount"),
+            listing_pay_to=None,
+        )
+    rotating = bool(per_net and per_net.get("rotating"))
+    if rotating:
+        out.append(
+            GuardReason(
+                "payto_rotating",
+                "info",
+                f"BotsRated's probes recorded {facts.host} quoting a new payTo on (nearly) every request on {network_label(network)}; the payTo is not compared.",
+            )
+        )
     raw_pay_to = _get(req, "payTo", "pay_to")
-    pay_to = raw_pay_to.lower() if is_address(raw_pay_to) else None
+    # A hex address is compared as before. A base58 public key is compared when the request is on a solana network.
+    pay_to: str | None = None
+    if is_address(raw_pay_to):
+        pay_to = raw_pay_to.lower()
+    elif network_family(network) == "solana" and is_base58_pubkey(raw_pay_to):
+        pay_to = raw_pay_to
     amount = _get(req, "amount")
     if not facts.covered:
         out.append(GuardReason("not_covered", _effect(policy.not_covered, "info"), f"BotsRated has no probe record for {facts.host}.", "notCovered"))
         return out
-    if pay_to:
-        if facts.observed_network and network and not same_observed_network(facts.observed_network, network):
-            out.append(GuardReason("network_not_observed", "info", f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network}."))
-        elif facts.known_pay_tos and pay_to not in facts.known_pay_tos:
+    quote_family = network_family(network)
+    known_family = network_family(facts.observed_network) if facts.observed_network else "eip155"
+    has_known = bool(facts.known_pay_tos) or bool(facts.listing_pay_to)
+    if facts.observed_network and network and not same_observed_network(facts.observed_network, network):
+        out.append(GuardReason("network_not_observed", "info", f"BotsRated's probes recorded {facts.host} on {facts.observed_network}, not on {network_label(network)}."))
+    elif not facts.observed_network and has_known and quote_family is not None and quote_family != known_family:
+        out.append(
+            GuardReason(
+                "network_not_observed",
+                "info",
+                f"the payTo addresses BotsRated's probes recorded for {facts.host} are eip155 addresses, not {network_label(network)} addresses.",
+            )
+        )
+    elif pay_to and not rotating:
+        if facts.known_pay_tos and pay_to not in facts.known_pay_tos:
             on = facts.observed_network or network or "this network"
             out.append(
                 GuardReason(
