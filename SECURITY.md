@@ -18,8 +18,11 @@ changelog and the advisory if you want to be named.
 
 ## What Is In Scope
 
-- The packages built from this repository: `botsrated`, `langchain-botsrated`, `llama-index-tools-botsrated` and
-  `agent-framework-botsrated` (PyPI); `@botsrated/x402-preflight` and `@botsrated/ai-sdk` (npm).
+- The packages built from this repository, in [`integrations/`](integrations/):
+  - Python: `botsrated`, `langchain-botsrated`, `llama-index-tools-botsrated`, `agent-framework-botsrated`,
+    `crewai-botsrated`, `google-adk-botsrated`, `langgraph-botsrated`, `llama-stack-botsrated`,
+    `botsrated-openai-agents` and `pydantic-ai-botsrated`;
+  - JavaScript: `@botsrated/x402-preflight`, `@botsrated/ai-sdk` and `@botsrated/mastra`.
 - The hosted service at https://botsrated.com: the HTTP API, the remote MCP server (`/mcp`), the A2A endpoint and
   the signed receipts and keys.
 - The receipt format and verifier in [`spec/`](spec/).
@@ -30,7 +33,7 @@ networks through BotsRated's probes or webhooks.
 
 ## What The Payment Guard Can't Do
 
-The payment guard in `@botsrated/x402-preflight` and `botsrated` (0.3.1) never signs, never sends or resends a
+The payment guard in `@botsrated/x402-preflight` and `botsrated` never signs, never sends or resends a
 payment, never builds a payment header and never imports a signer. Its hook return values are discarded, it never
 registers the x402 payment-creation-failure hook, and its on-chain checks use read-only RPC methods. CI enforces this
 in [`integrations/x402-client/test/c1-no-repay.test.ts`](integrations/x402-client/test/c1-no-repay.test.ts) and
