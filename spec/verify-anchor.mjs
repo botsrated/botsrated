@@ -81,7 +81,8 @@ export async function checkAnchor(raw, deps) {
   if (deps.publicCopy) {
     try {
       const pub = await deps.publicCopy(day);
-      if (pub) say(pub.anchor === doc.anchor && pub.merkle_root === doc.merkle_root, `public GitHub copy (github.com/botsrated/anchors days/${day}.json) has the same anchor`);
+      if (pub && pub.skipped) lines.push("INFO  the anchor above was read from the public GitHub copy itself");
+      else if (pub) say(pub.anchor === doc.anchor && pub.merkle_root === doc.merkle_root, `public GitHub copy (github.com/botsrated/anchors days/${day}.json) has the same anchor`);
       else lines.push(`INFO  public GitHub copy for ${day} not found yet (the copy job runs every 3 hours)`);
     } catch { lines.push("INFO  could not reach the public GitHub copy from this browser"); }
   }
