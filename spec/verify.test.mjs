@@ -688,3 +688,81 @@ test("v2 paid receipt verifies; v1 examples still pass; floats and unknown versi
     assert.equal(res.errors.includes("v2_float"), false);
   }
 });
+
+const retried = [
+  ["spec/examples/unpaid-probe.retried.json", "b96e2e4cb9816e6fe3d5", "sha256\\(canonical JSON without first_attempt\\), re-check rule"],
+  ["spec/examples/unpaid-probe.retried.fast-tier.json", "7dc8004966734718de11", "sha256\\(canonical JSON without first_attempt, tier and confirms\\), re-check and fast-tier rule"],
+];
+
+for (const [file, id, rule] of retried) {
+  test(`re-checked receipt: id without first_attempt passes, signature still covers it (${file})`, async () => {
+    const ran = cli([file, "--keys", "spec/examples/keys.json"]);
+    assert.equal(ran.status, 0, ran.stderr || ran.stdout);
+    assert.match(ran.stdout, new RegExp(`PASS  id ${id} \\(${rule}\\)`));
+    assert.match(ran.stdout, /PASS  ed25519 receipt signature, key botsrated-prober-1/);
+    assert.match(ran.stdout, /\nVALID\n$/);
+    const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+    const ok = await verifyReceipt(raw, keys, nodeDeps());
+    assert.equal(ok.valid, true);
+    assert.deepEqual(ok.errors, []);
+  });
+
+  test(`re-checked receipt: a tampered first_attempt fails (${file})`, async () => {
+    const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+    const changes = [
+      (r) => { r.first_attempt.error = null; },
+      (r) => { r.first_attempt.ts = "2026-11-01T00:00:00Z"; },
+      (r) => { r.first_attempt.latency_ms = 1; },
+      (r) => { r.first_attempt.extra = true; },
+      (r) => { delete r.first_attempt; },
+      (r) => { r.first_attempt = "timeout"; },
+      (r) => { r.status = 402; },
+    ];
+    for (const change of changes) {
+      const t = JSON.parse(JSON.stringify(raw));
+      change(t);
+      const res = await verifyReceipt(t, keys, nodeDeps());
+      assert.equal(res.valid, false, `tampered copy passed: ${change}`);
+      assert.ok(res.errors.includes("signature_mismatch") || res.errors.includes("id_mismatch"), res.errors.join(","));
+    }
+  });
+
+  test(`re-check rule needs a per-receipt signature (${file})`, async () => {
+    const raw = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+    const { sig, ...unsigned } = raw;
+    const res = await verifyReceipt(unsigned, keys, nodeDeps());
+    assert.equal(res.valid, false);
+    assert.ok(res.errors.includes("id_mismatch"), res.errors.join(","));
+  });
+}
+
+test("re-check rule does not let a first_attempt be added to a receipt signed without one", async () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/unpaid-probe.signed.json"), "utf8"));
+  raw.first_attempt = { ts: raw.ts, error: "Timeout", latency_ms: 15000, note: "timeout or network error, re-checked once before counting" };
+  const res = await verifyReceipt(raw, keys, nodeDeps());
+  assert.equal(res.valid, false);
+  assert.ok(res.errors.includes("signature_mismatch"), res.errors.join(","));
+});
+
+// Optional bulk check against a local NDJSON file of re-checked receipts (one signed receipt per line), e.g. a
+// restore-drill export. The file is not in this repo. Set BOTSRATED_RETRIED_RECEIPTS=/path/to/file.ndjson to run it.
+const bulkFile = process.env.BOTSRATED_RETRIED_RECEIPTS;
+test("bulk: every re-checked receipt in BOTSRATED_RETRIED_RECEIPTS verifies, and a tampered first_attempt fails", { skip: !bulkFile && "set BOTSRATED_RETRIED_RECEIPTS to run" }, async () => {
+  const lines = fs.readFileSync(bulkFile, "utf8").split("\n").filter(Boolean);
+  assert.ok(lines.length > 0);
+  const prober = JSON.parse(fs.readFileSync(path.join(root, "spec/examples/keys.json"), "utf8"));
+  let checked = 0;
+  for (const line of lines) {
+    const raw = JSON.parse(line);
+    assert.ok(raw.first_attempt && typeof raw.first_attempt === "object", `line without first_attempt: ${raw.id}`);
+    const res = await verifyReceipt(raw, prober, nodeDeps());
+    assert.equal(res.valid, true, `${raw.id}: ${res.errors.join(",")}`);
+    assert.match(res.lines.find((l) => l.includes(`id ${raw.id}`)), /re-check/);
+    const t = JSON.parse(line);
+    t.first_attempt.error = "tampered";
+    const bad = await verifyReceipt(t, prober, nodeDeps());
+    assert.equal(bad.valid, false, `tampered ${raw.id} passed`);
+    checked++;
+  }
+  assert.equal(checked, lines.length);
+});
