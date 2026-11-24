@@ -617,7 +617,7 @@ export interface GuardPolicy {
   repeatPayment?: "allow" | "warn" | "block";
   /**
    * Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Default "warn".
-   * Does not change the Base USDC hard rule.
+   * `strictGuardPolicy` blocks. Does not change the Base USDC hard rule.
    */
   payToBase58Format?: "allow" | "warn" | "block";
   /** Same route, quoted amount above the listed amount. Default "warn". `strictGuardPolicy` stays warn. */
@@ -643,7 +643,7 @@ export interface GuardPolicy {
  * Since 0.2.0 it also sets `requireRequestUrl`, so a payment whose real request URL is unknown is stopped too
  * (use `guard.wrapFetch` or `guard.forRequest`).
  */
-export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", networkNotObserved: "block", requireRequestUrl: true });
+export const strictGuardPolicy: Readonly<GuardPolicy> = Object.freeze({ payToMismatch: "block", networkNotObserved: "block", payToBase58Format: "block", requireRequestUrl: true });
 
 export interface Reason {
   code: string;

@@ -108,6 +108,7 @@ class PaymentGuardPolicy:
     # Same payment identifier, or the same host, route, amount and nonce, within 60 seconds. Local only.
     repeat_payment: RuleEffect = "warn"
     # Solana payTo is not a base58 32-byte public key. A Base payTo is not judged. Does not change the Base USDC rule.
+    # POLICIES["strict"] blocks, as it blocks a Base payTo that is not a hex address.
     pay_to_base58_format: RuleEffect = "warn"
     # Same route, quoted amount above the listed amount. A server reason with this code uses this effect too.
     quote_above_listing: RuleEffect = "warn"
@@ -126,6 +127,7 @@ _STRICT = PaymentGuardPolicy(
     resource_host_mismatch="block",
     paid_url_unknown="block",
     network_not_observed="block",
+    pay_to_base58_format="block",
 )
 
 # Rule-effect tables. Choosing one is your decision; the zero-config default is POLICIES["warn"].
