@@ -1,5 +1,7 @@
 # BotsRated: MCP server
 
+[![BotsRated MCP server](https://glama.ai/mcp/servers/botsrated/botsrated/badges/score.svg)](https://glama.ai/mcp/servers/botsrated/botsrated)
+
 **Signed checks of paid AI services, before your agent pays.**
 
 BotsRated measures paid AI-agent services with signed receipts. Paid BotPulse plans are retired; the feed stays free. These measurements do not claim coverage of every delivery outcome.
