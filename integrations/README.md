@@ -5,7 +5,7 @@ preflight runs by default. The `/v1/check` ($0.01 USDC on Base after 5 free per 
 the user sets.
 
 **Status: this release.** Versions named here are the ones these packages publish.
-PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.4,
+PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.5,
 [`langchain-botsrated`](https://pypi.org/project/langchain-botsrated/) 0.1.6 (includes `attach_payment_guard`),
 [`llama-index-tools-botsrated`](https://pypi.org/project/llama-index-tools-botsrated/) 0.1.6 (includes `attach_payment_guard`),
 [`agent-framework-botsrated`](https://pypi.org/project/agent-framework-botsrated/) 0.1.6 (middleware, check tool, and `attach_payment_guard`),
@@ -14,7 +14,7 @@ PyPI: [`botsrated`](https://pypi.org/project/botsrated/) 0.3.4,
 [`llama-stack-botsrated`](https://pypi.org/project/llama-stack-botsrated/) 0.1.1 (includes `attach_payment_guard`),
 [`google-adk-botsrated`](https://pypi.org/project/google-adk-botsrated/) 0.1.1 (includes `attach_payment_guard`),
 [`crewai-botsrated`](https://pypi.org/project/crewai-botsrated/) 0.1.1 (includes `attach_payment_guard`).
-npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) 0.3.4,
+npm: [`@botsrated/x402-preflight`](https://www.npmjs.com/package/@botsrated/x402-preflight) 0.3.5,
 [`@botsrated/ai-sdk`](https://www.npmjs.com/package/@botsrated/ai-sdk) 0.1.3 (includes `attachPaymentGuard`).
 Pydantic AI and `@botsrated/mastra` are not on a registry. Those two attach today with `pip install "botsrated[x402]"` or `npm install @botsrated/x402-preflight`. Production publishes use GitHub OIDC only.
 
@@ -51,9 +51,9 @@ Paid BotsRated lookups sign only a one-shot EIP-3009 USDC payment rebuilt from a
 
 | Directory | Package | For |
 |---|---|---|
-| `x402-client/` | `@botsrated/x402-preflight` (npm 0.3.4) | payment guard (x402 hooks + `payment-identifier` retry key + read-only on-chain state), `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
+| `x402-client/` | `@botsrated/x402-preflight` (npm 0.3.5) | payment guard (x402 hooks + `payment-identifier` retry key + read-only on-chain state), `@x402/core` `onBeforePaymentCreation` guard, `@x402/mcp` `onPaymentRequested` approver, client |
 | [`vercel-ai-sdk/`](vercel-ai-sdk/) | `@botsrated/ai-sdk` (npm 0.1.3) | Vercel AI SDK: `attachPaymentGuard` on the caller's x402 client. Pairs with the Vercel AI SDK; not a generation runtime. Omit `preset` for warn only |
-| `python-core/` | `botsrated` (PyPI 0.3.4) | payment guard, client + guard + Python `x402` `on_before_payment_creation` hook |
+| `python-core/` | `botsrated` (PyPI 0.3.5) | payment guard, client + guard + Python `x402` `on_before_payment_creation` hook |
 | `langchain/` | `langchain-botsrated` (PyPI 0.1.6) | LangChain tools |
 | [`langgraph/`](langgraph/) | `langgraph-botsrated` (PyPI 0.1.1) | LangGraph: `attach_payment_guard` on the caller's x402 client, plus an optional pre-pay node helper. Pairs with LangGraph; not a graph runtime. Omit `preset` for warn only |
 | [`google-adk/`](google-adk/) | `google-adk-botsrated` (PyPI 0.1.1) | Google ADK: `attach_payment_guard` on the caller's x402 client, plus an optional `before_tool_callback` for opaque paid tools. Pairs with Google ADK; not an agent runtime. Omit `preset` for warn only |
