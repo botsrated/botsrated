@@ -284,6 +284,12 @@ def test_check_price_ceiling_is_the_published_price():
     assert FREE_DAILY_QUOTA["check"] == 5
 
 
+def test_report_price_ceiling_is_the_published_price():
+    # /v1/report is $0.01 (10000 atomic USDC) since 2026-11-25; 0.3.5 capped it at 2000 and refused real quotes.
+    assert PAID_ROUTE_MAX_ATOMIC["report"] == 10000
+    assert PAID_ROUTE_MAX_ATOMIC["best"] == 10000
+
+
 def test_refuses_check_quote_above_published_price(check_402_b64):
     with respx.mock(base_url="https://botsrated.com") as m:
         m.get("/v1/check").respond(402, json={}, headers={"payment-required": _check_402_at(check_402_b64, "10001")})

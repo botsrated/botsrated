@@ -1,4 +1,4 @@
-"""Repro tests for the Nov 24 audit, findings A and B (Python guard). Each failed on 0.3.5 and passes on 0.3.7."""
+"""Repro tests for the Nov 24 audit, findings A and B (Python guard). Each failed on 0.3.5 and passes on 0.3.6."""
 
 import pytest
 

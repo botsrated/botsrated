@@ -3,7 +3,7 @@
  *
  * Ask BotsRated (https://botsrated.com) about an x402 seller before paying it.
  * The default path only uses `GET /v1/preflight` (free, no key, rate limits). Paid BotsRated
- * routes (`/v1/check` $0.01, `/v1/report/{host}` $0.002, `/v1/best` $0.01; first 5 checks (25 with a free API key) and 3 reports per client IP per UTC day free) are
+ * routes (`/v1/check` $0.01, `/v1/report/{host}` $0.01, `/v1/best` $0.01; first 5 checks (25 with a free API key) and 3 reports per client IP per UTC day free) are
  * off unless you pass `paid` with a budget and an x402 client (or a payment-capable fetch).
  */
 
@@ -83,8 +83,8 @@ export {
 
 /** BotsRated's payTo on Base. Paid calls to any other payTo are refused. */
 export const BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349";
-/** Published prices of the paid routes (since 2026-10-23), in atomic USDC (6 decimals). Quotes above these are refused. */
-export const PAID_ROUTE_MAX_ATOMIC = { check: 10000n, report: 2000n, best: 10000n } as const;
+/** Published prices of the paid routes, in atomic USDC (6 decimals): check and best $0.01 since 2026-10-23, report $0.01 since 2026-11-25. Quotes above these are refused. */
+export const PAID_ROUTE_MAX_ATOMIC = { check: 10000n, report: 10000n, best: 10000n } as const;
 /** Free daily quota per client (IP) per UTC day without an API key: 5 checks (25 with a free API key), 3 reports. Within it BotsRated answers 200 with `charged: false` and no 402. The server's `free_quota` block is what counts. */
 export const FREE_DAILY_QUOTA = { check: 5, report: 3, best: 0 } as const;
 export type PaidRoute = keyof typeof PAID_ROUTE_MAX_ATOMIC;
@@ -383,7 +383,7 @@ export class BotsRatedClient {
     return this.paidGet(`/v1/check?host=${encodeURIComponent(hostOf(urlOrHost))}`, "check");
   }
 
-  /** Paid ($0.002; first 3 per client IP per UTC day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
+  /** Paid ($0.01; first 3 per client IP per UTC day free). Full receipt history for one host. Free within the daily quota; after that requires `paid`. */
   report(urlOrHost: string): Promise<Record<string, any>> {
     return this.paidGet(`/v1/report/${encodeURIComponent(hostOf(urlOrHost))}`, "report");
   }
