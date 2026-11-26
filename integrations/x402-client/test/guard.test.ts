@@ -312,6 +312,11 @@ describe("paid routes (opt-in, budgeted)", () => {
     expect(FREE_DAILY_QUOTA.check).toBe(5);
   });
 
+  it("pins the report ceiling to the published price ($0.01, live since 2026-11-25)", () => {
+    expect(PAID_ROUTE_MAX_ATOMIC.report).toBe(10000n);
+    expect(PAID_ROUTE_MAX_ATOMIC.best).toBe(10000n);
+  });
+
   it("refuses a check quote above the published price (10000 atomic)", async () => {
     const terms = JSON.parse(atob(CHECK_402_B64));
     terms.accepts = terms.accepts.map((a: any) => ({ ...a, amount: "10001" }));

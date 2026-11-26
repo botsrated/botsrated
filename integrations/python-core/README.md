@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `pip install "botsrated[x402]"` (this README is for 0.3.7).
+1. Install: `pip install "botsrated[x402]"` (this README is for 0.3.6).
 2. Attach to your x402 client (omit `preset` for warn only; omit `fail_mode` to stay open):
 ```python
 from botsrated import PaymentGuard
@@ -27,7 +27,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: this README is for 0.3.7.** 0.3.7 is a fix release: a `PaymentGuardPolicy` or `GuardPolicy` with a rule value that cannot be read now raises `ValueError` instead of silently allowing, and x402 v1 quotes are read from `maxAmountRequired` when `amount` is absent. There was no Python 0.3.6. 0.3.5 was a fix release. It raises the paid-check price ceiling to the published $0.01 (0.3.4 refused every real check quote), compares Solana payTo addresses in `PaymentGuard` (0.3.4 compared only hex addresses), adds the `network_not_observed` rule (warns by default, blocks on strict) for a quote on a network BotsRated has not recorded for that host, makes strict block a malformed Solana payTo, stops following redirects, sends the policy token over https only, and adds `botsrated.attach` (one shared `attach_payment_guard`). Details are in the [changelog](https://github.com/botsrated/botsrated/blob/main/CHANGELOG.md). 0.3.4 (19 November 2026) was a docs-only release. 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: this README is for 0.3.6.** 0.3.6 is a fix release: the paid-report price ceiling is now the published $0.01 (0.3.5 refused every report quote above $0.002); also a `PaymentGuardPolicy` or `GuardPolicy` with a rule value that cannot be read now raises `ValueError` instead of silently allowing, and x402 v1 quotes are read from `maxAmountRequired` when `amount` is absent. 0.3.5 was a fix release. It raises the paid-check price ceiling to the published $0.01 (0.3.4 refused every real check quote), compares Solana payTo addresses in `PaymentGuard` (0.3.4 compared only hex addresses), adds the `network_not_observed` rule (warns by default, blocks on strict) for a quote on a network BotsRated has not recorded for that host, makes strict block a malformed Solana payTo, stops following redirects, sends the policy token over https only, and adds `botsrated.attach` (one shared `attach_payment_guard`). Details are in the [changelog](https://github.com/botsrated/botsrated/blob/main/CHANGELOG.md). 0.3.4 (19 November 2026) was a docs-only release. 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -356,7 +356,7 @@ guard = PrePaymentGuard(botsrated, paid_check_at_or_above_usd=0.25)
 client.on_before_payment_creation(guard.x402_hook)
 
 botsrated.check("seller.example")     # $0.01 (first 5 per client IP per UTC day free, 25 with a free API key; shared with MCP check)
-botsrated.report("seller.example")    # $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
+botsrated.report("seller.example")    # $0.01 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 botsrated.best("web search")          # $0.01
 ```
 

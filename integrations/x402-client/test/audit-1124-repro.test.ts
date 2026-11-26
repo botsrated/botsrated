@@ -1,4 +1,4 @@
-// Repro tests for the Nov 24 audit, findings A and B. Each failed on 0.3.6 and passes on 0.3.7.
+// Repro tests for the Nov 24 audit, findings A and B. Each failed on 0.3.5 and passes on 0.3.6.
 import { describe, expect, it } from "vitest";
 import { guardAttach } from "../src/guard-attach";
 import { evaluateCustomerPolicy } from "../src/guard-policy";

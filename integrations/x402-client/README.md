@@ -2,7 +2,7 @@
 
 ## Install in 3 steps
 
-1. Install: `npm install @botsrated/x402-preflight` (this README is for 0.3.7).
+1. Install: `npm install @botsrated/x402-preflight` (this README is for 0.3.6).
 2. Attach to your x402 client (omit `preset` for warn only; omit `failMode` to stay open):
 ```ts
 import { createPaymentGuard } from "@botsrated/x402-preflight/payment-guard";
@@ -56,7 +56,7 @@ The BotsRated **payment guard** for x402 clients, plus a simpler pre-payment che
 
 It lowers the chance of paying the wrong address or paying twice; it can't rule either out.
 
-**Status: this README is for 0.3.6.** 0.3.6 is a fix release: the offline receipt verifier (`@botsrated/x402-preflight/verify-receipt`) now accepts correctly signed receipts from a probe that was re-checked once after a timeout or network error (`first_attempt`, SPEC §4.2 re-check rule); the signature still covers every field. 0.3.5 was a fix release. It raises the paid-check price ceiling to the published $0.01 (0.3.4 refused every real check quote), stops a customer policy from being skipped when a field cannot be read, adds the `networkNotObserved` rule (warns by default, blocks on strict) for a quote on a network BotsRated has not recorded for that host, makes strict block a malformed Solana payTo, sends the policy token over https only, and hardens the offline receipt verifier. Details are in the [changelog](https://github.com/botsrated/botsrated/blob/main/CHANGELOG.md). 0.3.4 (19 November 2026) was a docs-only release. 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
+**Status: this README is for 0.3.6.** 0.3.6 is a fix release: the paid-report price ceiling is now the published $0.01 (0.3.5 refused every report quote above $0.002); `guardAttach()` throws a `TypeError` at attach when the customer policy cannot be read instead of letting payments go ahead; policy `pay_to` accepts Solana base58 addresses; an x402 v1 quote's `maxAmountRequired` is read when `amount` is absent, so the amount cap applies; and the offline receipt verifier (`@botsrated/x402-preflight/verify-receipt`) now accepts correctly signed receipts from a probe that was re-checked once after a timeout or network error (`first_attempt`, SPEC §4.2 re-check rule); the signature still covers every field. 0.3.5 was a fix release. It raises the paid-check price ceiling to the published $0.01 (0.3.4 refused every real check quote), stops a customer policy from being skipped when a field cannot be read, adds the `networkNotObserved` rule (warns by default, blocks on strict) for a quote on a network BotsRated has not recorded for that host, makes strict block a malformed Solana payTo, sends the policy token over https only, and hardens the offline receipt verifier. Details are in the [changelog](https://github.com/botsrated/botsrated/blob/main/CHANGELOG.md). 0.3.4 (19 November 2026) was a docs-only release. 0.3.2 added `repeat_payment`, `delivery_check`, `payto_base58_format`, and `quote_above_listing`. Each warns by default. None of them is a new default block. `replay_tested` stays false.
 
 **What this does and doesn't do.** This package checks facts BotsRated measured about a seller before your agent signs, adds a retry key to the payment request, and reads the blockchain to see whether a payment already settled. It can't promise that a payment is right, that a seller will deliver, or that you'll never pay twice: a retry key only stops a second charge if the seller supports the x402 `payment-identifier` extension, and on-chain reads can be late or fail. You choose the rules that stop a payment, and you remain responsible for what your agent pays. Provided under the MIT license, "as is", without warranty.
 
@@ -426,7 +426,7 @@ const guard = createPrePaymentGuard({ client: botsrated, paidCheckAtOrAboveUsd: 
 client.onBeforePaymentCreation(guard.beforePaymentCreation);
 
 await botsrated.check("seller.example");            // $0.01 (first 5 per client IP per UTC day free, 25 with a free API key; shared with MCP check)
-await botsrated.report("seller.example");           // $0.002 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
+await botsrated.report("seller.example");           // $0.01 (first 3 per client IP per UTC day free on HTTP GET /v1/report only; MCP report is paid from the first call)
 await botsrated.best("web search", { sort: "price" }); // $0.01
 ```
 

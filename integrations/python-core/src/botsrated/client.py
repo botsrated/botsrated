@@ -40,8 +40,8 @@ __all__ = [
 ]
 
 BOTSRATED_PAY_TO = "0x7F936f42F46B6c4Cbd3242cF8A1759dfe829E349"
-# Published prices in atomic USDC ($0.01 check, $0.002 report, $0.01 best). Quotes above these are refused.
-PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 10000, "report": 2000, "best": 10000}
+# Published prices in atomic USDC ($0.01 check, $0.01 report, $0.01 best). Quotes above these are refused.
+PAID_ROUTE_MAX_ATOMIC: dict[str, int] = {"check": 10000, "report": 10000, "best": 10000}
 # Free calls per client (IP) per UTC day without an API key: 5 checks (25 with a free API key), 3 reports.
 # Inside the quota BotsRated answers 200 with charged: false, no 402. The server's free_quota block is what counts.
 FREE_DAILY_QUOTA: dict[str, int] = {"check": 5, "report": 3, "best": 0}
@@ -267,7 +267,7 @@ class BotsRatedClient:
         return self._paid(f"/v1/check?host={quote(host_of(url_or_host), safe='')}", "check")
 
     def report(self, url_or_host: str) -> dict[str, Any]:
-        """Paid ($0.002; first 3 per client IP per UTC day free). Full receipt history for one host."""
+        """Paid ($0.01; first 3 per client IP per UTC day free). Full receipt history for one host."""
         return self._paid(f"/v1/report/{quote(host_of(url_or_host), safe='')}", "report")
 
     def best(self, task: str, sort: str | None = None, max_price_usd: float | None = None) -> dict[str, Any]:
